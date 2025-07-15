@@ -226,6 +226,8 @@ Console when an error occurs:
 
 - Minimum 64 characters width
 - Scale sections proportionally for wider terminals
+- Listen for SIGWINCH signal to detect terminal resize events
+- Dynamically update table width and re-render when terminal is resized
 - Truncate long messages with `...` if needed
 - Maintain fixed box structure regardless of content
 

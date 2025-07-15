@@ -666,8 +666,8 @@ func NewProgress(message string) *Progress {
 	console.SetProgressRef(progress)
 	console.Start()
 
-	// Set up signal handling for graceful exit with preserved display
-	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM)
+	// Set up signal handling for graceful exit with preserved display and window resize
+	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	go progress.handleSignals()
 
 	// Save current cursor position and hide cursor, then reserve space for display
@@ -685,7 +685,7 @@ func NewProgress(message string) *Progress {
 	return progress
 }
 
-// handleSignals handles OS signals for graceful shutdown with preserved display
+// handleSignals handles OS signals for graceful shutdown with preserved display and window resize
 func (p *Progress) handleSignals() {
 	for sig := range p.signalChan {
 		switch sig {
@@ -694,8 +694,30 @@ func (p *Progress) handleSignals() {
 			p.preserveOnExit = true
 			p.StopWithPreserve()
 			os.Exit(0)
+		case syscall.SIGWINCH:
+			// Handle terminal resize
+			p.handleTerminalResize()
 		}
 	}
+}
+
+// handleTerminalResize handles terminal window resize events
+func (p *Progress) handleTerminalResize() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	
+	// Get new terminal size
+	width, height := getTerminalSize()
+	
+	// Update terminal dimensions
+	p.terminalWidth = width
+	p.terminalHeight = height
+	
+	// Update box width with same calculation as initialization
+	p.boxWidth = max(64, width-8)
+	
+	// Trigger immediate re-render
+	p.console.RequestUpdate()
 }
 
 // InitItems initializes the items to be displayed
@@ -848,12 +870,12 @@ func (p *Progress) renderStatus() {
 		p.mutex.Unlock()
 	}()
 
-	// Use stable box width - don't change it after initialization
+	// Initialize box width if not set
 	if p.boxWidth == 0 {
 		width, height := getTerminalSize()
 		p.terminalWidth = width
 		p.terminalHeight = height
-		p.boxWidth = max(64, width-8) // Set once and keep stable, more margin for safety
+		p.boxWidth = max(64, width-8) // Minimum 64 chars, scale with terminal, more margin for safety
 	}
 	
 	// Ensure we have enough terminal height for our display
