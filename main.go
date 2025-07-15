@@ -911,7 +911,7 @@ func (p *Progress) renderBoxTop(output *strings.Builder, boxColor, resetColor st
 	output.WriteString("┌─ GitHub 🧠 pull ")
 	
 	// Fill remaining space with dashes
-	titleLen := 20 // "GitHub 🧠 pull " length
+	titleLen := 17 // "GitHub 🧠 pull " length (emoji counts as 1 but displays as 2)
 	remainingDashes := p.boxWidth - titleLen - 2 // -2 for ┌ and ┐
 	for i := 0; i < remainingDashes; i++ {
 		output.WriteString("─")
