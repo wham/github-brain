@@ -48,11 +48,25 @@ The first call for an organization may take a while. Subsequent calls are faster
 
 | Argument | Variable       | Description                                                                                                                             |
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN` | Your GitHub token to access the API. **Required.**                                                                                      |
+| `-t`     | `GITHUB_TOKEN` | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                                                      |
 | `-o`     | `ORGANIZATION` | The GitHub organization to pull data from. **Required.**                                                                                |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here. |
 | `-i`     |                | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.      |
 | `-f`     |                | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                        |
+
+<details>
+    <summary>Personal access token scopes</summary>
+
+    Use the [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens).
+
+    For private organizations, the token must have the following configuration:
+
+    - Organization permissions: Read access to members
+    - Repository permissions: Read access to discussions, issues, metadata, and pull requests
+
+    For public organizations, an empty token is sufficient, as the data is publicly accessible.
+
+</details>
 
 ### `mcp`
 

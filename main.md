@@ -478,6 +478,7 @@ Console when an error occurs:
 - Save each team membership immediately. Avoid storing all team memberships in memory. No long-running transactions
 - If a team is more than 100 members, skip saving it
 - Save `slug` as `team` and `login` as `username` in the database
+- Always mark teams sync as completed, even when the organization has 0 teams
 
 ## mcp
 
