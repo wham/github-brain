@@ -908,10 +908,10 @@ func (p *Progress) renderStatus() {
 // renderBoxTop renders the top border with title
 func (p *Progress) renderBoxTop(output *strings.Builder, boxColor, resetColor string) {
 	output.WriteString(boxColor)
-	output.WriteString("┌─ GitHub Data Sync ")
+	output.WriteString("┌─ GitHub 🧠 pull ")
 	
 	// Fill remaining space with dashes
-	titleLen := 19 // "GitHub Data Sync " length
+	titleLen := 20 // "GitHub 🧠 pull " length
 	remainingDashes := p.boxWidth - titleLen - 2 // -2 for ┌ and ┐
 	for i := 0; i < remainingDashes; i++ {
 		output.WriteString("─")
