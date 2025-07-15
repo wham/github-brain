@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")/.."
+
+npx @modelcontextprotocol/inspector --config config.json --server github-brain

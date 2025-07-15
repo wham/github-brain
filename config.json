@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "github-brain": {
+      "command": "scripts/run",
+      "args": ["mcp"],
+      "env": {}
+    }
+  }
+}

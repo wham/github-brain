@@ -1,0 +1,4 @@
+/build
+/db
+.env
+mcp-server.log

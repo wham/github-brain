@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="brainGradient" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#ede9fe"/>
+      <stop offset="60%" stop-color="#a259c4"/>
+      <stop offset="100%" stop-color="#6d28a7"/>
+    </radialGradient>
+    <radialGradient id="tentacleGradient" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </radialGradient>
+    <linearGradient id="tentacleShadow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#6d28a7" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <!-- Monalisa-style head (brain) -->
+  <ellipse cx="128" cy="110" rx="80" ry="70" fill="url(#brainGradient)" stroke="#7c3aed" stroke-width="4"/>
+  <!-- Brain folds, stylized -->
+  <path d="M70 110 Q90 70 128 110 Q166 150 186 110" stroke="#a259c4" stroke-width="3" fill="none"/>
+  <path d="M90 90 Q110 60 128 90 Q146 120 166 90" stroke="#a78bfa" stroke-width="2" fill="none"/>
+  <!-- Monalisa-style face -->
+  <ellipse cx="128" cy="130" rx="38" ry="30" fill="#ede9fe" opacity="0.7"/>
+  <ellipse cx="110" cy="135" rx="6" ry="8" fill="#7c3aed"/>
+  <ellipse cx="146" cy="135" rx="6" ry="8" fill="#7c3aed"/>
+  <ellipse cx="110" cy="137" rx="2" ry="3" fill="#fff" opacity="0.7"/>
+  <ellipse cx="146" cy="137" rx="2" ry="3" fill="#fff" opacity="0.7"/>
+  <path d="M120 150 Q128 158 136 150" stroke="#a259c4" stroke-width="2" fill="none"/>
+  <!-- Octopus tentacles, Monalisa style -->
+  <path d="M128 180 Q110 220 60 240 Q30 250 60 230" stroke="url(#tentacleGradient)" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M128 180 Q146 220 196 240 Q226 250 196 230" stroke="url(#tentacleGradient)" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <path d="M108 185 Q80 220 30 210 Q10 205 40 230" stroke="url(#tentacleGradient)" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M148 185 Q176 220 226 210 Q246 205 216 230" stroke="url(#tentacleGradient)" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M118 190 Q100 240 128 250" stroke="url(#tentacleGradient)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <path d="M138 190 Q156 240 128 250" stroke="url(#tentacleGradient)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <path d="M98 195 Q60 240 110 250" stroke="url(#tentacleGradient)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M158 195 Q196 240 146 250" stroke="url(#tentacleGradient)" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <!-- Tentacle suction cups -->
+  <ellipse cx="60" cy="240" rx="5" ry="2.5" fill="#ede9fe" opacity="0.7"/>
+  <ellipse cx="196" cy="240" rx="5" ry="2.5" fill="#ede9fe" opacity="0.7"/>
+  <ellipse cx="110" cy="248" rx="4" ry="2" fill="#ede9fe" opacity="0.6"/>
+  <ellipse cx="146" cy="248" rx="4" ry="2" fill="#ede9fe" opacity="0.6"/>
+  <!-- Subtle shadow for realism -->
+  <ellipse cx="128" cy="255" rx="70" ry="10" fill="url(#tentacleShadow)" opacity="0.3"/>
+</svg>
