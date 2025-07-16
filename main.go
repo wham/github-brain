@@ -4153,7 +4153,11 @@ func PullTeams(ctx context.Context, client *githubv4.Client, db *DB, config *Con
 		progress.Log("Successfully fetched page %d, processing %d teams", page, len(teams))
 		if len(teams) == 0 {
 			progress.Log("No teams found on page %d, stopping", page)
-			break
+			// Always mark teams sync as completed, even when the organization has 0 teams
+			progress.Log("All teams processed successfully: %d teams with %d total members", totalTeams, totalMembers)
+			progress.UpdateMessage(fmt.Sprintf("Successfully pulled %d teams with %d total members", totalTeams, totalMembers))
+			progress.MarkItemCompleted("teams", totalTeams)
+			return nil
 		}
 
 		// Process teams on this page - save each team member immediately
@@ -5504,6 +5508,10 @@ func main() {
 
 		// Final status update through Progress system
 		progress.UpdateMessage("Successfully pulled GitHub data")
+		
+		// Give time for final display update to render
+		time.Sleep(200 * time.Millisecond)
+		
 		progress.Stop()
 		
 		// Exit successfully after pull operation
