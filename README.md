@@ -7,7 +7,7 @@
 
 - _What are the contributions of user X in the last month?_
 - _List all pull requests merged by the members of team Y in the last week._
-- _Summarize this year's discussions in the organization._
+- _Summarize this month's discussions._
 
 GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It uses a local database to store data pulled from GitHub, enabling:
 
