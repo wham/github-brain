@@ -9,17 +9,15 @@
 - _List all pull requests merged by the members of team Y in the last week._
 - _Summarize this month's discussions._
 
-
-
 https://github.com/user-attachments/assets/80910025-9d58-4367-af00-bf4c51e6ce86
-
-
 
 GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It uses a local database to store data pulled from GitHub, enabling:
 
 - Fast responses
 - More results than the standard 100-item API limit
 - Markdown output for token efficiency
+
+![](./docs/pull.png)
 
 ## Prerequisites
 
@@ -91,6 +89,8 @@ go run main.go mcp -o my-org
 
 ## Installation
 
+`scripts/run` is a convenience script that runs the MCP server. It builds the Go code and runs the `mcp` command with the checkout directory as the working directory. As a result, the SQLite database will be created in the `db` folder of the checkout directory.
+
 ### Claude
 
 Add to the Claude MCP configuration file:
@@ -107,3 +107,22 @@ Add to the Claude MCP configuration file:
 ```
 
 Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `mcpServers` already exists.
+
+### VS Code
+
+Add to the VS Code MCP configuration file:
+
+```json
+{
+  "servers": {
+    "github-brain": {
+      "type": "stdio",
+      "command": "<path-to-the-checkout-directory>/scripts/run",
+      "args": ["mcp"],
+      "version": "0.0.1"
+    }
+  }
+}
+```
+
+Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `servers` already exists.
