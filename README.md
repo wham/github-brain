@@ -9,6 +9,12 @@
 - _List all pull requests merged by the members of team Y in the last week._
 - _Summarize this month's discussions._
 
+
+
+https://github.com/user-attachments/assets/80910025-9d58-4367-af00-bf4c51e6ce86
+
+
+
 GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It uses a local database to store data pulled from GitHub, enabling:
 
 - Fast responses
