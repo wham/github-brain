@@ -737,22 +737,27 @@ Each prompt should just return the template string with parameter interpolation,
 
 #### user_summary
 
-Generates a summary of the user based on their discussions, issues, and pull requests.
+Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests.
 
-Parameters:
+#### Parameters
 
-- `login`: User login (username, required)
-- `from`: Date from which to consider discussions, issues, and pull requests (format: `YYYY-MM-DDTHH:MM:SSZ`, optional)
+- `username`: Username. Example: `john_doe`. (required)
+- `period`: Examples "last week", "from August 2025 to September 2025", "2024-01-01 - 2024-12-31"
 
-Prompt:
+##### Prompt
 
-Generate a summary of the user based on their discussions, issues, and pull requests.
+Summarize the accomplishments of the user `<username>` during `<period>`, focusing on the most significant contributions first. Use the following approach:
 
-Summarize discussions created by `<login>` since `<from>`.
-Summarize issues created by `<login>` since `<from>`.
-Summarize pull requests created by `<login>` since `<from>`.
-
-Mix the summaries together and generate a single summary. Put the most significant information first. Include link for each contribution.
+- Use `list_discussions` to gather discussions they created within `<period>`.
+- Use `list_issues` to gather issues they closed within `<period>`.
+- Use `list_pull_requests` to gather pull requests they closed within `<period>`.
+- Aggregate all results, removing duplicates.
+- Prioritize and highlight:
+  - Discussions (most important)
+  - Pull requests (next most important)
+  - Issues (least important)
+- For each contribution, include a direct link and relevant metrics or facts.
+- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
 
 #### team_summary
 

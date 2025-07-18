@@ -5103,9 +5103,9 @@ func RunMCPServer(db *DB) error {
 
 	// Register the user_summary prompt
 	userSummaryPrompt := mcp.NewPrompt("user_summary",
-		mcp.WithPromptDescription("Generates a summary of the user based on their discussions, issues, and pull requests."),
-		mcp.WithArgument("login", mcp.ArgumentDescription("User login (username)"), mcp.RequiredArgument()),
-		mcp.WithArgument("from", mcp.ArgumentDescription("Date from which to consider discussions, issues, and pull requests (format: YYYY-MM-DDTHH:MM:SSZ)")),
+		mcp.WithPromptDescription("Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests."),
+		mcp.WithArgument("username", mcp.ArgumentDescription("Username. Example: john_doe"), mcp.RequiredArgument()),
+		mcp.WithArgument("period", mcp.ArgumentDescription("Examples \"last week\", \"from August 2025 to September 2025\", \"2024-01-01 - 2024-12-31\"")),
 	)
 
 	// Add prompt handler for user_summary
@@ -5116,43 +5116,40 @@ func RunMCPServer(db *DB) error {
 		}
 
 		// Extract parameters from request
-		login := ""
-		from := ""
+		username := ""
+		period := ""
 		
 		// Access arguments through the request structure
 		for key, value := range request.Params.Arguments {
 			switch key {
-			case "login":
-				login = value
-			case "from":
-				from = value
+			case "username":
+				username = value
+			case "period":
+				period = value
 			}
 		}
 
-		if login == "" {
-			return nil, fmt.Errorf("login parameter is required")
+		if username == "" {
+			return nil, fmt.Errorf("username parameter is required")
 		}
 
-		// Build the prompt text according to specification with parameter interpolation
+		// Build the prompt text according to specification
 		var promptBuilder strings.Builder
-		promptBuilder.WriteString("Generate a summary of the user based on their discussions, issues, and pull requests.\n\n")
-
-		// Add sections with parameter interpolation
-		if from != "" {
-			promptBuilder.WriteString(fmt.Sprintf("Summarize discussions created by %s since %s.\n", login, from))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize issues created by %s since %s.\n", login, from))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize pull requests created by %s since %s.\n", login, from))
-		} else {
-			promptBuilder.WriteString(fmt.Sprintf("Summarize discussions created by %s.\n", login))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize issues created by %s.\n", login))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize pull requests created by %s.\n", login))
-		}
-
-		promptBuilder.WriteString("\nMix the summaries together and generate a single summary. Put the most significant information first. Include link for each contribution.")
+		promptBuilder.WriteString(fmt.Sprintf("Summarize the accomplishments of the user `%s` during `%s`, focusing on the most significant contributions first. Use the following approach:\n\n", username, period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_discussions` to gather discussions they created within `%s`.\n", period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_issues` to gather issues they closed within `%s`.\n", period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_pull_requests` to gather pull requests they closed within `%s`.\n", period))
+		promptBuilder.WriteString("- Aggregate all results, removing duplicates.\n")
+		promptBuilder.WriteString("- Prioritize and highlight:\n")
+		promptBuilder.WriteString("  - Discussions (most important)\n")
+		promptBuilder.WriteString("  - Pull requests (next most important)\n")
+		promptBuilder.WriteString("  - Issues (least important)\n")
+		promptBuilder.WriteString("- For each contribution, include a direct link and relevant metrics or facts.\n")
+		promptBuilder.WriteString("- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.")
 
 		// Create prompt result with the generated text
 		result := &mcp.GetPromptResult{
-			Description: fmt.Sprintf("User summary for %s", login),
+			Description: fmt.Sprintf("User summary for %s during %s", username, period),
 			Messages: []mcp.PromptMessage{
 				{
 					Role: "user",
