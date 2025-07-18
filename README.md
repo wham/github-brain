@@ -38,6 +38,14 @@ Re-run `pull` anytime to update the database with new GitHub data. You can do th
 
 Each command has its own arguments. Some can be set via environment variables. The app will also load variables from a `.env` file in the current directory.
 
+<details>
+    <summary>Example .env file</summary>
+
+    GITHUB_TOKEN=your_github_token
+    ORGANIZATION=my-org
+
+</details>
+
 ### `pull`
 
 Populate the local database with GitHub data.
@@ -52,7 +60,7 @@ The first call for an organization may take a while. Subsequent calls are faster
 
 | Argument | Variable       | Description                                                                                                                             |
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN` | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                                                      |
+| `-t`     | `GITHUB_TOKEN` | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                       |
 | `-o`     | `ORGANIZATION` | The GitHub organization to pull data from. **Required.**                                                                                |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here. |
 | `-i`     |                | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.      |
