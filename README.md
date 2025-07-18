@@ -82,3 +82,22 @@ go run main.go mcp -o my-org
 | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+
+## Installation
+
+### Claude
+
+Add to the Claude MCP configuration file:
+
+```json
+{
+  "mcpServers": {
+    "github-brain": {
+      "type": "stdio",
+      "command": "<path-to-the-checkout-directory>/scripts/run",
+      "args": ["mcp"]
+    }
+}
+```
+
+Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `mcpServers` already exists.
