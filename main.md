@@ -48,7 +48,7 @@ Console display must be stable and prevent jumping/flickering:
 Console at the beginning of the `pull` command - all items selected:
 
 ```
-┌─ GitHub Data Sync ─────────────────────────────────────────────┐
+┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
 │                                                                │
 │  ⚪ Repositories                                               │
 │  ⚪ Discussions                                                │
@@ -85,7 +85,7 @@ Console at the beginning of the `pull` command - all items selected:
 Console at the beginning of the `pull` command - `-i repositories,teams`:
 
 ```
-┌─ GitHub Data Sync ─────────────────────────────────────────────┐
+┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
 │                                                                │
 │  ⚪ Repositories                                               │
 │  🔕 Discussions                                               │
@@ -111,7 +111,7 @@ Note 🔕 for skipped items with dimmed appearance.
 Console during first item pull:
 
 ```
-┌─ GitHub Data Sync ─────────────────────────────────────────────┐
+┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
 │                                                                │
 │  🔄 Repositories: 1,247                                       │
 │  ⚪ Discussions                                                │
@@ -140,7 +140,7 @@ Console during first item pull:
 Console when first item completes:
 
 ```
-┌─ GitHub Data Sync ─────────────────────────────────────────────┐
+┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
 │                                                                │
 │  ✅ Repositories: 2,847                                       │
 │  🔄 Discussions: 156                                          │
@@ -168,7 +168,7 @@ Console when first item completes:
 Console when an error occurs:
 
 ```
-┌─ GitHub Data Sync ─────────────────────────────────────────────┐
+┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
 │                                                                │
 │  ✅ Repositories: 2,847                                       │
 │  ❌ Discussions: 156 (3 errors)                               │
@@ -226,6 +226,8 @@ Console when an error occurs:
 
 - Minimum 64 characters width
 - Scale sections proportionally for wider terminals
+- Listen for SIGWINCH signal to detect terminal resize events
+- Dynamically update table width and re-render when terminal is resized
 - Truncate long messages with `...` if needed
 - Maintain fixed box structure regardless of content
 
@@ -478,6 +480,7 @@ Console when an error occurs:
 - Save each team membership immediately. Avoid storing all team memberships in memory. No long-running transactions
 - If a team is more than 100 members, skip saving it
 - Save `slug` as `team` and `login` as `username` in the database
+- Always mark teams sync as completed, even when the organization has 0 teams
 
 ## mcp
 
@@ -734,22 +737,27 @@ Each prompt should just return the template string with parameter interpolation,
 
 #### user_summary
 
-Generates a summary of the user based on their discussions, issues, and pull requests.
+Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests.
 
-Parameters:
+#### Parameters
 
-- `login`: User login (username, required)
-- `from`: Date from which to consider discussions, issues, and pull requests (format: `YYYY-MM-DDTHH:MM:SSZ`, optional)
+- `username`: Username. Example: `john_doe`. (required)
+- `period`: Examples "last week", "from August 2025 to September 2025", "2024-01-01 - 2024-12-31"
 
-Prompt:
+##### Prompt
 
-Generate a summary of the user based on their discussions, issues, and pull requests.
+Summarize the accomplishments of the user `<username>` during `<period>`, focusing on the most significant contributions first. Use the following approach:
 
-Summarize discussions created by `<login>` since `<from>`.
-Summarize issues created by `<login>` since `<from>`.
-Summarize pull requests created by `<login>` since `<from>`.
-
-Mix the summaries together and generate a single summary. Put the most significant information first. Include link for each contribution.
+- Use `list_discussions` to gather discussions they created within `<period>`.
+- Use `list_issues` to gather issues they closed within `<period>`.
+- Use `list_pull_requests` to gather pull requests they closed within `<period>`.
+- Aggregate all results, removing duplicates.
+- Prioritize and highlight:
+  - Discussions (most important)
+  - Pull requests (next most important)
+  - Issues (least important)
+- For each contribution, include a direct link and relevant metrics or facts.
+- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
 
 #### team_summary
 

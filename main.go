@@ -666,8 +666,8 @@ func NewProgress(message string) *Progress {
 	console.SetProgressRef(progress)
 	console.Start()
 
-	// Set up signal handling for graceful exit with preserved display
-	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM)
+	// Set up signal handling for graceful exit with preserved display and window resize
+	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
 	go progress.handleSignals()
 
 	// Save current cursor position and hide cursor, then reserve space for display
@@ -685,7 +685,7 @@ func NewProgress(message string) *Progress {
 	return progress
 }
 
-// handleSignals handles OS signals for graceful shutdown with preserved display
+// handleSignals handles OS signals for graceful shutdown with preserved display and window resize
 func (p *Progress) handleSignals() {
 	for sig := range p.signalChan {
 		switch sig {
@@ -694,8 +694,30 @@ func (p *Progress) handleSignals() {
 			p.preserveOnExit = true
 			p.StopWithPreserve()
 			os.Exit(0)
+		case syscall.SIGWINCH:
+			// Handle terminal resize
+			p.handleTerminalResize()
 		}
 	}
+}
+
+// handleTerminalResize handles terminal window resize events
+func (p *Progress) handleTerminalResize() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	
+	// Get new terminal size
+	width, height := getTerminalSize()
+	
+	// Update terminal dimensions
+	p.terminalWidth = width
+	p.terminalHeight = height
+	
+	// Update box width with same calculation as initialization
+	p.boxWidth = max(64, width-8)
+	
+	// Trigger immediate re-render
+	p.console.RequestUpdate()
 }
 
 // InitItems initializes the items to be displayed
@@ -848,12 +870,12 @@ func (p *Progress) renderStatus() {
 		p.mutex.Unlock()
 	}()
 
-	// Use stable box width - don't change it after initialization
+	// Initialize box width if not set
 	if p.boxWidth == 0 {
 		width, height := getTerminalSize()
 		p.terminalWidth = width
 		p.terminalHeight = height
-		p.boxWidth = max(64, width-8) // Set once and keep stable, more margin for safety
+		p.boxWidth = max(64, width-8) // Minimum 64 chars, scale with terminal, more margin for safety
 	}
 	
 	// Ensure we have enough terminal height for our display
@@ -908,10 +930,10 @@ func (p *Progress) renderStatus() {
 // renderBoxTop renders the top border with title
 func (p *Progress) renderBoxTop(output *strings.Builder, boxColor, resetColor string) {
 	output.WriteString(boxColor)
-	output.WriteString("┌─ GitHub Data Sync ")
+	output.WriteString("┌─ GitHub 🧠 pull ")
 	
 	// Fill remaining space with dashes
-	titleLen := 19 // "GitHub Data Sync " length
+	titleLen := 17 // "GitHub 🧠 pull " length (emoji counts as 1 but displays as 2)
 	remainingDashes := p.boxWidth - titleLen - 2 // -2 for ┌ and ┐
 	for i := 0; i < remainingDashes; i++ {
 		output.WriteString("─")
@@ -4131,7 +4153,11 @@ func PullTeams(ctx context.Context, client *githubv4.Client, db *DB, config *Con
 		progress.Log("Successfully fetched page %d, processing %d teams", page, len(teams))
 		if len(teams) == 0 {
 			progress.Log("No teams found on page %d, stopping", page)
-			break
+			// Always mark teams sync as completed, even when the organization has 0 teams
+			progress.Log("All teams processed successfully: %d teams with %d total members", totalTeams, totalMembers)
+			progress.UpdateMessage(fmt.Sprintf("Successfully pulled %d teams with %d total members", totalTeams, totalMembers))
+			progress.MarkItemCompleted("teams", totalTeams)
+			return nil
 		}
 
 		// Process teams on this page - save each team member immediately
@@ -5077,9 +5103,9 @@ func RunMCPServer(db *DB) error {
 
 	// Register the user_summary prompt
 	userSummaryPrompt := mcp.NewPrompt("user_summary",
-		mcp.WithPromptDescription("Generates a summary of the user based on their discussions, issues, and pull requests."),
-		mcp.WithArgument("login", mcp.ArgumentDescription("User login (username)"), mcp.RequiredArgument()),
-		mcp.WithArgument("from", mcp.ArgumentDescription("Date from which to consider discussions, issues, and pull requests (format: YYYY-MM-DDTHH:MM:SSZ)")),
+		mcp.WithPromptDescription("Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests."),
+		mcp.WithArgument("username", mcp.ArgumentDescription("Username. Example: john_doe"), mcp.RequiredArgument()),
+		mcp.WithArgument("period", mcp.ArgumentDescription("Examples \"last week\", \"from August 2025 to September 2025\", \"2024-01-01 - 2024-12-31\"")),
 	)
 
 	// Add prompt handler for user_summary
@@ -5090,43 +5116,40 @@ func RunMCPServer(db *DB) error {
 		}
 
 		// Extract parameters from request
-		login := ""
-		from := ""
+		username := ""
+		period := ""
 		
 		// Access arguments through the request structure
 		for key, value := range request.Params.Arguments {
 			switch key {
-			case "login":
-				login = value
-			case "from":
-				from = value
+			case "username":
+				username = value
+			case "period":
+				period = value
 			}
 		}
 
-		if login == "" {
-			return nil, fmt.Errorf("login parameter is required")
+		if username == "" {
+			return nil, fmt.Errorf("username parameter is required")
 		}
 
-		// Build the prompt text according to specification with parameter interpolation
+		// Build the prompt text according to specification
 		var promptBuilder strings.Builder
-		promptBuilder.WriteString("Generate a summary of the user based on their discussions, issues, and pull requests.\n\n")
-
-		// Add sections with parameter interpolation
-		if from != "" {
-			promptBuilder.WriteString(fmt.Sprintf("Summarize discussions created by %s since %s.\n", login, from))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize issues created by %s since %s.\n", login, from))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize pull requests created by %s since %s.\n", login, from))
-		} else {
-			promptBuilder.WriteString(fmt.Sprintf("Summarize discussions created by %s.\n", login))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize issues created by %s.\n", login))
-			promptBuilder.WriteString(fmt.Sprintf("Summarize pull requests created by %s.\n", login))
-		}
-
-		promptBuilder.WriteString("\nMix the summaries together and generate a single summary. Put the most significant information first. Include link for each contribution.")
+		promptBuilder.WriteString(fmt.Sprintf("Summarize the accomplishments of the user `%s` during `%s`, focusing on the most significant contributions first. Use the following approach:\n\n", username, period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_discussions` to gather discussions they created within `%s`.\n", period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_issues` to gather issues they closed within `%s`.\n", period))
+		promptBuilder.WriteString(fmt.Sprintf("- Use `list_pull_requests` to gather pull requests they closed within `%s`.\n", period))
+		promptBuilder.WriteString("- Aggregate all results, removing duplicates.\n")
+		promptBuilder.WriteString("- Prioritize and highlight:\n")
+		promptBuilder.WriteString("  - Discussions (most important)\n")
+		promptBuilder.WriteString("  - Pull requests (next most important)\n")
+		promptBuilder.WriteString("  - Issues (least important)\n")
+		promptBuilder.WriteString("- For each contribution, include a direct link and relevant metrics or facts.\n")
+		promptBuilder.WriteString("- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.")
 
 		// Create prompt result with the generated text
 		result := &mcp.GetPromptResult{
-			Description: fmt.Sprintf("User summary for %s", login),
+			Description: fmt.Sprintf("User summary for %s during %s", username, period),
 			Messages: []mcp.PromptMessage{
 				{
 					Role: "user",
@@ -5482,6 +5505,10 @@ func main() {
 
 		// Final status update through Progress system
 		progress.UpdateMessage("Successfully pulled GitHub data")
+		
+		// Give time for final display update to render
+		time.Sleep(200 * time.Millisecond)
+		
 		progress.Stop()
 		
 		// Exit successfully after pull operation

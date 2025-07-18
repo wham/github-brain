@@ -7,7 +7,7 @@
 
 - _What are the contributions of user X in the last month?_
 - _List all pull requests merged by the members of team Y in the last week._
-- _Summarize this year's discussions in the organization._
+- _Summarize this month's discussions._
 
 GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It uses a local database to store data pulled from GitHub, enabling:
 
@@ -48,11 +48,25 @@ The first call for an organization may take a while. Subsequent calls are faster
 
 | Argument | Variable       | Description                                                                                                                             |
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN` | Your GitHub token to access the API. **Required.**                                                                                      |
+| `-t`     | `GITHUB_TOKEN` | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                                                      |
 | `-o`     | `ORGANIZATION` | The GitHub organization to pull data from. **Required.**                                                                                |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here. |
 | `-i`     |                | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.      |
 | `-f`     |                | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                        |
+
+<details>
+    <summary>Personal access token scopes</summary>
+
+    Use the [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens).
+
+    For private organizations, the token must have the following configuration:
+
+    - Organization permissions: Read access to members
+    - Repository permissions: Read access to discussions, issues, metadata, and pull requests
+
+    For public organizations, an empty token is sufficient, as the data is publicly accessible.
+
+</details>
 
 ### `mcp`
 
@@ -68,3 +82,22 @@ go run main.go mcp -o my-org
 | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+
+## Installation
+
+### Claude
+
+Add to the Claude MCP configuration file:
+
+```json
+{
+  "mcpServers": {
+    "github-brain": {
+      "type": "stdio",
+      "command": "<path-to-the-checkout-directory>/scripts/run",
+      "args": ["mcp"]
+    }
+}
+```
+
+Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `mcpServers` already exists.
