@@ -324,11 +324,12 @@ func init() {
 
 // Config holds all application configuration
 type Config struct {
-	GithubToken  string
-	Organization string
-	DBDir        string
-	Items        []string // Items to pull (repositories, discussions, issues, pull-requests, teams)
-	Force        bool     // Remove all data before pulling
+	GithubToken           string
+	Organization          string
+	DBDir                 string
+	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests, teams)
+	Force                 bool     // Remove all data before pulling
+	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
 }
 
 // LoadConfig creates a config from command line arguments and environment variables
@@ -344,6 +345,10 @@ func LoadConfig(args []string) *Config {
 
 	if dbDir := os.Getenv("DB_DIR"); dbDir != "" {
 		config.DBDir = dbDir
+	}
+
+	if excludedRepos := os.Getenv("EXCLUDED_REPOSITORIES"); excludedRepos != "" {
+		config.ExcludedRepositories = splitItems(excludedRepos)
 	}
 
 	// Command line args override environment variables
@@ -369,12 +374,27 @@ func LoadConfig(args []string) *Config {
 				config.Items = splitItems(args[i+1])
 				i++
 			}
+		case "-e":
+			if i+1 < len(args) {
+				config.ExcludedRepositories = splitItems(args[i+1])
+				i++
+			}
 		case "-f":
 			config.Force = true
 		}
 	}
 
 	return config
+}
+
+// isRepositoryExcluded checks if a repository is in the excluded list
+func isRepositoryExcluded(repoName string, excludedRepos []string) bool {
+	for _, excluded := range excludedRepos {
+		if strings.TrimSpace(excluded) == strings.TrimSpace(repoName) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitItems splits a comma-separated items list
@@ -3255,10 +3275,10 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 		return fmt.Errorf("failed to get repositories: %w", err)
 	}
 
-	// Filter repositories to only those with discussions enabled
+	// Filter repositories to only those with discussions enabled and not excluded
 	var repositories []Repository
 	for _, repo := range allRepositories {
-		if repo.HasDiscussionsEnabled {
+		if repo.HasDiscussionsEnabled && !isRepositoryExcluded(repo.Name, config.ExcludedRepositories) {
 			repositories = append(repositories, repo)
 		}
 	}
@@ -3492,10 +3512,10 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 		return fmt.Errorf("failed to get repositories: %w", err)
 	}
 	
-	// Filter repositories to only include those with issues enabled
+	// Filter repositories to only include those with issues enabled and not excluded
 	var repositories []Repository
 	for _, repo := range allRepositories {
-		if repo.HasIssuesEnabled {
+		if repo.HasIssuesEnabled && !isRepositoryExcluded(repo.Name, config.ExcludedRepositories) {
 			repositories = append(repositories, repo)
 		}
 	}
@@ -3718,12 +3738,20 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 	
 	// Get all repositories in the organization
 	progress.Log("Getting repositories from database")
-	repositories, err := db.GetRepositories()
+	allRepositories, err := db.GetRepositories()
 	if err != nil {
 		return fmt.Errorf("failed to get repositories: %w", err)
 	}
 
-	progress.Log("Found %d repositories to process", len(repositories))
+	// Filter repositories to exclude those in ExcludedRepositories
+	var repositories []Repository
+	for _, repo := range allRepositories {
+		if !isRepositoryExcluded(repo.Name, config.ExcludedRepositories) {
+			repositories = append(repositories, repo)
+		}
+	}
+
+	progress.Log("Found %d repositories to process (filtered from %d total repositories)", len(repositories), len(allRepositories))
 
 	if len(repositories) == 0 {
 		progress.Log("No repositories found. Run with 'repositories' item first to populate database.")
@@ -4258,7 +4286,7 @@ func validateFields(fields []string, availableFields []string, fieldType string)
 	}
 	
 	if len(invalidFields) > 0 {
-		return fmt.Errorf("Invalid fields: %s\n\nUse one of the available fields: %s", 
+		return fmt.Errorf("invalid fields: %s\n\nUse one of the available fields: %s", 
 			strings.Join(invalidFields, ", "), 
 			strings.Join(availableFields, ", "))
 	}
@@ -5254,7 +5282,7 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: pull -t <token> -o <organization> [-db <dbpath>] [-i repositories,discussions,issues,pull-requests,teams] [-f]")
+				fmt.Println("Usage: pull -t <token> -o <organization> [-db <dbpath>] [-i repositories,discussions,issues,pull-requests,teams] [-e excluded_repos] [-f]")
 				os.Exit(0)
 			}
 		}
