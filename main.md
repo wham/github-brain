@@ -27,6 +27,7 @@ Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not 
   - `DBDir`: SQLite database path (default: `./db`)
   - `Items`: Comma-separated list to pull (default: empty - pull all)
   - `Force`: Remove all data before pulling (default: false)
+  - `ExcludedRepositories`: Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests (default: empty)
 - Use `Config` struct consistently, avoid multiple environment variable reads
 - If `Config.Force` is set, remove all data from database before pulling. If `Config.Items` is set, only remove specified items
 - Pull items: Repositories, Discussions, Issues, Pull Requests, Teams
@@ -276,10 +277,11 @@ Console when an error occurs:
 - Save each repository immediately. Avoid storing all repositories in memory. No long-running transactions
 - Save or update by primary key `name`
 - Filter `isArchived: false` and `isFork: false` for faster processing
+- Ignore `Config.ExcludedRepositories` in this step, OK to save them in the database
 
 ### Discussions
 
-- Query discussions for each repository with `has_discussions_enabled: true`
+- Query discussions for each repository with `has_discussions_enabled: true` and not in `Config.ExcludedRepositories`
 - Record most recent repository discussion `updated_at` timestamp from database before pulling first page
 
 ```graphql
@@ -335,8 +337,8 @@ Console when an error occurs:
 
 ### Issues
 
-- Get most recent `updated_at` timestamp from database for issues
-- Query issues for each repository which has `has_issues_enabled: true`
+- Query issues for each repository which has `has_issues_enabled: true` and not in `Config.ExcludedRepositories`
+- Record most recent repository issue `updated_at` timestamp from database before pulling first page
 
 ```graphql
 {
@@ -393,7 +395,7 @@ Console when an error occurs:
 
 ### Pull Requests
 
-- Query pull requests for each repository
+- Query pull requests for each repository that's not in `Config.ExcludedRepositories`
 - Record most recent repository pull request `updated_at` timestamp from database before pulling first page
 
 ```graphql
