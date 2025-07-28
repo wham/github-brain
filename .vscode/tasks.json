@@ -5,7 +5,10 @@
       "label": "Build github-brain",
       "type": "shell",
       "command": "cd /Users/wham/code/github-brain && go build -o build/github-brain main.go",
-      "group": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "problemMatcher": ["$go"]
     }
   ]
