@@ -1,6 +1,6 @@
-# github-brain
+# GitHub Brain MCP Server
 
-AI coding agent specification. Human documentation in README.md.
+AI coding agent specification. User-facing documentation in [README.md](README.md).
 
 ## CLI
 
