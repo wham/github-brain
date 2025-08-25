@@ -1862,7 +1862,207 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
+	// Create FTS virtual tables for fast text search
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS discussions_fts USING fts5(
+			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
+			content='discussions', content_rowid='rowid'
+		)
+	`)
+	if err != nil {
+		if progress != nil {
+			progress.Log("Warning: Failed to create discussions FTS table: %v", err)
+		} else {
+			slog.Warn("Failed to create discussions FTS table", "error", err)
+		}
+	}
+
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS issues_fts USING fts5(
+			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
+			content='issues', content_rowid='rowid'
+		)
+	`)
+	if err != nil {
+		if progress != nil {
+			progress.Log("Warning: Failed to create issues FTS table: %v", err)
+		} else {
+			slog.Warn("Failed to create issues FTS table", "error", err)
+		}
+	}
+
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS pull_requests_fts USING fts5(
+			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
+			content='pull_requests', content_rowid='rowid'
+		)
+	`)
+	if err != nil {
+		if progress != nil {
+			progress.Log("Warning: Failed to create pull_requests FTS table: %v", err)
+		} else {
+			slog.Warn("Failed to create pull_requests FTS table", "error", err)
+		}
+	}
+
+	// Create triggers to keep FTS tables in sync
+	if err := createFTSTriggers(db); err != nil {
+		if progress != nil {
+			progress.Log("Warning: Failed to create FTS triggers: %v", err)
+		} else {
+			slog.Warn("Failed to create FTS triggers", "error", err)
+		}
+	}
+
 	return &DB{db: db}, nil
+}
+
+// createFTSTriggers creates triggers to keep FTS tables in sync with main tables
+func createFTSTriggers(db *sql.DB) error {
+	triggers := []string{
+		// Discussions triggers
+		`CREATE TRIGGER IF NOT EXISTS discussions_fts_insert AFTER INSERT ON discussions BEGIN
+			INSERT INTO discussions_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS discussions_fts_delete AFTER DELETE ON discussions BEGIN
+			DELETE FROM discussions_fts WHERE url = old.url;
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS discussions_fts_update AFTER UPDATE ON discussions BEGIN
+			DELETE FROM discussions_fts WHERE url = old.url;
+			INSERT INTO discussions_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+
+		// Issues triggers
+		`CREATE TRIGGER IF NOT EXISTS issues_fts_insert AFTER INSERT ON issues BEGIN
+			INSERT INTO issues_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS issues_fts_delete AFTER DELETE ON issues BEGIN
+			DELETE FROM issues_fts WHERE url = old.url;
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS issues_fts_update AFTER UPDATE ON issues BEGIN
+			DELETE FROM issues_fts WHERE url = old.url;
+			INSERT INTO issues_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+
+		// Pull requests triggers
+		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_insert AFTER INSERT ON pull_requests BEGIN
+			INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_delete AFTER DELETE ON pull_requests BEGIN
+			DELETE FROM pull_requests_fts WHERE url = old.url;
+		END`,
+		
+		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_update AFTER UPDATE ON pull_requests BEGIN
+			DELETE FROM pull_requests_fts WHERE url = old.url;
+			INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at) 
+			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
+		END`,
+	}
+
+	for _, trigger := range triggers {
+		if _, err := db.Exec(trigger); err != nil {
+			return fmt.Errorf("failed to create trigger: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// PopulateFTSTables populates FTS tables with existing data from main tables
+func (db *DB) PopulateFTSTables() error {
+	// First, try to drop and recreate FTS tables in case they're corrupted
+	fmt.Println("Recreating FTS tables...")
+	if err := db.dropAndRecreateFTSTables(); err != nil {
+		return fmt.Errorf("failed to recreate FTS tables: %w", err)
+	}
+	
+	// Get counts for progress reporting
+	var discussionCount, issueCount, prCount int
+	db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
+	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
+	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
+	
+	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests...\n", 
+		discussionCount, issueCount, prCount)
+	
+	// Populate discussions_fts
+	fmt.Println("Indexing discussions...")
+	_, err := db.Exec(`
+		INSERT INTO discussions_fts(url, title, body, repository, author, created_at)
+		SELECT url, title, body, repository, author, created_at FROM discussions
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate discussions_fts: %w", err)
+	}
+
+	// Populate issues_fts
+	fmt.Println("Indexing issues...")
+	_, err = db.Exec(`
+		INSERT INTO issues_fts(url, title, body, repository, author, created_at)
+		SELECT url, title, body, repository, author, created_at FROM issues
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate issues_fts: %w", err)
+	}
+
+	// Populate pull_requests_fts
+	fmt.Println("Indexing pull requests...")
+	_, err = db.Exec(`
+		INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at)
+		SELECT url, title, body, repository, author, created_at FROM pull_requests
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate pull_requests_fts: %w", err)
+	}
+
+	return nil
+}
+
+// dropAndRecreateFTSTables drops and recreates FTS tables to fix corruption
+func (db *DB) dropAndRecreateFTSTables() error {
+	// Drop existing FTS tables if they exist
+	dropQueries := []string{
+		"DROP TABLE IF EXISTS discussions_fts",
+		"DROP TABLE IF EXISTS issues_fts", 
+		"DROP TABLE IF EXISTS pull_requests_fts",
+	}
+	
+	for _, query := range dropQueries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to drop FTS table: %w", err)
+		}
+	}
+	
+	// Recreate FTS tables
+	createQueries := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS discussions_fts USING fts5(
+			url, title, body, repository, author, created_at
+		)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS issues_fts USING fts5(
+			url, title, body, repository, author, created_at
+		)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS pull_requests_fts USING fts5(
+			url, title, body, repository, author, created_at
+		)`,
+	}
+	
+	for _, query := range createQueries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to create FTS table: %w", err)
+		}
+	}
+	
+	return nil
 }
 
 // LockPull sets the lock for pull command. Returns error if already locked.
@@ -5291,8 +5491,8 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 		return []SearchResult{}, nil
 	}
 
-	// Minimum 4 characters for search
-	if len(strings.TrimSpace(query)) < 4 {
+	// Minimum 3 characters for search
+	if len(strings.TrimSpace(query)) < 3 {
 		return []SearchResult{}, nil
 	}
 
@@ -5306,8 +5506,88 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 	return se.searchAllTables(tokens, limit)
 }
 
-// searchAllTables performs a fast unified search across all tables using SQL LIKE
+// searchAllTables performs fast full-text search across all FTS tables
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
+	// Build FTS query - FTS5 supports phrase queries and AND operations
+	// Join tokens with AND to require all terms to match
+	ftsQuery := strings.Join(tokens, " AND ")
+	
+	// Escape any special FTS characters
+	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
+	
+	// Use FTS virtual tables for fast text search
+	query := `
+		SELECT 'discussion' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
+		         bm25(discussions_fts) * -1) as score
+		FROM discussions_fts 
+		WHERE discussions_fts MATCH ?
+		UNION ALL
+		SELECT 'issue' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
+		         bm25(issues_fts) * -1) as score
+		FROM issues_fts 
+		WHERE issues_fts MATCH ?
+		UNION ALL
+		SELECT 'pull_request' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
+		         bm25(pull_requests_fts) * -1) as score
+		FROM pull_requests_fts 
+		WHERE pull_requests_fts MATCH ?
+		ORDER BY score DESC
+		LIMIT ?`
+	
+	// Build args: for each table, we need the LIKE patterns for scoring + the FTS query for matching
+	likePattern := "%" + strings.ToLower(tokens[0]) + "%"
+	args := []interface{}{
+		likePattern, likePattern, likePattern, ftsQuery, // discussions scoring + match
+		likePattern, likePattern, likePattern, ftsQuery, // issues scoring + match  
+		likePattern, likePattern, likePattern, ftsQuery, // pull_requests scoring + match
+		limit,
+	}
+	
+	rows, err := se.db.Query(query, args...)
+	if err != nil {
+		// Fall back to LIKE search if FTS fails (tables might not be populated yet)
+		return se.searchAllTablesLike(tokens, limit)
+	}
+	defer rows.Close()
+	
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		var score float64
+		
+		err := rows.Scan(&result.Type, &result.URL, &result.Title, &result.Body, 
+			&result.Repository, &result.Author, &createdAtStr, &score)
+		if err != nil {
+			continue
+		}
+		
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+		
+		result.Score = int(score)
+		results = append(results, result)
+	}
+	
+	return results, nil
+}
+
+// searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
+func (se *SearchEngine) searchAllTablesLike(tokens []string, limit int) ([]SearchResult, error) {
 	// Build WHERE clause for each token (case-insensitive search)
 	var whereConditions []string
 	var args []interface{}
@@ -5419,6 +5699,23 @@ func checkPullLockForUI(db *DB) error {
 // RunUIServer starts the web UI server
 func RunUIServer(db *DB, port string) error {
 	searchEngine := NewSearchEngine(db)
+
+	// Populate FTS tables on startup for better search performance
+	fmt.Println("Initializing full-text search indexes...")
+	fmt.Println("This may take several minutes for large databases...")
+	
+	// Start FTS population in background
+	go func() {
+		if err := db.PopulateFTSTables(); err != nil {
+			fmt.Printf("Warning: Failed to populate FTS tables: %v\n", err)
+			fmt.Println("Search will fall back to slower LIKE queries")
+		} else {
+			fmt.Println("Full-text search indexes ready!")
+		}
+	}()
+	
+	// Give the background process a moment to start
+	time.Sleep(100 * time.Millisecond)
 
 	// Read the index.html file and parse it as a template
 	indexHTML, err := os.ReadFile("index.html")
