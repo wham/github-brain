@@ -1862,55 +1862,17 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create FTS virtual tables for fast text search
+	// Create single unified FTS virtual table for fast text search
 	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS discussions_fts USING fts5(
-			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
-			content='discussions', content_rowid='rowid'
+		CREATE VIRTUAL TABLE IF NOT EXISTS unified_fts USING fts5(
+			type, url, title, body, repository, author, created_at
 		)
 	`)
 	if err != nil {
 		if progress != nil {
-			progress.Log("Warning: Failed to create discussions FTS table: %v", err)
+			progress.Log("Warning: Failed to create unified FTS table: %v", err)
 		} else {
-			slog.Warn("Failed to create discussions FTS table", "error", err)
-		}
-	}
-
-	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS issues_fts USING fts5(
-			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
-			content='issues', content_rowid='rowid'
-		)
-	`)
-	if err != nil {
-		if progress != nil {
-			progress.Log("Warning: Failed to create issues FTS table: %v", err)
-		} else {
-			slog.Warn("Failed to create issues FTS table", "error", err)
-		}
-	}
-
-	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS pull_requests_fts USING fts5(
-			url UNINDEXED, title, body, repository, author, created_at UNINDEXED,
-			content='pull_requests', content_rowid='rowid'
-		)
-	`)
-	if err != nil {
-		if progress != nil {
-			progress.Log("Warning: Failed to create pull_requests FTS table: %v", err)
-		} else {
-			slog.Warn("Failed to create pull_requests FTS table", "error", err)
-		}
-	}
-
-	// Create triggers to keep FTS tables in sync
-	if err := createFTSTriggers(db); err != nil {
-		if progress != nil {
-			progress.Log("Warning: Failed to create FTS triggers: %v", err)
-		} else {
-			slog.Warn("Failed to create FTS triggers", "error", err)
+			slog.Warn("Failed to create unified FTS table", "error", err)
 		}
 	}
 
@@ -1918,72 +1880,26 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 }
 
 // createFTSTriggers creates triggers to keep FTS tables in sync with main tables
-func createFTSTriggers(db *sql.DB) error {
-	triggers := []string{
-		// Discussions triggers
-		`CREATE TRIGGER IF NOT EXISTS discussions_fts_insert AFTER INSERT ON discussions BEGIN
-			INSERT INTO discussions_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS discussions_fts_delete AFTER DELETE ON discussions BEGIN
-			DELETE FROM discussions_fts WHERE url = old.url;
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS discussions_fts_update AFTER UPDATE ON discussions BEGIN
-			DELETE FROM discussions_fts WHERE url = old.url;
-			INSERT INTO discussions_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-
-		// Issues triggers
-		`CREATE TRIGGER IF NOT EXISTS issues_fts_insert AFTER INSERT ON issues BEGIN
-			INSERT INTO issues_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS issues_fts_delete AFTER DELETE ON issues BEGIN
-			DELETE FROM issues_fts WHERE url = old.url;
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS issues_fts_update AFTER UPDATE ON issues BEGIN
-			DELETE FROM issues_fts WHERE url = old.url;
-			INSERT INTO issues_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-
-		// Pull requests triggers
-		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_insert AFTER INSERT ON pull_requests BEGIN
-			INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_delete AFTER DELETE ON pull_requests BEGIN
-			DELETE FROM pull_requests_fts WHERE url = old.url;
-		END`,
-		
-		`CREATE TRIGGER IF NOT EXISTS pull_requests_fts_update AFTER UPDATE ON pull_requests BEGIN
-			DELETE FROM pull_requests_fts WHERE url = old.url;
-			INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at) 
-			VALUES (new.url, new.title, new.body, new.repository, new.author, new.created_at);
-		END`,
-	}
-
-	for _, trigger := range triggers {
-		if _, err := db.Exec(trigger); err != nil {
-			return fmt.Errorf("failed to create trigger: %w", err)
+// PopulateFTSTables populates the unified FTS table with data from all tables
+func (db *DB) PopulateFTSTables() error {
+	// Drop and recreate the unified FTS table to start fresh
+	fmt.Println("Recreating unified FTS table...")
+	
+	// Drop old individual FTS tables if they exist
+	oldTables := []string{"discussions_fts", "issues_fts", "pull_requests_fts", "unified_fts"}
+	for _, table := range oldTables {
+		if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", table)); err != nil {
+			return fmt.Errorf("failed to drop %s table: %w", table, err)
 		}
 	}
-
-	return nil
-}
-
-// PopulateFTSTables populates FTS tables with existing data from main tables
-func (db *DB) PopulateFTSTables() error {
-	// First, try to drop and recreate FTS tables in case they're corrupted
-	fmt.Println("Recreating FTS tables...")
-	if err := db.dropAndRecreateFTSTables(); err != nil {
-		return fmt.Errorf("failed to recreate FTS tables: %w", err)
+	
+	// Recreate unified FTS table
+	if _, err := db.Exec(`
+		CREATE VIRTUAL TABLE unified_fts USING fts5(
+			type, url, title, body, repository, author, created_at
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create unified_fts table: %w", err)
 	}
 	
 	// Get counts for progress reporting
@@ -1992,79 +1908,43 @@ func (db *DB) PopulateFTSTables() error {
 	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
 	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
 	
-	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests...\n", 
+	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests into unified FTS table...\n", 
 		discussionCount, issueCount, prCount)
 	
-	// Populate discussions_fts
+	// Insert discussions
 	fmt.Println("Indexing discussions...")
 	_, err := db.Exec(`
-		INSERT INTO discussions_fts(url, title, body, repository, author, created_at)
-		SELECT url, title, body, repository, author, created_at FROM discussions
+		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
+		SELECT 'discussion', url, title, body, repository, author, created_at FROM discussions
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate discussions_fts: %w", err)
+		return fmt.Errorf("failed to populate discussions in unified_fts: %w", err)
 	}
 
-	// Populate issues_fts
+	// Insert issues
 	fmt.Println("Indexing issues...")
 	_, err = db.Exec(`
-		INSERT INTO issues_fts(url, title, body, repository, author, created_at)
-		SELECT url, title, body, repository, author, created_at FROM issues
+		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
+		SELECT 'issue', url, title, body, repository, author, created_at FROM issues
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate issues_fts: %w", err)
+		return fmt.Errorf("failed to populate issues in unified_fts: %w", err)
 	}
 
-	// Populate pull_requests_fts
+	// Insert pull requests
 	fmt.Println("Indexing pull requests...")
 	_, err = db.Exec(`
-		INSERT INTO pull_requests_fts(url, title, body, repository, author, created_at)
-		SELECT url, title, body, repository, author, created_at FROM pull_requests
+		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
+		SELECT 'pull_request', url, title, body, repository, author, created_at FROM pull_requests
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate pull_requests_fts: %w", err)
+		return fmt.Errorf("failed to populate pull_requests in unified_fts: %w", err)
 	}
 
 	return nil
 }
 
 // dropAndRecreateFTSTables drops and recreates FTS tables to fix corruption
-func (db *DB) dropAndRecreateFTSTables() error {
-	// Drop existing FTS tables if they exist
-	dropQueries := []string{
-		"DROP TABLE IF EXISTS discussions_fts",
-		"DROP TABLE IF EXISTS issues_fts", 
-		"DROP TABLE IF EXISTS pull_requests_fts",
-	}
-	
-	for _, query := range dropQueries {
-		if _, err := db.Exec(query); err != nil {
-			return fmt.Errorf("failed to drop FTS table: %w", err)
-		}
-	}
-	
-	// Recreate FTS tables
-	createQueries := []string{
-		`CREATE VIRTUAL TABLE IF NOT EXISTS discussions_fts USING fts5(
-			url, title, body, repository, author, created_at
-		)`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS issues_fts USING fts5(
-			url, title, body, repository, author, created_at
-		)`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS pull_requests_fts USING fts5(
-			url, title, body, repository, author, created_at
-		)`,
-	}
-	
-	for _, query := range createQueries {
-		if _, err := db.Exec(query); err != nil {
-			return fmt.Errorf("failed to create FTS table: %w", err)
-		}
-	}
-	
-	return nil
-}
-
 // LockPull sets the lock for pull command. Returns error if already locked.
 func (db *DB) LockPull() error {
 	// Check for existing lock and its expiration
@@ -5506,7 +5386,7 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 	return se.searchAllTables(tokens, limit)
 }
 
-// searchAllTables performs fast full-text search across all FTS tables
+// searchAllTables performs fast full-text search using the unified FTS table
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
 	// Build FTS query - FTS5 supports phrase queries and AND operations
 	// Join tokens with AND to require all terms to match
@@ -5515,43 +5395,23 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
 	
-	// Use FTS virtual tables for fast text search
+	// Use unified FTS table for fast text search
 	query := `
-		SELECT 'discussion' as type, url, title, body, repository, author, created_at,
+		SELECT type, url, title, body, repository, author, created_at,
 		       (CASE 
 		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
 		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
 		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
-		         bm25(discussions_fts) * -1) as score
-		FROM discussions_fts 
-		WHERE discussions_fts MATCH ?
-		UNION ALL
-		SELECT 'issue' as type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
-		         bm25(issues_fts) * -1) as score
-		FROM issues_fts 
-		WHERE issues_fts MATCH ?
-		UNION ALL
-		SELECT 'pull_request' as type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
-		         bm25(pull_requests_fts) * -1) as score
-		FROM pull_requests_fts 
-		WHERE pull_requests_fts MATCH ?
+		         bm25(unified_fts) * -1) as score
+		FROM unified_fts 
+		WHERE unified_fts MATCH ?
 		ORDER BY score DESC
 		LIMIT ?`
 	
-	// Build args: for each table, we need the LIKE patterns for scoring + the FTS query for matching
+	// Build args: LIKE patterns for scoring + FTS query for matching
 	likePattern := "%" + strings.ToLower(tokens[0]) + "%"
 	args := []interface{}{
-		likePattern, likePattern, likePattern, ftsQuery, // discussions scoring + match
-		likePattern, likePattern, likePattern, ftsQuery, // issues scoring + match  
-		likePattern, likePattern, likePattern, ftsQuery, // pull_requests scoring + match
+		likePattern, likePattern, likePattern, ftsQuery, // scoring + match
 		limit,
 	}
 	
@@ -5679,20 +5539,6 @@ func (se *SearchEngine) searchAllTablesLike(tokens []string, limit int) ([]Searc
 	}
 	
 	return results, nil
-}
-
-
-
-// checkPullLockForUI checks if a pull is running and returns appropriate error
-func checkPullLockForUI(db *DB) error {
-	locked, err := db.IsPullLocked()
-	if err != nil {
-		return fmt.Errorf("failed to check pull lock: %w", err)
-	}
-	if locked {
-		return fmt.Errorf("a pull is currently running. Please wait until it finishes")
-	}
-	return nil
 }
 
 // RunUIServer starts the web UI server
