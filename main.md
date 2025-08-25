@@ -4,13 +4,14 @@ AI coding agent specification. Human documentation in README.md.
 
 ## CLI
 
-Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull` and `mcp` commands.
+Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull`, `mcp`, and `ui` commands.
 
 Concurrency control:
 
 - Prevent concurrent `pull` commands using database lock
 - Return error if `pull` already running
 - All `mcp` tools and prompts return "A pull is currently running. Please wait until it finishes." error if `pull` is running
+- All `ui` actions return "A pull is currently running. Please wait until it finishes." error if `pull` is running
 - Lock renewal: 1-second intervals
 - Lock expiration: 5 seconds
 
@@ -786,6 +787,18 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
   - Issues (least important)
 - For each contribution, include a direct link and relevant metrics or facts.
 - Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
+
+## ui
+
+- Use `net/http` package to create a simple web server. Use `template/html` for rendering.
+- Save all HTML/JS/CSS code into file `index.html`.
+- Use https://htmx.org at the only frontend framework. Vanilla JS/CSS otherwise.
+- Implement one page that looks like Google: One big input on top. On type, instant search and update results displayed under it.
+- Use HTMX to handle the dynamic search and result updates.
+- Show top 10 results.
+- Design modern brutalism with purple accents.
+- Search discussions, issues, and pull-requests for provided queries.
+- Basic search algorithm: Tokenize query, search all fields, rank by number of matches in each entity.
 
 ## GitHub
 

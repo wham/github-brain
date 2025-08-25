@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub Brain Search</title>
+    <script src="htmx.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        background: #f8f9fa;
+        color: #202124;
+        line-height: 1.6;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 40px 20px;
+      }
+
+      .logo {
+        text-align: center;
+        margin-bottom: 40px;
+      }
+
+      .logo h1 {
+        font-size: 64px;
+        font-weight: 300;
+        color: #6f42c1;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .search-container {
+        position: relative;
+        margin-bottom: 40px;
+      }
+
+      .search-input {
+        width: 100%;
+        padding: 16px 20px;
+        font-size: 18px;
+        border: 3px solid #6f42c1;
+        border-radius: 24px;
+        outline: none;
+        background: white;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 8px rgba(111, 66, 193, 0.1);
+      }
+
+      .search-input:focus {
+        border-color: #5a2d91;
+        box-shadow: 0 8px 16px rgba(111, 66, 193, 0.2);
+      }
+
+      .results-container {
+        margin-top: 20px;
+      }
+
+      .result-item {
+        background: white;
+        border: 2px solid #6f42c1;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        padding: 20px;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .result-item:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(111, 66, 193, 0.15);
+      }
+
+      .result-title {
+        font-size: 20px;
+        font-weight: 600;
+        color: #6f42c1;
+        margin-bottom: 8px;
+        text-decoration: none;
+      }
+
+      .result-title:hover {
+        text-decoration: underline;
+      }
+
+      .result-meta {
+        font-size: 14px;
+        color: #5f6368;
+        margin-bottom: 12px;
+      }
+
+      .result-meta span {
+        margin-right: 16px;
+      }
+
+      .result-body {
+        color: #3c4043;
+        line-height: 1.6;
+        max-height: 100px;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .result-body::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 70px;
+        height: 20px;
+        background: linear-gradient(to right, transparent, white);
+      }
+
+      .type-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        margin-right: 8px;
+      }
+
+      .type-discussion {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+
+      .type-issue {
+        background: #fff3e0;
+        color: #ef6c00;
+      }
+
+      .type-pr {
+        background: #f3e5f5;
+        color: #7b1fa2;
+      }
+
+      .no-results {
+        text-align: center;
+        color: #5f6368;
+        font-size: 18px;
+        padding: 40px;
+      }
+
+      .loading {
+        text-align: center;
+        color: #6f42c1;
+        font-size: 16px;
+        padding: 20px;
+      }
+
+      .htmx-indicator {
+        opacity: 0;
+      }
+
+      .htmx-request .htmx-indicator {
+        opacity: 1;
+      }
+
+      .htmx-request.htmx-indicator {
+        opacity: 1;
+      }
+
+      @media (max-width: 768px) {
+        .container {
+          padding: 20px 10px;
+        }
+
+        .logo h1 {
+          font-size: 48px;
+        }
+
+        .search-input {
+          font-size: 16px;
+          padding: 14px 18px;
+        }
+
+        .result-item {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="logo">
+        <h1>GitHub 🧠</h1>
+      </div>
+
+      <div class="search-container">
+        <input
+          type="text"
+          class="search-input"
+          name="value"
+          placeholder="Search discussions, issues, and pull requests..."
+          hx-get="/search"
+          hx-trigger="input changed delay:300ms"
+          hx-target="#results"
+          hx-indicator="#loading"
+          autocomplete="off"
+        />
+      </div>
+
+      <div id="loading" class="loading htmx-indicator">Searching...</div>
+
+      <div id="results" class="results-container">
+        <!-- Results will be loaded here -->
+      </div>
+    </div>
+
+    <script>
+      // Focus search input on page load
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelector(".search-input").focus();
+      });
+
+      // Handle keyboard shortcuts
+      document.addEventListener("keydown", function (e) {
+        // Focus search input on '/' key
+        if (e.key === "/" && e.target.tagName !== "INPUT") {
+          e.preventDefault();
+          document.querySelector(".search-input").focus();
+        }
+
+        // Clear search on Escape
+        if (e.key === "Escape" && e.target.classList.contains("search-input")) {
+          e.target.value = "";
+          document.getElementById("results").innerHTML = "";
+        }
+      });
+    </script>
+  </body>
+</html>

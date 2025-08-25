@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -1786,11 +1787,6 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		return nil, fmt.Errorf("failed to create updated_at index on pull_requests table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
-	}
-
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_closed_at ON pull_requests (closed_at)`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create closed_at index on pull_requests table: %w", err)
@@ -1813,6 +1809,12 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		} else {
 			slog.Info("Added merged_at column to pull_requests table")
 		}
+	}
+
+	// Create merged_at index after column is added
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
 	}
 
 	// Create team_members table
@@ -5260,6 +5262,299 @@ func RunMCPServer(db *DB) error {
 	return server.ServeStdio(s)
 }
 
+// SearchResult represents a search result item
+type SearchResult struct {
+	Type       string    `json:"type"`        // "discussion", "issue", "pull_request"
+	URL        string    `json:"url"`         // Primary identifier
+	Title      string    `json:"title"`       // Item title
+	Body       string    `json:"body"`        // Item content
+	Repository string    `json:"repository"`  // Repository name
+	Author     string    `json:"author"`      // Author username
+	CreatedAt  time.Time `json:"created_at"`  // Creation timestamp
+	Score      int       `json:"score"`       // Search relevance score
+}
+
+// SearchEngine performs basic text search across all entities
+type SearchEngine struct {
+	db *DB
+}
+
+// NewSearchEngine creates a new search engine
+func NewSearchEngine(db *DB) *SearchEngine {
+	return &SearchEngine{db: db}
+}
+
+// Search performs a basic search across discussions, issues, and pull requests
+func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) {
+	if query == "" {
+		return []SearchResult{}, nil
+	}
+
+	// Tokenize the query
+	tokens := strings.Fields(strings.ToLower(query))
+	if len(tokens) == 0 {
+		return []SearchResult{}, nil
+	}
+
+	var results []SearchResult
+
+	// Search discussions
+	discussions, err := se.searchDiscussions(tokens)
+	if err == nil {
+		results = append(results, discussions...)
+	}
+
+	// Search issues
+	issues, err := se.searchIssues(tokens)
+	if err == nil {
+		results = append(results, issues...)
+	}
+
+	// Search pull requests
+	pullRequests, err := se.searchPullRequests(tokens)
+	if err == nil {
+		results = append(results, pullRequests...)
+	}
+
+	// Sort by score (highest first)
+	for i := 0; i < len(results); i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[j].Score > results[i].Score {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
+	// Limit results
+	if len(results) > limit {
+		results = results[:limit]
+	}
+
+	return results, nil
+}
+
+// searchDiscussions searches discussions for the given tokens
+func (se *SearchEngine) searchDiscussions(tokens []string) ([]SearchResult, error) {
+	query := "SELECT url, title, body, repository, author, created_at FROM discussions"
+	rows, err := se.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
+		if err != nil {
+			continue
+		}
+
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+
+		result.Type = "discussion"
+		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
+
+		if result.Score > 0 {
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
+}
+
+// searchIssues searches issues for the given tokens
+func (se *SearchEngine) searchIssues(tokens []string) ([]SearchResult, error) {
+	query := "SELECT url, title, body, repository, author, created_at FROM issues"
+	rows, err := se.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
+		if err != nil {
+			continue
+		}
+
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+
+		result.Type = "issue"
+		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
+
+		if result.Score > 0 {
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
+}
+
+// searchPullRequests searches pull requests for the given tokens
+func (se *SearchEngine) searchPullRequests(tokens []string) ([]SearchResult, error) {
+	query := "SELECT url, title, body, repository, author, created_at FROM pull_requests"
+	rows, err := se.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
+		if err != nil {
+			continue
+		}
+
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+
+		result.Type = "pull_request"
+		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
+
+		if result.Score > 0 {
+			results = append(results, result)
+		}
+	}
+
+	return results, nil
+}
+
+// calculateScore calculates the relevance score for a search result
+func (se *SearchEngine) calculateScore(title, body, repository, author string, tokens []string) int {
+	score := 0
+	
+	// Combine all searchable text
+	allText := strings.ToLower(title + " " + body + " " + repository + " " + author)
+	
+	// Count matches for each token
+	for _, token := range tokens {
+		matches := strings.Count(allText, token)
+		score += matches
+	}
+
+	return score
+}
+
+// checkPullLockForUI checks if a pull is running and returns appropriate error
+func checkPullLockForUI(db *DB) error {
+	locked, err := db.IsPullLocked()
+	if err != nil {
+		return fmt.Errorf("failed to check pull lock: %w", err)
+	}
+	if locked {
+		return fmt.Errorf("a pull is currently running. Please wait until it finishes")
+	}
+	return nil
+}
+
+// RunUIServer starts the web UI server
+// RunUIServer starts the web UI server
+func RunUIServer(db *DB, port string) error {
+	searchEngine := NewSearchEngine(db)
+
+	// Serve the index.html file for the root route
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "index.html")
+	})
+
+	// Serve the HTMX JavaScript file
+	http.HandleFunc("/htmx.min.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		http.ServeFile(w, r, "htmx.min.js")
+	})
+
+	// Search handler for HTMX requests
+	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("value")
+		if query == "" {
+			// Return empty results for empty query
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(""))
+			return
+		}
+
+		results, err := searchEngine.Search(query, 10)
+		if err != nil {
+			http.Error(w, "Search error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		
+		if len(results) == 0 {
+			w.Write([]byte(`<div class="no-results">No results found for "` + html.EscapeString(query) + `"</div>`))
+			return
+		}
+
+		for _, result := range results {
+			// Determine type badge based on URL
+			typeBadge := "discussion"
+			typeClass := "type-discussion"
+			if strings.Contains(result.URL, "/issues/") {
+				typeBadge = "issue"
+				typeClass = "type-issue"
+			} else if strings.Contains(result.URL, "/pull/") {
+				typeBadge = "pr"
+				typeClass = "type-pr"
+			}
+
+			// Truncate body if too long
+			body := result.Body
+			if len(body) > 200 {
+				body = body[:200] + "..."
+			}
+
+			// Format the created date
+			createdAt := ""
+			if !result.CreatedAt.IsZero() {
+				createdAt = result.CreatedAt.Format("Jan 2, 2006")
+			}
+
+			fmt.Fprintf(w, `
+<div class="result-item">
+    <a href="%s" class="result-title" target="_blank">%s</a>
+    <div class="result-meta">
+        <span class="type-badge %s">%s</span>
+        <span>%s</span>
+        <span>by %s</span>
+        <span>%s</span>
+    </div>
+    <div class="result-body">%s</div>
+</div>`,
+				html.EscapeString(result.URL),
+				html.EscapeString(result.Title),
+				typeClass,
+				typeBadge,
+				html.EscapeString(result.Repository),
+				html.EscapeString(result.Author),
+				createdAt,
+				html.EscapeString(body),
+			)
+		}
+	})
+
+	fmt.Printf("Starting GitHub Brain UI server on http://localhost:%s\n", port)
+	fmt.Println("Press Ctrl+C to stop the server")
+
+	return http.ListenAndServe(":"+port, nil)
+}
+
 func main() {
 	// Load environment variables
 	_ = godotenv.Load()
@@ -5269,8 +5564,9 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("  pull   Pull GitHub repositories and discussions")
 		fmt.Println("  mcp    Start the MCP server")
+		fmt.Println("  ui     Start the web UI server")
 		fmt.Println("\nFor command-specific help, use:")
-		fmt.Println("  pull -h\n  mcp -h")
+		fmt.Println("  pull -h\n  mcp -h\n  ui -h")
 		os.Exit(0)
 	}
 
@@ -5580,6 +5876,49 @@ func main() {
 
 		if err := RunMCPServer(db); err != nil {
 			slog.Error("MCP server error", "error", err)
+			os.Exit(1)
+		}
+
+	case "ui":
+		args := os.Args[2:]
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-h" || args[i] == "--help" {
+				fmt.Println("Usage: ui [-db <dbpath>] [-port <port>]")
+				os.Exit(0)
+			}
+		}
+
+		// Load configuration from CLI args and environment variables
+		config := LoadConfig(args)
+
+		// Parse port from args (default: 8080)
+		port := "8080"
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-port" && i+1 < len(args) {
+				port = args[i+1]
+			}
+		}
+
+		// Get organization from config or environment
+		organization := config.Organization
+		if organization == "" {
+			organization = os.Getenv("ORGANIZATION")
+			if organization == "" {
+				slog.Error("Organization is required for UI mode. Set via -o flag or ORGANIZATION environment variable")
+				os.Exit(1)
+			}
+		}
+
+		// Initialize database without progress indicator
+		db, err := InitDB(config.DBDir, organization, nil)
+		if err != nil {
+			slog.Error("Failed to initialize database", "error", err)
+			os.Exit(1)
+		}
+		defer db.Close()
+
+		if err := RunUIServer(db, port); err != nil {
+			slog.Error("UI server error", "error", err)
 			os.Exit(1)
 		}
 

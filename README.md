@@ -96,6 +96,22 @@ go run main.go mcp -o my-org
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
 
+### `ui`
+
+Start the UI server, which provides a web-based interface for interacting with the GitHub data. Alternative to MCP for quick lookups.
+
+Example:
+
+```sh
+go run main.go ui -o my-org
+```
+
+| Argument | Variable       | Description                                                                                                                                  |
+| :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
+| `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                                                     |
+
 ## Installation
 
 `scripts/run` is a convenience script that runs the MCP server. It builds the Go code and runs the `mcp` command with the checkout directory as the working directory. As a result, the SQLite database will be created in the `db` folder of the checkout directory.
