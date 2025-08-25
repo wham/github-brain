@@ -1869,11 +1869,7 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		)
 	`)
 	if err != nil {
-		if progress != nil {
-			progress.Log("Warning: Failed to create unified FTS table: %v", err)
-		} else {
-			slog.Warn("Failed to create unified FTS table", "error", err)
-		}
+		return nil, fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
 	}
 
 	return &DB{db: db}, nil
@@ -5417,8 +5413,7 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	
 	rows, err := se.db.Query(query, args...)
 	if err != nil {
-		// Fall back to LIKE search if FTS fails (tables might not be populated yet)
-		return se.searchAllTablesLike(tokens, limit)
+		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
 	defer rows.Close()
 	
@@ -5447,100 +5442,6 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 }
 
 // searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
-func (se *SearchEngine) searchAllTablesLike(tokens []string, limit int) ([]SearchResult, error) {
-	// Build WHERE clause for each token (case-insensitive search)
-	var whereConditions []string
-	var args []interface{}
-	
-	for _, token := range tokens {
-		// Use LIKE with wildcards for partial matching
-		pattern := "%" + token + "%"
-		condition := "(LOWER(title) LIKE ? OR LOWER(body) LIKE ? OR LOWER(repository) LIKE ? OR LOWER(author) LIKE ?)"
-		whereConditions = append(whereConditions, condition)
-		args = append(args, pattern, pattern, pattern, pattern)
-	}
-	
-	whereClause := strings.Join(whereConditions, " AND ")
-	
-	// UNION query to search all tables at once with simple scoring based on matches
-	query := fmt.Sprintf(`
-		SELECT 'discussion' as type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
-		FROM discussions 
-		WHERE %s
-		UNION ALL
-		SELECT 'issue' as type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
-		FROM issues 
-		WHERE %s
-		UNION ALL
-		SELECT 'pull_request' as type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
-		FROM pull_requests 
-		WHERE %s
-		ORDER BY score DESC, created_at DESC
-		LIMIT ?`,
-		whereClause, whereClause, whereClause)
-	
-	// Build args: score args + where args for each table
-	allArgs := make([]interface{}, 0)
-	
-	// First token for scoring (simple approach - use first token for relevance)
-	firstToken := "%" + tokens[0] + "%"
-	
-	// For discussions
-	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
-	allArgs = append(allArgs, args...)                            // where args
-	
-	// For issues  
-	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
-	allArgs = append(allArgs, args...)                            // where args
-	
-	// For pull_requests
-	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
-	allArgs = append(allArgs, args...)                            // where args
-	
-	allArgs = append(allArgs, limit) // limit
-	
-	rows, err := se.db.Query(query, allArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("search query failed: %w", err)
-	}
-	defer rows.Close()
-	
-	var results []SearchResult
-	for rows.Next() {
-		var result SearchResult
-		var createdAtStr string
-		var score int
-		
-		err := rows.Scan(&result.Type, &result.URL, &result.Title, &result.Body, 
-			&result.Repository, &result.Author, &createdAtStr, &score)
-		if err != nil {
-			continue
-		}
-		
-		// Parse timestamp
-		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
-			result.CreatedAt = createdAt
-		}
-		
-		result.Score = score
-		results = append(results, result)
-	}
-	
-	return results, nil
-}
-
 // RunUIServer starts the web UI server
 // RunUIServer starts the web UI server
 func RunUIServer(db *DB, port string) error {
@@ -5550,18 +5451,10 @@ func RunUIServer(db *DB, port string) error {
 	fmt.Println("Initializing full-text search indexes...")
 	fmt.Println("This may take several minutes for large databases...")
 	
-	// Start FTS population in background
-	go func() {
-		if err := db.PopulateFTSTables(); err != nil {
-			fmt.Printf("Warning: Failed to populate FTS tables: %v\n", err)
-			fmt.Println("Search will fall back to slower LIKE queries")
-		} else {
-			fmt.Println("Full-text search indexes ready!")
-		}
-	}()
-	
-	// Give the background process a moment to start
-	time.Sleep(100 * time.Millisecond)
+	if err := db.PopulateFTSTables(); err != nil {
+		return fmt.Errorf("failed to initialize FTS tables: %w", err)
+	}
+	fmt.Println("Full-text search indexes ready!")
 
 	// Read the index.html file and parse it as a template
 	indexHTML, err := os.ReadFile("index.html")

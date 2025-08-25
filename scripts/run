@@ -2,5 +2,6 @@
 set -e
 cd "$(dirname "$0")/.."
 
-go build -gcflags="all=-N -l" -o ./build/github-brain
+# Build with FTS5 support enabled
+CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -gcflags="all=-N -l" -o ./build/github-brain .
 ./build/github-brain "$@"

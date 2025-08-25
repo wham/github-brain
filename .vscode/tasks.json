@@ -4,7 +4,7 @@
     {
       "label": "Build github-brain",
       "type": "shell",
-      "command": "cd /Users/wham/code/github-brain && go build -o build/github-brain main.go",
+      "command": "cd /Users/wham/code/github-brain && CGO_CFLAGS=\"-DSQLITE_ENABLE_FTS5\" go build -o build/github-brain .",
       "group": {
         "kind": "build",
         "isDefault": true
