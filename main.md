@@ -790,8 +790,9 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
 
 ## ui
 
-- Use `net/http` package to create a simple web server. Use `template/html` for rendering.
+- Use `net/http` package to create a simple web server. Use [template/html](https://pkg.go.dev/html/template) for rendering.
 - Save all HTML/JS/CSS code into file `index.html`.
+- Use the _define_ blocks to re-use `index.html` for rendering the search results.
 - Use https://htmx.org at the only frontend framework. Vanilla JS/CSS otherwise.
 - Implement one page that looks like Google: One big input on top. On type, instant search and update results displayed under it.
 - Use HTMX to handle the dynamic search and result updates.

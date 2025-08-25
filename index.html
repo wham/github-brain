@@ -217,6 +217,30 @@
       </div>
     </div>
 
+    <!-- Hidden templates for HTMX to use -->
+    <!-- Template definitions for Go html/template -->
+    <script type="text/template" style="display: none">
+      {{define "result-item"}}
+      <div class="result-item">
+          <a href="{{.URL}}" class="result-title" target="_blank">{{.Title}}</a>
+          <div class="result-meta">
+              <span class="type-badge {{.TypeClass}}">{{.TypeBadge}}</span>
+              <span>{{.Repository}}</span>
+              <span>by {{.Author}}</span>
+              <span>{{.CreatedAt}}</span>
+          </div>
+          <div class="result-body">{{.Body}}</div>
+      </div>
+      {{end}}
+
+      {{define "no-results"}}
+      <div class="no-results">No results found for "{{.Query}}"</div>
+      {{end}}
+
+      {{define "empty-results"}}
+      <div class="no-results">Start typing to search...</div>
+      {{end}}
+    </script>
     <script>
       // Focus search input on page load
       document.addEventListener("DOMContentLoaded", function () {

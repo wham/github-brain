@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -5468,9 +5469,22 @@ func checkPullLockForUI(db *DB) error {
 func RunUIServer(db *DB, port string) error {
 	searchEngine := NewSearchEngine(db)
 
+	// Read the index.html file and parse it as a template
+	indexHTML, err := os.ReadFile("index.html")
+	if err != nil {
+		return fmt.Errorf("failed to read index.html: %v", err)
+	}
+
+	// Parse the template with all defined sub-templates
+	tmpl, err := template.New("index").Parse(string(indexHTML))
+	if err != nil {
+		return fmt.Errorf("failed to parse template: %v", err)
+	}
+
 	// Serve the index.html file for the root route
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
+		w.Header().Set("Content-Type", "text/html")
+		tmpl.Execute(w, nil)
 	})
 
 	// Serve the HTMX JavaScript file
@@ -5485,7 +5499,7 @@ func RunUIServer(db *DB, port string) error {
 		if query == "" {
 			// Return empty results for empty query
 			w.Header().Set("Content-Type", "text/html")
-			w.Write([]byte(""))
+			tmpl.ExecuteTemplate(w, "empty-results", nil)
 			return
 		}
 
@@ -5498,10 +5512,11 @@ func RunUIServer(db *DB, port string) error {
 		w.Header().Set("Content-Type", "text/html")
 		
 		if len(results) == 0 {
-			w.Write([]byte(`<div class="no-results">No results found for "` + html.EscapeString(query) + `"</div>`))
+			tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)})
 			return
 		}
 
+		// Render each result using the template
 		for _, result := range results {
 			// Determine type badge based on URL
 			typeBadge := "discussion"
@@ -5526,26 +5541,18 @@ func RunUIServer(db *DB, port string) error {
 				createdAt = result.CreatedAt.Format("Jan 2, 2006")
 			}
 
-			fmt.Fprintf(w, `
-<div class="result-item">
-    <a href="%s" class="result-title" target="_blank">%s</a>
-    <div class="result-meta">
-        <span class="type-badge %s">%s</span>
-        <span>%s</span>
-        <span>by %s</span>
-        <span>%s</span>
-    </div>
-    <div class="result-body">%s</div>
-</div>`,
-				html.EscapeString(result.URL),
-				html.EscapeString(result.Title),
-				typeClass,
-				typeBadge,
-				html.EscapeString(result.Repository),
-				html.EscapeString(result.Author),
-				createdAt,
-				html.EscapeString(body),
-			)
+			templateData := map[string]string{
+				"URL":        html.EscapeString(result.URL),
+				"Title":      html.EscapeString(result.Title),
+				"TypeClass":  typeClass,
+				"TypeBadge":  typeBadge,
+				"Repository": html.EscapeString(result.Repository),
+				"Author":     html.EscapeString(result.Author),
+				"CreatedAt":  createdAt,
+				"Body":       html.EscapeString(body),
+			}
+
+			tmpl.ExecuteTemplate(w, "result-item", templateData)
 		}
 	})
 
