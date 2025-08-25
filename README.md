@@ -111,6 +111,7 @@ go run main.go ui -o my-org
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
 | `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                                                     |
+| `-s`     |                | Skip creating the FTS table.                                                                                                                 |
 
 ## Installation
 

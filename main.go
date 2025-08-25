@@ -332,6 +332,7 @@ type Config struct {
 	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests, teams)
 	Force                 bool     // Remove all data before pulling
 	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
+	SkipFTS               bool     // Skip creating the FTS table (for UI command)
 }
 
 // LoadConfig creates a config from command line arguments and environment variables
@@ -383,6 +384,8 @@ func LoadConfig(args []string) *Config {
 			}
 		case "-f":
 			config.Force = true
+		case "-s":
+			config.SkipFTS = true
 		}
 	}
 
@@ -5444,17 +5447,21 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 // searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
 // RunUIServer starts the web UI server
 // RunUIServer starts the web UI server
-func RunUIServer(db *DB, port string) error {
+func RunUIServer(db *DB, port string, skipFTS bool) error {
 	searchEngine := NewSearchEngine(db)
 
-	// Populate FTS tables on startup for better search performance
-	fmt.Println("Initializing full-text search indexes...")
-	fmt.Println("This may take several minutes for large databases...")
-	
-	if err := db.PopulateFTSTables(); err != nil {
-		return fmt.Errorf("failed to initialize FTS tables: %w", err)
+	// Conditionally populate FTS tables on startup for better search performance
+	if !skipFTS {
+		fmt.Println("Initializing full-text search indexes...")
+		fmt.Println("This may take several minutes for large databases...")
+		
+		if err := db.PopulateFTSTables(); err != nil {
+			return fmt.Errorf("failed to initialize FTS tables: %w", err)
+		}
+		fmt.Println("Full-text search indexes ready!")
+	} else {
+		fmt.Println("Skipping FTS table creation as requested")
 	}
-	fmt.Println("Full-text search indexes ready!")
 
 	// Read the index.html file and parse it as a template
 	indexHTML, err := os.ReadFile("index.html")
@@ -5877,7 +5884,12 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: ui [-db <dbpath>] [-port <port>]")
+				fmt.Println("Usage: ui -o <organization> [-db <dbpath>] [-p <port>] [-s]")
+				fmt.Println("Options:")
+				fmt.Println("  -o    GitHub organization (required)")
+				fmt.Println("  -db   Database directory (default: ./db)")
+				fmt.Println("  -p    Port for UI server (default: 8080)")
+				fmt.Println("  -s    Skip creating FTS table")
 				os.Exit(0)
 			}
 		}
@@ -5885,10 +5897,13 @@ func main() {
 		// Load configuration from CLI args and environment variables
 		config := LoadConfig(args)
 
-		// Parse port from args (default: 8080)
-		port := "8080"
+		// Parse port from args and environment (default: 8080)
+		port := os.Getenv("UI_PORT")
+		if port == "" {
+			port = "8080"
+		}
 		for i := 0; i < len(args); i++ {
-			if args[i] == "-port" && i+1 < len(args) {
+			if args[i] == "-p" && i+1 < len(args) {
 				port = args[i+1]
 			}
 		}
@@ -5911,7 +5926,7 @@ func main() {
 		}
 		defer db.Close()
 
-		if err := RunUIServer(db, port); err != nil {
+		if err := RunUIServer(db, port, config.SkipFTS); err != nil {
 			slog.Error("UI server error", "error", err)
 			os.Exit(1)
 		}

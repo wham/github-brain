@@ -797,7 +797,7 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
 - Implement one page that looks like Google: One big input on top. On type, instant search and update results displayed under it.
 - Use HTMX to handle the dynamic search and result updates.
 - Show top 10 results.
-- Design modern brutalism with purple accents.
+- Design modern brutalism with purple accents. Dark theme.
 - Search discussions, issues, and pull-requests for provided queries.
 - Basic search algorithm: Tokenize query, search all fields, rank by number of matches in each entity.
 - Min 4 characters to start search.
