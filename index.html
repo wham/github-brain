@@ -251,8 +251,9 @@
             name="value"
             placeholder="Search discussions, issues, and pull requests..."
             hx-get="/search"
-            hx-trigger="input changed delay:300ms"
+            hx-trigger="input changed delay:300ms, keyup[key=='Enter'] delay:0ms"
             hx-target="#results"
+            hx-sync="this:replace"
             autocomplete="off"
           />
         </div>
@@ -293,7 +294,7 @@
         document.querySelector(".search-input").focus();
       });
 
-      // Handle keyboard shortcuts
+      // Simple keyboard shortcuts
       document.addEventListener("keydown", function (e) {
         // Focus search input on '/' key
         if (e.key === "/" && e.target.tagName !== "INPUT") {
@@ -304,7 +305,8 @@
         // Clear search on Escape
         if (e.key === "Escape" && e.target.classList.contains("search-input")) {
           e.target.value = "";
-          document.getElementById("results").innerHTML = "";
+          // Trigger HTMX to clear results
+          htmx.trigger(e.target, "input");
         }
       });
     </script>

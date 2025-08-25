@@ -800,6 +800,7 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
 - Design modern brutalism with purple accents.
 - Search discussions, issues, and pull-requests for provided queries.
 - Basic search algorithm: Tokenize query, search all fields, rank by number of matches in each entity.
+- Min 4 characters to start search.
 
 ## GitHub
 
