@@ -5291,166 +5291,117 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 		return []SearchResult{}, nil
 	}
 
+	// Minimum 4 characters for search
+	if len(strings.TrimSpace(query)) < 4 {
+		return []SearchResult{}, nil
+	}
+
 	// Tokenize the query
 	tokens := strings.Fields(strings.ToLower(query))
 	if len(tokens) == 0 {
 		return []SearchResult{}, nil
 	}
 
-	var results []SearchResult
-
-	// Search discussions
-	discussions, err := se.searchDiscussions(tokens)
-	if err == nil {
-		results = append(results, discussions...)
-	}
-
-	// Search issues
-	issues, err := se.searchIssues(tokens)
-	if err == nil {
-		results = append(results, issues...)
-	}
-
-	// Search pull requests
-	pullRequests, err := se.searchPullRequests(tokens)
-	if err == nil {
-		results = append(results, pullRequests...)
-	}
-
-	// Sort by score (highest first)
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].Score > results[i].Score {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
-
-	// Limit results
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	return results, nil
+	// Use UNION query to search all tables at once with database-level filtering
+	return se.searchAllTables(tokens, limit)
 }
 
-// searchDiscussions searches discussions for the given tokens
-func (se *SearchEngine) searchDiscussions(tokens []string) ([]SearchResult, error) {
-	query := "SELECT url, title, body, repository, author, created_at FROM discussions"
-	rows, err := se.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var result SearchResult
-		var createdAtStr string
-		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
-		if err != nil {
-			continue
-		}
-
-		// Parse timestamp
-		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
-			result.CreatedAt = createdAt
-		}
-
-		result.Type = "discussion"
-		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
-
-		if result.Score > 0 {
-			results = append(results, result)
-		}
-	}
-
-	return results, nil
-}
-
-// searchIssues searches issues for the given tokens
-func (se *SearchEngine) searchIssues(tokens []string) ([]SearchResult, error) {
-	query := "SELECT url, title, body, repository, author, created_at FROM issues"
-	rows, err := se.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var result SearchResult
-		var createdAtStr string
-		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
-		if err != nil {
-			continue
-		}
-
-		// Parse timestamp
-		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
-			result.CreatedAt = createdAt
-		}
-
-		result.Type = "issue"
-		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
-
-		if result.Score > 0 {
-			results = append(results, result)
-		}
-	}
-
-	return results, nil
-}
-
-// searchPullRequests searches pull requests for the given tokens
-func (se *SearchEngine) searchPullRequests(tokens []string) ([]SearchResult, error) {
-	query := "SELECT url, title, body, repository, author, created_at FROM pull_requests"
-	rows, err := se.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var result SearchResult
-		var createdAtStr string
-		err := rows.Scan(&result.URL, &result.Title, &result.Body, &result.Repository, &result.Author, &createdAtStr)
-		if err != nil {
-			continue
-		}
-
-		// Parse timestamp
-		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
-			result.CreatedAt = createdAt
-		}
-
-		result.Type = "pull_request"
-		result.Score = se.calculateScore(result.Title, result.Body, result.Repository, result.Author, tokens)
-
-		if result.Score > 0 {
-			results = append(results, result)
-		}
-	}
-
-	return results, nil
-}
-
-// calculateScore calculates the relevance score for a search result
-func (se *SearchEngine) calculateScore(title, body, repository, author string, tokens []string) int {
-	score := 0
+// searchAllTables performs a fast unified search across all tables using SQL LIKE
+func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
+	// Build WHERE clause for each token (case-insensitive search)
+	var whereConditions []string
+	var args []interface{}
 	
-	// Combine all searchable text
-	allText := strings.ToLower(title + " " + body + " " + repository + " " + author)
-	
-	// Count matches for each token
 	for _, token := range tokens {
-		matches := strings.Count(allText, token)
-		score += matches
+		// Use LIKE with wildcards for partial matching
+		pattern := "%" + token + "%"
+		condition := "(LOWER(title) LIKE ? OR LOWER(body) LIKE ? OR LOWER(repository) LIKE ? OR LOWER(author) LIKE ?)"
+		whereConditions = append(whereConditions, condition)
+		args = append(args, pattern, pattern, pattern, pattern)
 	}
-
-	return score
+	
+	whereClause := strings.Join(whereConditions, " AND ")
+	
+	// UNION query to search all tables at once with simple scoring based on matches
+	query := fmt.Sprintf(`
+		SELECT 'discussion' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
+		FROM discussions 
+		WHERE %s
+		UNION ALL
+		SELECT 'issue' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
+		FROM issues 
+		WHERE %s
+		UNION ALL
+		SELECT 'pull_request' as type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 1) as score
+		FROM pull_requests 
+		WHERE %s
+		ORDER BY score DESC, created_at DESC
+		LIMIT ?`,
+		whereClause, whereClause, whereClause)
+	
+	// Build args: score args + where args for each table
+	allArgs := make([]interface{}, 0)
+	
+	// First token for scoring (simple approach - use first token for relevance)
+	firstToken := "%" + tokens[0] + "%"
+	
+	// For discussions
+	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
+	allArgs = append(allArgs, args...)                            // where args
+	
+	// For issues  
+	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
+	allArgs = append(allArgs, args...)                            // where args
+	
+	// For pull_requests
+	allArgs = append(allArgs, firstToken, firstToken, firstToken) // score args
+	allArgs = append(allArgs, args...)                            // where args
+	
+	allArgs = append(allArgs, limit) // limit
+	
+	rows, err := se.db.Query(query, allArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("search query failed: %w", err)
+	}
+	defer rows.Close()
+	
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		var score int
+		
+		err := rows.Scan(&result.Type, &result.URL, &result.Title, &result.Body, 
+			&result.Repository, &result.Author, &createdAtStr, &score)
+		if err != nil {
+			continue
+		}
+		
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+		
+		result.Score = score
+		results = append(results, result)
+	}
+	
+	return results, nil
 }
+
+
 
 // checkPullLockForUI checks if a pull is running and returns appropriate error
 func checkPullLockForUI(db *DB) error {
