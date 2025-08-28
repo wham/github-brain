@@ -485,6 +485,10 @@ Console when an error occurs:
 - Save `slug` as `team` and `login` as `username` in the database
 - Always mark teams sync as completed, even when the organization has 0 teams
 
+### Finally
+
+- Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
+
 ## mcp
 
 - Use https://github.com/mark3labs/mcp-go
@@ -790,17 +794,15 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
 
 ## ui
 
-- Use `net/http` package to create a simple web server. Use [template/html](https://pkg.go.dev/html/template) for rendering.
-- Save all HTML/JS/CSS code into file `index.html`.
-- Use the _define_ blocks to re-use `index.html` for rendering the search results.
-- Use https://htmx.org at the only frontend framework. Vanilla JS/CSS otherwise.
-- Implement one page that looks like Google: One big input on top. On type, instant search and update results displayed under it.
-- Use HTMX to handle the dynamic search and result updates.
-- Show top 10 results.
-- Design modern brutalism with purple accents. Dark theme.
-- Search discussions, issues, and pull-requests for provided queries.
-- Basic search algorithm: Tokenize query, search all fields, rank by number of matches in each entity.
-- Min 4 characters to start search.
+- Use `net/http` package with [template/html](https://pkg.go.dev/html/template) for rendering
+- Save all HTML/JS/CSS code in `index.html`
+- Use template define blocks to re-use `index.html` for search results
+- Use https://htmx.org as the frontend framework. Vanilla JS/CSS otherwise
+- Implement Google-style layout: large search input with instant results below
+- Use HTMX for dynamic search and result updates
+- Display top 10 results
+- Design: modern brutalism with purple accents, dark theme
+- Use the `search` table for full-text search
 
 ## GitHub
 
@@ -891,6 +893,12 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - `has_discussions_enabled`: Boolean indicating if the repository has discussions feature enabled
 - `has_issues_enabled`: Boolean indicating if the repository has issues feature enabled
 - `updated_at`: Last update timestamp
+
+#### table:search
+
+- FTS5 virtual table for full-text search across discussions, issues, and pull requests
+- Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
+- Unindexed columns: `created_at`, `state`
 
 #### table:team_members
 
