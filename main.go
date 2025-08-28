@@ -1878,7 +1878,7 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 // PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
 func (db *DB) PopulateSearchTable() error {
 	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
-	fmt.Println("Truncating and repopulating search FTS table...")
+	slog.Info("Truncating and repopulating search FTS table...")
 	
 	// Delete all data from search table
 	if _, err := db.Exec("DELETE FROM search"); err != nil {
@@ -1891,11 +1891,11 @@ func (db *DB) PopulateSearchTable() error {
 	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
 	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
 	
-	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests into search table...\n", 
-		discussionCount, issueCount, prCount)
+	slog.Info("Indexing content into search table", 
+		"discussions", discussionCount, "issues", issueCount, "pull_requests", prCount)
 	
 	// Insert discussions
-	fmt.Println("Indexing discussions...")
+	slog.Info("Indexing discussions...")
 	_, err := db.Exec(`
 		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 		SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
@@ -1905,7 +1905,7 @@ func (db *DB) PopulateSearchTable() error {
 	}
 
 	// Insert issues
-	fmt.Println("Indexing issues...")
+	slog.Info("Indexing issues...")
 	_, err = db.Exec(`
 		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 		SELECT 'issue', title, body, url, repository, author, created_at, 
@@ -1917,7 +1917,7 @@ func (db *DB) PopulateSearchTable() error {
 	}
 
 	// Insert pull requests
-	fmt.Println("Indexing pull requests...")
+	slog.Info("Indexing pull requests...")
 	_, err = db.Exec(`
 		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 		SELECT 'pull_request', title, body, url, repository, author, created_at, 

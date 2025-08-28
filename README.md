@@ -21,6 +21,8 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of the discussions, issues, and pull requests.
 
+![](./docs/ui.png)
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
@@ -60,14 +62,14 @@ scripts/run pull -o my-org
 
 The first call for an organization may take a while. Subsequent calls are faster, updating only with new data.
 
-| Argument | Variable                | Description                                                                                                                                |
-| :------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                          |
-| `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                   |
-| `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.    |
-| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.         |
-| `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                           |
-| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |   
+| Argument | Variable                | Description                                                                                                                                                                   |
+| :------- | :---------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                             |
+| `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                                                      |
+| `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.                                       |
+| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.                                            |
+| `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                                                              |
+| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |
 
 <details>
     <summary>Personal access token scopes</summary>
