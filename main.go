@@ -1865,10 +1865,10 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create single unified FTS virtual table for fast text search
+	// Create search table (FTS5) as specified in main.md
 	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS unified_fts USING fts5(
-			type, url, title, body, repository, author, created_at
+		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
+			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 		)
 	`)
 	if err != nil {
@@ -1878,27 +1878,14 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	return &DB{db: db}, nil
 }
 
-// createFTSTriggers creates triggers to keep FTS tables in sync with main tables
-// PopulateFTSTables populates the unified FTS table with data from all tables
-func (db *DB) PopulateFTSTables() error {
-	// Drop and recreate the unified FTS table to start fresh
-	fmt.Println("Recreating unified FTS table...")
+// PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
+func (db *DB) PopulateSearchTable() error {
+	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
+	fmt.Println("Truncating and repopulating search FTS table...")
 	
-	// Drop old individual FTS tables if they exist
-	oldTables := []string{"discussions_fts", "issues_fts", "pull_requests_fts", "unified_fts"}
-	for _, table := range oldTables {
-		if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", table)); err != nil {
-			return fmt.Errorf("failed to drop %s table: %w", table, err)
-		}
-	}
-	
-	// Recreate unified FTS table
-	if _, err := db.Exec(`
-		CREATE VIRTUAL TABLE unified_fts USING fts5(
-			type, url, title, body, repository, author, created_at
-		)
-	`); err != nil {
-		return fmt.Errorf("failed to create unified_fts table: %w", err)
+	// Delete all data from search table
+	if _, err := db.Exec("DELETE FROM search"); err != nil {
+		return fmt.Errorf("failed to truncate search table: %w", err)
 	}
 	
 	// Get counts for progress reporting
@@ -1907,37 +1894,41 @@ func (db *DB) PopulateFTSTables() error {
 	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
 	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
 	
-	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests into unified FTS table...\n", 
+	fmt.Printf("Indexing %d discussions, %d issues, and %d pull requests into search table...\n", 
 		discussionCount, issueCount, prCount)
 	
 	// Insert discussions
 	fmt.Println("Indexing discussions...")
 	_, err := db.Exec(`
-		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
-		SELECT 'discussion', url, title, body, repository, author, created_at FROM discussions
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate discussions in unified_fts: %w", err)
+		return fmt.Errorf("failed to populate discussions in search table: %w", err)
 	}
 
 	// Insert issues
 	fmt.Println("Indexing issues...")
 	_, err = db.Exec(`
-		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
-		SELECT 'issue', url, title, body, repository, author, created_at FROM issues
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'issue', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+		FROM issues
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate issues in unified_fts: %w", err)
+		return fmt.Errorf("failed to populate issues in search table: %w", err)
 	}
 
 	// Insert pull requests
 	fmt.Println("Indexing pull requests...")
 	_, err = db.Exec(`
-		INSERT INTO unified_fts(type, url, title, body, repository, author, created_at)
-		SELECT 'pull_request', url, title, body, repository, author, created_at FROM pull_requests
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'pull_request', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+		FROM pull_requests
 	`)
 	if err != nil {
-		return fmt.Errorf("failed to populate pull_requests in unified_fts: %w", err)
+		return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
 	}
 
 	return nil
@@ -5385,7 +5376,7 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 	return se.searchAllTables(tokens, limit)
 }
 
-// searchAllTables performs fast full-text search using the unified FTS table
+// searchAllTables performs fast full-text search using the search FTS table
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
 	// Build FTS query - FTS5 supports phrase queries and AND operations
 	// Join tokens with AND to require all terms to match
@@ -5394,16 +5385,16 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
 	
-	// Use unified FTS table for fast text search
+	// Use search FTS table for fast text search
 	query := `
 		SELECT type, url, title, body, repository, author, created_at,
 		       (CASE 
 		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
 		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
 		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
-		         bm25(unified_fts) * -1) as score
-		FROM unified_fts 
-		WHERE unified_fts MATCH ?
+		         bm25(search) * -1) as score
+		FROM search 
+		WHERE search MATCH ?
 		ORDER BY score DESC
 		LIMIT ?`
 	
@@ -5455,7 +5446,7 @@ func RunUIServer(db *DB, port string, skipFTS bool) error {
 		fmt.Println("Initializing full-text search indexes...")
 		fmt.Println("This may take several minutes for large databases...")
 		
-		if err := db.PopulateFTSTables(); err != nil {
+		if err := db.PopulateSearchTable(); err != nil {
 			return fmt.Errorf("failed to initialize FTS tables: %w", err)
 		}
 		fmt.Println("Full-text search indexes ready!")
@@ -5826,6 +5817,16 @@ func main() {
 				progress.Stop()
 				os.Exit(1)
 			}
+		}
+
+		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
+		progress.UpdateMessage("Updating search index...")
+		progress.Log("Truncating search FTS5 table and repopulating from discussions, issues, and pull_requests tables")
+		if err := db.PopulateSearchTable(); err != nil {
+			progress.Log("Warning: Failed to populate search table: %v", err)
+			// Continue despite search table error - don't fail the entire operation
+		} else {
+			progress.Log("Search index updated successfully")
 		}
 
 		// Final status update through Progress system
