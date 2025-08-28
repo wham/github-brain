@@ -821,7 +821,7 @@ Centralize error handling into a single function. Use for each GraphQL query.
 
 ## Database
 
-SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately.
+SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
 
 ### Tables
 

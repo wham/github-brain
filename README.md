@@ -19,6 +19,8 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 ![](./docs/pull.png)
 
+As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of the discussions, issues, and pull requests.
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
@@ -26,7 +28,7 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 ## Usage
 
 ```sh
-go run main.go <command> [<args>]
+scripts/run <command> [<args>]
 ```
 
 **Workflow:**
@@ -53,7 +55,7 @@ Populate the local database with GitHub data.
 Example:
 
 ```sh
-go run main.go pull -o my-org
+scripts/run pull -o my-org
 ```
 
 The first call for an organization may take a while. Subsequent calls are faster, updating only with new data.
@@ -88,7 +90,7 @@ Start the MCP server using the local database.
 Example:
 
 ```sh
-go run main.go mcp -o my-org
+scripts/run mcp -o my-org
 ```
 
 | Argument | Variable       | Description                                                                                                                                  |
@@ -103,7 +105,7 @@ Start the UI server, which provides a web-based interface for interacting with t
 Example:
 
 ```sh
-go run main.go ui -o my-org
+scripts/run ui -o my-org
 ```
 
 | Argument | Variable       | Description                                                                                                                                  |
