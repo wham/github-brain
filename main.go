@@ -332,7 +332,6 @@ type Config struct {
 	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests, teams)
 	Force                 bool     // Remove all data before pulling
 	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
-	SkipFTS               bool     // Skip creating the FTS table (for UI command)
 }
 
 // LoadConfig creates a config from command line arguments and environment variables
@@ -384,8 +383,6 @@ func LoadConfig(args []string) *Config {
 			}
 		case "-f":
 			config.Force = true
-		case "-s":
-			config.SkipFTS = true
 		}
 	}
 
@@ -5438,21 +5435,8 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 // searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
 // RunUIServer starts the web UI server
 // RunUIServer starts the web UI server
-func RunUIServer(db *DB, port string, skipFTS bool) error {
+func RunUIServer(db *DB, port string) error {
 	searchEngine := NewSearchEngine(db)
-
-	// Conditionally populate FTS tables on startup for better search performance
-	if !skipFTS {
-		fmt.Println("Initializing full-text search indexes...")
-		fmt.Println("This may take several minutes for large databases...")
-		
-		if err := db.PopulateSearchTable(); err != nil {
-			return fmt.Errorf("failed to initialize FTS tables: %w", err)
-		}
-		fmt.Println("Full-text search indexes ready!")
-	} else {
-		fmt.Println("Skipping FTS table creation as requested")
-	}
 
 	// Read the index.html file and parse it as a template
 	indexHTML, err := os.ReadFile("index.html")
@@ -5927,7 +5911,7 @@ func main() {
 		}
 		defer db.Close()
 
-		if err := RunUIServer(db, port, config.SkipFTS); err != nil {
+		if err := RunUIServer(db, port); err != nil {
 			slog.Error("UI server error", "error", err)
 			os.Exit(1)
 		}
