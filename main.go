@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
+	"html/template"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -1786,11 +1788,6 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		return nil, fmt.Errorf("failed to create updated_at index on pull_requests table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
-	}
-
 	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_closed_at ON pull_requests (closed_at)`)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create closed_at index on pull_requests table: %w", err)
@@ -1813,6 +1810,12 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		} else {
 			slog.Info("Added merged_at column to pull_requests table")
 		}
+	}
+
+	// Create merged_at index after column is added
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
 	}
 
 	// Create team_members table
@@ -1859,9 +1862,76 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
+	// Create search table (FTS5) as specified in main.md
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
+			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
+	}
+
 	return &DB{db: db}, nil
 }
 
+// PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
+func (db *DB) PopulateSearchTable() error {
+	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
+	slog.Info("Truncating and repopulating search FTS table...")
+	
+	// Delete all data from search table
+	if _, err := db.Exec("DELETE FROM search"); err != nil {
+		return fmt.Errorf("failed to truncate search table: %w", err)
+	}
+	
+	// Get counts for progress reporting
+	var discussionCount, issueCount, prCount int
+	db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
+	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
+	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
+	
+	slog.Info("Indexing content into search table", 
+		"discussions", discussionCount, "issues", issueCount, "pull_requests", prCount)
+	
+	// Insert discussions
+	slog.Info("Indexing discussions...")
+	_, err := db.Exec(`
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate discussions in search table: %w", err)
+	}
+
+	// Insert issues
+	slog.Info("Indexing issues...")
+	_, err = db.Exec(`
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'issue', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+		FROM issues
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate issues in search table: %w", err)
+	}
+
+	// Insert pull requests
+	slog.Info("Indexing pull requests...")
+	_, err = db.Exec(`
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		SELECT 'pull_request', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+		FROM pull_requests
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
+	}
+
+	return nil
+}
+
+// dropAndRecreateFTSTables drops and recreates FTS tables to fix corruption
 // LockPull sets the lock for pull command. Returns error if already locked.
 func (db *DB) LockPull() error {
 	// Check for existing lock and its expiration
@@ -5260,6 +5330,207 @@ func RunMCPServer(db *DB) error {
 	return server.ServeStdio(s)
 }
 
+// SearchResult represents a search result item
+type SearchResult struct {
+	Type       string    `json:"type"`        // "discussion", "issue", "pull_request"
+	URL        string    `json:"url"`         // Primary identifier
+	Title      string    `json:"title"`       // Item title
+	Body       string    `json:"body"`        // Item content
+	Repository string    `json:"repository"`  // Repository name
+	Author     string    `json:"author"`      // Author username
+	CreatedAt  time.Time `json:"created_at"`  // Creation timestamp
+	Score      int       `json:"score"`       // Search relevance score
+}
+
+// SearchEngine performs basic text search across all entities
+type SearchEngine struct {
+	db *DB
+}
+
+// NewSearchEngine creates a new search engine
+func NewSearchEngine(db *DB) *SearchEngine {
+	return &SearchEngine{db: db}
+}
+
+// Search performs a basic search across discussions, issues, and pull requests
+func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) {
+	if query == "" {
+		return []SearchResult{}, nil
+	}
+
+	// Minimum 3 characters for search
+	if len(strings.TrimSpace(query)) < 3 {
+		return []SearchResult{}, nil
+	}
+
+	// Tokenize the query
+	tokens := strings.Fields(strings.ToLower(query))
+	if len(tokens) == 0 {
+		return []SearchResult{}, nil
+	}
+
+	// Use UNION query to search all tables at once with database-level filtering
+	return se.searchAllTables(tokens, limit)
+}
+
+// searchAllTables performs fast full-text search using the search FTS table
+func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
+	// Build FTS query - FTS5 supports phrase queries and AND operations
+	// Join tokens with AND to require all terms to match
+	ftsQuery := strings.Join(tokens, " AND ")
+	
+	// Escape any special FTS characters
+	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
+	
+	// Use search FTS table for fast text search
+	query := `
+		SELECT type, url, title, body, repository, author, created_at,
+		       (CASE 
+		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
+		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
+		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
+		         bm25(search) * -1) as score
+		FROM search 
+		WHERE search MATCH ?
+		ORDER BY score DESC
+		LIMIT ?`
+	
+	// Build args: LIKE patterns for scoring + FTS query for matching
+	likePattern := "%" + strings.ToLower(tokens[0]) + "%"
+	args := []interface{}{
+		likePattern, likePattern, likePattern, ftsQuery, // scoring + match
+		limit,
+	}
+	
+	rows, err := se.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("FTS search failed: %w", err)
+	}
+	defer rows.Close()
+	
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		var createdAtStr string
+		var score float64
+		
+		err := rows.Scan(&result.Type, &result.URL, &result.Title, &result.Body, 
+			&result.Repository, &result.Author, &createdAtStr, &score)
+		if err != nil {
+			continue
+		}
+		
+		// Parse timestamp
+		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
+			result.CreatedAt = createdAt
+		}
+		
+		result.Score = int(score)
+		results = append(results, result)
+	}
+	
+	return results, nil
+}
+
+// searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
+// RunUIServer starts the web UI server
+// RunUIServer starts the web UI server
+func RunUIServer(db *DB, port string) error {
+	searchEngine := NewSearchEngine(db)
+
+	// Read the index.html file and parse it as a template
+	indexHTML, err := os.ReadFile("index.html")
+	if err != nil {
+		return fmt.Errorf("failed to read index.html: %v", err)
+	}
+
+	// Parse the template with all defined sub-templates
+	tmpl, err := template.New("index").Parse(string(indexHTML))
+	if err != nil {
+		return fmt.Errorf("failed to parse template: %v", err)
+	}
+
+	// Serve the index.html file for the root route
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		tmpl.Execute(w, nil)
+	})
+
+	// Serve the HTMX JavaScript file
+	http.HandleFunc("/htmx.min.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		http.ServeFile(w, r, "htmx.min.js")
+	})
+
+	// Search handler for HTMX requests
+	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("value")
+		if query == "" {
+			// Return empty results for empty query
+			w.Header().Set("Content-Type", "text/html")
+			tmpl.ExecuteTemplate(w, "empty-results", nil)
+			return
+		}
+
+		results, err := searchEngine.Search(query, 10)
+		if err != nil {
+			http.Error(w, "Search error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html")
+		
+		if len(results) == 0 {
+			tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)})
+			return
+		}
+
+		// Render each result using the template
+		for _, result := range results {
+			// Determine type badge based on URL
+			typeBadge := "discussion"
+			typeClass := "type-discussion"
+			if strings.Contains(result.URL, "/issues/") {
+				typeBadge = "issue"
+				typeClass = "type-issue"
+			} else if strings.Contains(result.URL, "/pull/") {
+				typeBadge = "pr"
+				typeClass = "type-pr"
+			}
+
+			// Truncate body if too long
+			body := result.Body
+			if len(body) > 200 {
+				body = body[:200] + "..."
+			}
+
+			// Format the created date
+			createdAt := ""
+			if !result.CreatedAt.IsZero() {
+				createdAt = result.CreatedAt.Format("Jan 2, 2006")
+			}
+
+			templateData := map[string]string{
+				"URL":        html.EscapeString(result.URL),
+				"Title":      html.EscapeString(result.Title),
+				"TypeClass":  typeClass,
+				"TypeBadge":  typeBadge,
+				"Repository": html.EscapeString(result.Repository),
+				"Author":     html.EscapeString(result.Author),
+				"CreatedAt":  createdAt,
+				"Body":       html.EscapeString(body),
+			}
+
+			tmpl.ExecuteTemplate(w, "result-item", templateData)
+		}
+	})
+
+	fmt.Printf("Starting GitHub Brain UI server on http://localhost:%s\n", port)
+	fmt.Println("Press Ctrl+C to stop the server")
+
+	return http.ListenAndServe(":"+port, nil)
+}
+
 func main() {
 	// Load environment variables
 	_ = godotenv.Load()
@@ -5269,8 +5540,9 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("  pull   Pull GitHub repositories and discussions")
 		fmt.Println("  mcp    Start the MCP server")
+		fmt.Println("  ui     Start the web UI server")
 		fmt.Println("\nFor command-specific help, use:")
-		fmt.Println("  pull -h\n  mcp -h")
+		fmt.Println("  pull -h\n  mcp -h\n  ui -h")
 		os.Exit(0)
 	}
 
@@ -5531,6 +5803,16 @@ func main() {
 			}
 		}
 
+		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
+		progress.UpdateMessage("Updating search index...")
+		progress.Log("Truncating search FTS5 table and repopulating from discussions, issues, and pull_requests tables")
+		if err := db.PopulateSearchTable(); err != nil {
+			progress.Log("Warning: Failed to populate search table: %v", err)
+			// Continue despite search table error - don't fail the entire operation
+		} else {
+			progress.Log("Search index updated successfully")
+		}
+
 		// Final status update through Progress system
 		progress.UpdateMessage("Successfully pulled GitHub data")
 		
@@ -5580,6 +5862,57 @@ func main() {
 
 		if err := RunMCPServer(db); err != nil {
 			slog.Error("MCP server error", "error", err)
+			os.Exit(1)
+		}
+
+	case "ui":
+		args := os.Args[2:]
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-h" || args[i] == "--help" {
+				fmt.Println("Usage: ui -o <organization> [-db <dbpath>] [-p <port>] [-s]")
+				fmt.Println("Options:")
+				fmt.Println("  -o    GitHub organization (required)")
+				fmt.Println("  -db   Database directory (default: ./db)")
+				fmt.Println("  -p    Port for UI server (default: 8080)")
+				fmt.Println("  -s    Skip creating FTS table")
+				os.Exit(0)
+			}
+		}
+
+		// Load configuration from CLI args and environment variables
+		config := LoadConfig(args)
+
+		// Parse port from args and environment (default: 8080)
+		port := os.Getenv("UI_PORT")
+		if port == "" {
+			port = "8080"
+		}
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-p" && i+1 < len(args) {
+				port = args[i+1]
+			}
+		}
+
+		// Get organization from config or environment
+		organization := config.Organization
+		if organization == "" {
+			organization = os.Getenv("ORGANIZATION")
+			if organization == "" {
+				slog.Error("Organization is required for UI mode. Set via -o flag or ORGANIZATION environment variable")
+				os.Exit(1)
+			}
+		}
+
+		// Initialize database without progress indicator
+		db, err := InitDB(config.DBDir, organization, nil)
+		if err != nil {
+			slog.Error("Failed to initialize database", "error", err)
+			os.Exit(1)
+		}
+		defer db.Close()
+
+		if err := RunUIServer(db, port); err != nil {
+			slog.Error("UI server error", "error", err)
 			os.Exit(1)
 		}
 

@@ -19,6 +19,10 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 ![](./docs/pull.png)
 
+As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of the discussions, issues, and pull requests.
+
+![](./docs/ui.png)
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
@@ -26,7 +30,7 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 ## Usage
 
 ```sh
-go run main.go <command> [<args>]
+scripts/run <command> [<args>]
 ```
 
 **Workflow:**
@@ -53,19 +57,19 @@ Populate the local database with GitHub data.
 Example:
 
 ```sh
-go run main.go pull -o my-org
+scripts/run pull -o my-org
 ```
 
 The first call for an organization may take a while. Subsequent calls are faster, updating only with new data.
 
-| Argument | Variable                | Description                                                                                                                                |
-| :------- | :---------------------- | :----------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                          |
-| `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                   |
-| `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.    |
-| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.         |
-| `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                           |
-| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |   
+| Argument | Variable                | Description                                                                                                                                                                   |
+| :------- | :---------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                             |
+| `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                                                      |
+| `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.                                       |
+| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.                                            |
+| `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                                                              |
+| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |
 
 <details>
     <summary>Personal access token scopes</summary>
@@ -88,13 +92,29 @@ Start the MCP server using the local database.
 Example:
 
 ```sh
-go run main.go mcp -o my-org
+scripts/run mcp -o my-org
 ```
 
 | Argument | Variable       | Description                                                                                                                                  |
 | :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
 | `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+
+### `ui`
+
+Start the UI server, which provides a web-based interface for interacting with the GitHub data. Alternative to MCP for quick lookups.
+
+Example:
+
+```sh
+scripts/run ui -o my-org
+```
+
+| Argument | Variable       | Description                                                                                                                                  |
+| :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
+| `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                                                     |
 
 ## Installation
 

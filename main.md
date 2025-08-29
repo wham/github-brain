@@ -4,13 +4,14 @@ AI coding agent specification. Human documentation in README.md.
 
 ## CLI
 
-Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull` and `mcp` commands.
+Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull`, `mcp`, and `ui` commands.
 
 Concurrency control:
 
 - Prevent concurrent `pull` commands using database lock
 - Return error if `pull` already running
 - All `mcp` tools and prompts return "A pull is currently running. Please wait until it finishes." error if `pull` is running
+- All `ui` actions return "A pull is currently running. Please wait until it finishes." error if `pull` is running
 - Lock renewal: 1-second intervals
 - Lock expiration: 5 seconds
 
@@ -484,6 +485,10 @@ Console when an error occurs:
 - Save `slug` as `team` and `login` as `username` in the database
 - Always mark teams sync as completed, even when the organization has 0 teams
 
+### Finally
+
+- Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
+
 ## mcp
 
 - Use https://github.com/mark3labs/mcp-go
@@ -787,6 +792,18 @@ Summarize the accomplishments of the `<team>` team during `<period>`, focusing o
 - For each contribution, include a direct link and relevant metrics or facts.
 - Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
 
+## ui
+
+- Use `net/http` package with [template/html](https://pkg.go.dev/html/template) for rendering
+- Save all HTML/JS/CSS code in `index.html`
+- Use template define blocks to re-use `index.html` for search results
+- Use https://htmx.org as the frontend framework. Vanilla JS/CSS otherwise
+- Implement Google-style layout: large search input with instant results below
+- Use HTMX for dynamic search and result updates
+- Display top 10 results
+- Design: modern brutalism with purple accents, dark theme
+- Use the `search` table for full-text search
+
 ## GitHub
 
 Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 50 concurrent requests.
@@ -806,7 +823,7 @@ Centralize error handling into a single function. Use for each GraphQL query.
 
 ## Database
 
-SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately.
+SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
 
 ### Tables
 
@@ -876,6 +893,12 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - `has_discussions_enabled`: Boolean indicating if the repository has discussions feature enabled
 - `has_issues_enabled`: Boolean indicating if the repository has issues feature enabled
 - `updated_at`: Last update timestamp
+
+#### table:search
+
+- FTS5 virtual table for full-text search across discussions, issues, and pull requests
+- Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
+- Unindexed columns: `created_at`, `state`
 
 #### table:team_members
 
