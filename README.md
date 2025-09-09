@@ -6,7 +6,6 @@
 **GitHub Brain** is an experimental MCP server for summarizing GitHub discussions, issues, and pull requests. It helps answer questions like:
 
 - _What are the contributions of user X in the last month?_
-- _List all pull requests merged by the members of team Y in the last week._
 - _Summarize this month's discussions._
 
 https://github.com/user-attachments/assets/80910025-9d58-4367-af00-bf4c51e6ce86
@@ -67,7 +66,7 @@ The first call for an organization may take a while. Subsequent calls are faster
 | `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                             |
 | `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                                                      |
 | `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.                                       |
-| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`, `teams`. Comma-separated list.                                            |
+| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`. Comma-separated list.                                                     |
 | `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                                                              |
 | `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |
 
@@ -78,7 +77,6 @@ The first call for an organization may take a while. Subsequent calls are faster
 
     For private organizations, the token must have the following configuration:
 
-    - Organization permissions: Read access to members
     - Repository permissions: Read access to discussions, issues, metadata, and pull requests
 
     For public organizations, an empty token is sufficient, as the data is publicly accessible.

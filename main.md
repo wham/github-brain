@@ -31,7 +31,7 @@ Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not 
   - `ExcludedRepositories`: Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests (default: empty)
 - Use `Config` struct consistently, avoid multiple environment variable reads
 - If `Config.Force` is set, remove all data from database before pulling. If `Config.Items` is set, only remove specified items
-- Pull items: Repositories, Discussions, Issues, Pull Requests, Teams
+- Pull items: Repositories, Discussions, Issues, Pull Requests
 - Maintain console output showing selected items and status
 - Use `log/slog` custom logger for last 5 log messages with timestamps in console output
 
@@ -39,7 +39,7 @@ Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not 
 
 Console display must be stable and prevent jumping/flickering:
 
-- Establish fixed display area of exactly 14 lines (5 items + 1 empty + 2 status + 1 empty + 5 logs)
+- Establish fixed display area of exactly 13 lines (4 items + 1 empty + 2 status + 1 empty + 5 logs)
 - Save/restore cursor position to maintain original terminal position
 - Use atomic rendering: build complete output in memory, then write once
 - Implement debounced updates with minimum 200ms interval to prevent excessive refreshing
@@ -56,7 +56,6 @@ Console at the beginning of the `pull` command - all items selected:
 │  ⚪ Discussions                                                │
 │  ⚪ Issues                                                     │
 │  ⚪ Pull Requests                                              │
-│  ⚪ Teams                                                      │
 │                                                                │
 │  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                            │
 │  🚀 Rate Limit    ? / ? used, resets ?                         │
@@ -93,7 +92,6 @@ Console at the beginning of the `pull` command - `-i repositories,teams`:
 │  🔕 Discussions                                               │
 │  🔕 Issues                                                    │
 │  🔕 Pull Requests                                             │
-│  ⚪ Teams                                                      │
 │                                                                │
 │  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                          │
 │  🚀 Rate Limit    ? / ? used, resets ?                        │
@@ -119,7 +117,6 @@ Console during first item pull:
 │  ⚪ Discussions                                                │
 │  ⚪ Issues                                                     │
 │  ⚪ Pull Requests                                              │
-│  ⚪ Teams                                                      │
 │                                                                │
 │  📊 API Status    ✅ 120   ⚠️ 1   ❌ 2                        │
 │  🚀 Rate Limit    1000/5000 used, resets in 2h 15m           │
@@ -148,7 +145,6 @@ Console when first item completes:
 │  🔄 Discussions: 156                                          │
 │  ⚪ Issues                                                     │
 │  ⚪ Pull Requests                                              │
-│  ⚪ Teams                                                      │
 │                                                                │
 │  📊 API Status    ✅ 160   ⚠️ 1   ❌ 2                        │
 │  🚀 Rate Limit    1500/5000 used, resets in 1h 45m           │
@@ -176,7 +172,6 @@ Console when an error occurs:
 │  ❌ Discussions: 156 (3 errors)                               │
 │  ⚪ Issues                                                     │
 │  ⚪ Pull Requests                                              │
-│  ⚪ Teams                                                      │
 │                                                                │
 │  📊 API Status    ✅ 160   ⚠️ 1   ❌ 5                        │
 │  🚀 Rate Limit    1500/5000 used, resets in 1h 45m           │
@@ -453,38 +448,6 @@ Console when an error occurs:
 - Save or update by primary key `url`
 - Preserve the pull request markdown body
 
-### Teams
-
-- First, remove all rows from the `team_members` table. Regardless of `Config.Force`.
-- Query team memberships for `Config.Organization`
-
-```graphql
-{
-  organization(login: "github") {
-    teams(first: 100) {
-      nodes {
-        slug
-        members(first: 100) {
-          totalCount
-          nodes {
-            login
-          }
-        }
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }
-}
-```
-
-- Save each team membership immediately. Avoid storing all team memberships in memory. No long-running transactions
-- If a team is more than 100 members, skip saving it
-- Save `slug` as `team` and `login` as `username` in the database
-- Always mark teams sync as completed, even when the organization has 0 teams
-
 ### Finally
 
 - Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
@@ -693,51 +656,6 @@ Showing only the first <n> pull requests. There's <x> more, please refine your s
 
 Where `<n>` is the number of pull requests shown, and `<x>` is the number of pull requests not shown.
 
-#### list_team_members
-
-Lists members of a team. Also can suggest other teams with a similar name.
-
-##### Parameters
-
-- `team`: Team slug (required)
-
-##### Response
-
-First fetch up to 100 team members with exact team slug match. Next, also fetch up to 10 teams with similar names,
-using `LIKE '%<team>%'` query.
-
-If the team parameter is empty, output:
-
-```
-No team specified.
-```
-
-If the team is found, output:
-
-```
-Here are the members of the <team> team:
-
-- username1
-- username2
-...
-```
-
-If the team is not found, output:
-
-```
-Team <team> not found.
-```
-
-If teams with similar names are found, append:
-
-```
-Here are some additional teams with similar names:
-
-- team1
-- team2
-...
-```
-
 ### Prompts
 
 Each prompt should just return the template string with parameter interpolation, and the MCP client will handle calling the actual tools.
@@ -758,32 +676,6 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 - Use `list_discussions` to gather discussions they created within `<period>`.
 - Use `list_issues` to gather issues they closed within `<period>`.
 - Use `list_pull_requests` to gather pull requests they closed within `<period>`.
-- Aggregate all results, removing duplicates.
-- Prioritize and highlight:
-  - Discussions (most important)
-  - Pull requests (next most important)
-  - Issues (least important)
-- For each contribution, include a direct link and relevant metrics or facts.
-- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
-
-#### team_summary
-
-Generates a summary of the team's accomplishments based on created discussions, closed issues, and closed pull requests by its members.
-
-##### Parameters
-
-- `team`: Team slug. Example: `dev-team`. (required)
-- `period`: Examples "last week", "from August 2025 to September 2025", "2024-01-01 - 2024-12-31"
-
-##### Prompt
-
-Summarize the accomplishments of the `<team>` team during `<period>`, focusing on the most significant contributions first. Use the following approach:
-
-- Use the `list_team_members` tool to identify all members of `<team>`.
-- For each member:
-  - Use `list_discussions` to gather discussions they created within `<period>`.
-  - Use `list_issues` to gather issues they closed within `<period>`.
-  - Use `list_pull_requests` to gather pull requests they closed within `<period>`.
 - Aggregate all results, removing duplicates.
 - Prioritize and highlight:
   - Discussions (most important)
@@ -900,14 +792,6 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`
 
-#### table:team_members
-
-- Primary key: `team` + `username`
-- Index: `team`
-
-- `team`: Team slug (e.g., `data-science`)
-- `username`: Member username (e.g., `john_doe`)
-
 ### Database Performance
 
 Performance indexes are implemented to optimize common query patterns:
@@ -921,11 +805,6 @@ Performance indexes are implemented to optimize common query patterns:
 
 - Composite indexes on `(repository, created_at)` optimize queries that filter by repository and sort by date
 - Critical for incremental sync operations using `MAX(updated_at)` queries
-
-#### Team search optimization
-
-- Index on `team` column supports efficient `LIKE` queries for team name searching
-- Enables fuzzy matching and autocomplete functionality
 
 #### Incremental sync optimization
 
