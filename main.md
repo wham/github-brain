@@ -83,7 +83,7 @@ Console at the beginning of the `pull` command - all items selected:
 - **Sections**: Clear visual separation with headers and spacing
 - **Responsive Layout**: Adjust to terminal width (minimum 64 chars)
 
-Console at the beginning of the `pull` command - `-i repositories,teams`:
+Console at the beginning of the `pull` command - `-i repositories`:
 
 ```
 ┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐

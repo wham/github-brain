@@ -329,7 +329,7 @@ type Config struct {
 	GithubToken           string
 	Organization          string
 	DBDir                 string
-	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests, teams)
+	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests)
 	Force                 bool     // Remove all data before pulling
 	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
 }
@@ -631,7 +631,7 @@ type Progress struct {
 	rateUpdateChan    chan int
 	minInterval       time.Duration         // Minimum interval for the spinner (fastest speed)
 	maxInterval       time.Duration         // Maximum interval for the spinner (slowest speed)
-	items             map[string]itemStatus // Status of each item (repositories, discussions, issues, pull-requests, teams)
+	items             map[string]itemStatus // Status of each item (repositories, discussions, issues, pull-requests)
 	currentItem       string                // Currently processing item
 	console           *Console              // Console manager for synchronized output
 	mutex             sync.Mutex            // Mutex to protect updates to Progress fields
@@ -5147,7 +5147,7 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: pull -t <token> -o <organization> [-db <dbpath>] [-i repositories,discussions,issues,pull-requests,teams] [-e excluded_repos] [-f]")
+				fmt.Println("Usage: pull -t <token> -o <organization> [-db <dbpath>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
 				os.Exit(0)
 			}
 		}
