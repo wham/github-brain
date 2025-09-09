@@ -695,13 +695,13 @@ func NewProgress(message string) *Progress {
 	// Save current cursor position and hide cursor, then reserve space for display
 	fmt.Print("\033[s\033[?25l") // Save cursor position and hide cursor
 	
-	// Reserve 18 lines for our modern boxed display (with 5 log lines)
-	for i := 0; i < 18; i++ {
+	// Reserve 17 lines for our modern boxed display (with 5 log lines)
+	for i := 0; i < 17; i++ {
 		fmt.Println()
 	}
 	
 	// Move back to the start of our reserved area
-	fmt.Print("\033[18A")
+	fmt.Print("\033[17A")
 	progress.savedCursorPos = true
 
 	return progress
@@ -755,7 +755,6 @@ func (p *Progress) InitItems(config *Config) {
 		enabledItems["discussions"] = true
 		enabledItems["issues"] = true
 		enabledItems["pull-requests"] = true
-		enabledItems["teams"] = true
 	} else {
 		// Otherwise, only enable the requested items
 		for _, item := range config.Items {
@@ -768,7 +767,6 @@ func (p *Progress) InitItems(config *Config) {
 	p.items["discussions"] = itemStatus{enabled: enabledItems["discussions"], completed: false, failed: false, errorMessage: "", count: 0}
 	p.items["issues"] = itemStatus{enabled: enabledItems["issues"], completed: false, failed: false, errorMessage: "", count: 0}
 	p.items["pull-requests"] = itemStatus{enabled: enabledItems["pull-requests"], completed: false, failed: false, errorMessage: "", count: 0}
-	p.items["teams"] = itemStatus{enabled: enabledItems["teams"], completed: false, failed: false, errorMessage: "", count: 0}
 
 	p.mutex.Unlock()
 
@@ -901,7 +899,7 @@ func (p *Progress) renderStatus() {
 	}
 	
 	// Ensure we have enough terminal height for our display
-	if p.terminalHeight < 18 {
+	if p.terminalHeight < 17 {
 		return // Terminal too small, skip rendering
 	}
 
@@ -922,7 +920,7 @@ func (p *Progress) renderStatus() {
 		resetColor    = "\033[0m"    // Reset colors
 	)
 
-	// Always render the complete 18-line box structure  
+	// Always render the complete 17-line box structure  
 	// Line 1: Top border
 	p.renderBoxTop(&output, boxColor, resetColor)
 	// Line 2: Empty line
@@ -939,14 +937,14 @@ func (p *Progress) renderStatus() {
 	p.renderEmptyLine(&output, boxColor, resetColor)
 	// Lines 12-17: Activity section (1 header + 5 log lines = 6 lines)
 	p.renderActivitySection(&output, boxColor, headerColor, resetColor, redColor)
-	// Line 18: Bottom border
+	// Line 17: Bottom border
 	p.renderBoxBottom(&output, boxColor, resetColor)
 	
 	// Atomic rendering: write complete output in single operation
 	fmt.Print(output.String())
 	
 	// Move cursor back to start of display area for next update
-	fmt.Print("\033[18A")
+	fmt.Print("\033[17A")
 }
 
 // renderBoxTop renders the top border with title
@@ -1011,7 +1009,7 @@ func visibleLength(s string) int {
 
 // renderItemsSection renders the items status section
 func (p *Progress) renderItemsSection(output *strings.Builder, boxColor, resetColor, greenColor, blueColor, redColor, grayColor string) {
-	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests", "teams"}
+	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
 	
 	for _, item := range itemOrder {
 		// Build the line content first
@@ -1372,7 +1370,7 @@ func (p *Progress) StopWithPreserve() {
 	
 	// Leave the display visible and position cursor at the end
 	if p.savedCursorPos {
-		fmt.Print("\033[18B") // Move down to end of display area
+		fmt.Print("\033[17B") // Move down to end of display area
 	}
 	
 	// Show cursor again but keep display intact
@@ -1408,9 +1406,9 @@ func (p *Progress) Stop() {
 	
 	// Move cursor to the end of our display area and restore original position
 	if p.savedCursorPos {
-		fmt.Print("\033[18B") // Move down to end of display area
+		fmt.Print("\033[17B") // Move down to end of display area
 		fmt.Print("\033[u")   // Restore to original cursor position (before our display)
-		fmt.Print("\033[18B") // Move down past our display area
+		fmt.Print("\033[17B") // Move down past our display area
 	}
 	
 	// Show cursor again and ensure proper terminal state
@@ -1467,18 +1465,6 @@ type Repository struct {
 	UpdatedAt               time.Time `json:"updated_at"`                // Last update timestamp
 	HasIssuesEnabled        bool      `json:"has_issues_enabled"`        // Whether issues are enabled for this repository
 	HasDiscussionsEnabled   bool      `json:"has_discussions_enabled"`   // Whether discussions are enabled for this repository
-}
-
-// Team represents a GitHub team
-type Team struct {
-	Slug string `json:"slug"` // Primary key
-	Name string `json:"name"` // Display name
-}
-
-// TeamMember represents a GitHub team member
-type TeamMember struct {
-	Login    string `json:"login"`     // Username (username in database)
-	TeamSlug string `json:"team_slug"` // Team slug (team in database)
 }
 
 // Discussion represents a GitHub discussion
@@ -1818,35 +1804,6 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
 	}
 
-	// Create team_members table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS team_members (
-			team TEXT NOT NULL,
-			username TEXT NOT NULL,
-			PRIMARY KEY (team, username)
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create team_members table: %w", err)
-	}
-
-	// Create performance index for team_members table - team column for LIKE queries
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members (team)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create team index on team_members table: %w", err)
-	}
-
-	// Create teams table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS teams (
-			slug TEXT PRIMARY KEY,
-			name TEXT NOT NULL
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create teams table: %w", err)
-	}
-
 	// Create lock table
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS lock (
@@ -2086,28 +2043,6 @@ func (db *DB) SavePullRequest(pr *PullRequest) error {
 		)
 		return err
 	}, "save pull request")
-}
-
-// SaveTeam saves a team to the database with retry logic for database locks
-func (db *DB) SaveTeam(team *Team) error {
-	return db.executeWithRetry(func() error {
-		_, err := db.Exec(
-			"INSERT OR REPLACE INTO teams (slug, name) VALUES (?, ?)",
-			team.Slug, team.Name,
-		)
-		return err
-	}, "save team")
-}
-
-// SaveTeamMember saves a team member to the database with retry logic for database locks
-func (db *DB) SaveTeamMember(teamMember *TeamMember, updatedAt time.Time) error {
-	return db.executeWithRetry(func() error {
-		_, err := db.Exec(
-			"INSERT OR REPLACE INTO team_members (team, username) VALUES (?, ?)",
-			teamMember.TeamSlug, teamMember.Login,
-		)
-		return err
-	}, "save team member")
 }
 
 // GetRepositories gets all repositories from the database
@@ -2935,17 +2870,12 @@ func ClearData(db *DB, config *Config, progress *Progress) error {
 				if err != nil {
 					return fmt.Errorf("failed to clear pull requests: %w", err)
 				}
-			case "teams":
-				progress.Log("Deleting team_members table")
-				_, err := db.Exec("DELETE FROM team_members")
-				if err != nil {
-					return fmt.Errorf("failed to clear team members: %w", err)
-				}
+
 			}
 		}
 	} else {
 		// Clear all data
-		tables := []string{"team_members", "pull_requests", "issues", "discussions", "repositories"}
+		tables := []string{"pull_requests", "issues", "discussions", "repositories"}
 		for _, table := range tables {
 			_, err := db.Exec("DELETE FROM " + table)
 			if err != nil {
@@ -4100,219 +4030,6 @@ func (db *DB) GetDiscussionsByRepository(repositoryName string) ([]Discussion, e
 	return discussions, nil
 }
 
-// GetTeamMembers gets members of a specific team
-func (db *DB) GetTeamMembers(teamSlug string) ([]TeamMember, error) {
-	// Limit to 1001 members for exact match as per spec
-	query := "SELECT team, username FROM team_members WHERE team = ? LIMIT 1001"
-	args := []interface{}{teamSlug}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query team members: %w", err)
-	}
-	defer rows.Close()
-
-	var members []TeamMember
-	for rows.Next() {
-		var member TeamMember
-		if err := rows.Scan(&member.TeamSlug, &member.Login); err != nil {
-			return nil, fmt.Errorf("failed to scan team member: %w", err)
-		}
-		members = append(members, member)
-	}
-
-	return members, nil
-}
-
-// GetSimilarTeams gets up to 10 teams with similar names using LIKE query
-func (db *DB) GetSimilarTeams(teamSlug string) ([]string, error) {
-	var query string
-	var args []interface{}
-	
-	if teamSlug == "" {
-		// If team is empty, get any 10 teams
-		query = "SELECT DISTINCT team FROM team_members ORDER BY team LIMIT 10"
-		args = []interface{}{}
-	} else {
-		// Otherwise, get teams similar to the provided team name
-		query = "SELECT DISTINCT team FROM team_members WHERE team LIKE ? AND team != ? ORDER BY team LIMIT 10"
-		args = []interface{}{"%" + teamSlug + "%", teamSlug}
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query similar teams: %w", err)
-	}
-	defer rows.Close()
-
-	var teams []string
-	for rows.Next() {
-		var teamName string
-		if err := rows.Scan(&teamName); err != nil {
-			return nil, fmt.Errorf("failed to scan team name: %w", err)
-		}
-		teams = append(teams, teamName)
-	}
-
-	return teams, nil
-}
-
-// PullTeams pulls teams and team members from GitHub using GraphQL API
-func PullTeams(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress *Progress) error {
-	if config.Organization == "" {
-		return fmt.Errorf("organization is not set")
-	}
-
-	progress.SetCurrentItem("teams")
-	progress.Log("Starting teams pull for organization %s", config.Organization)
-	progress.UpdateMessage(fmt.Sprintf("Getting teams for organization %s, page 1", config.Organization))
-
-	// First, remove all rows from the team_members table
-	// This is done regardless of Config.Force as per specification
-	progress.Log("Clearing existing team members")
-	_, err := db.Exec("DELETE FROM team_members")
-	if err != nil {
-		return fmt.Errorf("failed to clear existing team members: %w", err)
-	}
-
-	// Setup GraphQL request rate measurement
-	requestCount := atomic.Int64{}
-	stopRateMeasurement := make(chan struct{})
-
-	// Start a goroutine to measure and update request rate every second
-	go func() {
-		ticker := time.NewTicker(1 * time.Second)
-		defer ticker.Stop()
-
-		var lastCount int64
-
-		for {
-			select {
-			case <-stopRateMeasurement:
-				return
-			case <-ticker.C:
-				currentCount := requestCount.Load()
-				requestsInLastSecond := currentCount - lastCount
-				lastCount = currentCount
-
-				progress.UpdateRequestRate(int(requestsInLastSecond))
-			}
-		}
-	}()
-
-	defer close(stopRateMeasurement)
-
-	// GraphQL query structure
-	var query struct {
-		Organization struct {
-			Teams struct {
-				Nodes []struct {
-					Slug    githubv4.String
-					Members struct {
-						TotalCount githubv4.Int
-						Nodes      []struct {
-							Login githubv4.String
-						}
-					} `graphql:"members(first: 100)"`
-				}
-				PageInfo struct {
-					HasNextPage githubv4.Boolean
-					EndCursor   githubv4.String
-				}
-			} `graphql:"teams(first: 100, after: $cursor)"`
-		} `graphql:"organization(login: $login)"`
-	}
-
-	variables := map[string]interface{}{
-		"login":  githubv4.String(config.Organization),
-		"cursor": (*githubv4.String)(nil),
-	}
-
-	page := 1
-	totalTeams := 0
-	totalMembers := 0
-
-	// Process pages sequentially
-	for {
-		progress.Log("Fetching page %d of teams for organization %s", page, config.Organization)
-		progress.UpdateMessage(fmt.Sprintf("Getting teams for organization %s, page %d. Rate: %d requests/sec",
-			config.Organization, page, int(requestCount.Load())))
-
-		// Use centralized GraphQL error handling
-		err := handleGraphQLError(ctx, client, func() error {
-			return client.Query(ctx, &query, variables)
-		}, "teams query", page, &requestCount, progress)
-
-		if err != nil {
-			return fmt.Errorf("failed to query teams page %d: %w", page, err)
-		}
-
-		teams := query.Organization.Teams.Nodes
-		progress.Log("Successfully fetched page %d, processing %d teams", page, len(teams))
-		if len(teams) == 0 {
-			progress.Log("No teams found on page %d, stopping", page)
-			// Always mark teams sync as completed, even when the organization has 0 teams
-			progress.Log("All teams processed successfully: %d teams with %d total members", totalTeams, totalMembers)
-			progress.UpdateMessage(fmt.Sprintf("Successfully pulled %d teams with %d total members", totalTeams, totalMembers))
-			progress.MarkItemCompleted("teams", totalTeams)
-			return nil
-		}
-
-		// Process teams on this page - save each team member immediately
-		teamsProcessed := 0
-		membersProcessedThisPage := 0
-		for _, team := range teams {
-			teamSlug := string(team.Slug)
-
-			// Skip teams with more than 100 members
-			if team.Members.TotalCount > 100 {
-				progress.Log("Skipping team %s (has %d members, over 100 limit)", teamSlug, team.Members.TotalCount)
-				continue
-			}
-
-			progress.Log("Processing team %s with %d members", teamSlug, team.Members.TotalCount)
-
-			// Save team members individually - avoid transactions as per specification
-			for _, member := range team.Members.Nodes {
-				teamMember := TeamMember{
-					TeamSlug: teamSlug,
-					Login:    string(member.Login),
-				}
-
-				// Save each team member immediately
-				if err := db.SaveTeamMember(&teamMember, time.Now()); err != nil {
-					return fmt.Errorf("failed to save member %s for team %s: %w", member.Login, teamSlug, err)
-				}
-				totalMembers++
-				membersProcessedThisPage++
-			}
-
-			teamsProcessed++
-			totalTeams++
-			
-			// Update progress count for each individual team
-			progress.UpdateItemCount("teams", totalTeams)
-		}
-
-		progress.Log("Page %d completed: processed %d teams with %d members", page, teamsProcessed, membersProcessedThisPage)
-
-		if !query.Organization.Teams.PageInfo.HasNextPage {
-			progress.Log("No more pages available after page %d", page)
-			break
-		}
-
-		// Set up for next page
-		variables["cursor"] = query.Organization.Teams.PageInfo.EndCursor
-		page++
-	}
-
-	progress.Log("All teams processed successfully: %d teams with %d total members", totalTeams, totalMembers)
-	progress.UpdateMessage(fmt.Sprintf("Successfully pulled %d teams with %d total members", totalTeams, totalMembers))
-	progress.MarkItemCompleted("teams", totalTeams)
-
-	return nil
-}
-
 // parseRFC3339Date safely parses RFC3339 date strings for MCP handlers
 func parseRFC3339Date(dateStr, fieldName string) (time.Time, error) {
 	if dateStr == "" {
@@ -4569,65 +4286,6 @@ func RunMCPServer(db *DB) error {
 			}
 			
 			result.WriteString("\n---\n\n")
-		}
-
-		return mcp.NewToolResultText(result.String()), nil
-	})
-
-	// Register the list_team_members tool
-	listTeamMembersTool := mcp.NewTool("list_team_members",
-		mcp.WithDescription("Lists members of a team. Also can suggest other teams with a similar name."),
-		mcp.WithString("team",
-			mcp.Description("Team slug"),
-			mcp.Required(),
-		),
-	)
-
-	// Add tool handler for list_team_members
-	s.AddTool(listTeamMembersTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if a pull is running
-		if lockResult := checkPullLock(db); lockResult != nil {
-			return lockResult, nil
-		}
-
-		// Extract parameters
-		team := request.GetString("team", "")
-
-		var result strings.Builder
-
-		// If team is empty, show "No team specified" and suggest teams
-		if team == "" {
-			result.WriteString("No team specified.\n")
-		} else {
-			// Get team members
-			members, err := db.GetTeamMembers(team)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("failed to get team members: %v", err)), nil
-			}
-
-			// Check if team was found (has members)
-			if len(members) > 0 {
-				result.WriteString(fmt.Sprintf("Here are the members of the %s team:\n\n", team))
-				for _, member := range members {
-					result.WriteString(fmt.Sprintf("- %s\n", member.Login))
-				}
-			} else {
-				result.WriteString(fmt.Sprintf("Team %s not found.\n", team))
-			}
-		}
-
-		// Get similar teams (or all teams if team parameter is empty)
-		similarTeams, err := db.GetSimilarTeams(team)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get similar teams: %v", err)), nil
-		}
-
-		// Add similar teams if found
-		if len(similarTeams) > 0 {
-			result.WriteString("\nHere are some additional teams with similar names:\n\n")
-			for _, teamName := range similarTeams {
-				result.WriteString(fmt.Sprintf("- %s\n", teamName))
-			}
 		}
 
 		return mcp.NewToolResultText(result.String()), nil
@@ -5262,71 +4920,6 @@ func RunMCPServer(db *DB) error {
 		return result, nil
 	})
 
-	// Register the team_summary prompt
-	teamSummaryPrompt := mcp.NewPrompt("team_summary",
-		mcp.WithPromptDescription("Generates a summary of the team's accomplishments based on created discussions, closed issues, and closed pull requests by its members."),
-		mcp.WithArgument("team", mcp.ArgumentDescription("Team slug. Example: dev-team"), mcp.RequiredArgument()),
-		mcp.WithArgument("period", mcp.ArgumentDescription("Examples \"last week\", \"from August 2025 to September 2025\", \"2024-01-01 - 2024-12-31\"")),
-	)
-
-	// Add prompt handler for team_summary
-	s.AddPrompt(teamSummaryPrompt, func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		// Check if a pull is running
-		if err := checkPullLockForPrompt(db); err != nil {
-			return nil, err
-		}
-
-		// Extract parameters from request
-		team := ""
-		period := ""
-		
-		// Access arguments through the request structure
-		for key, value := range request.Params.Arguments {
-			switch key {
-			case "team":
-				team = value
-			case "period":
-				period = value
-			}
-		}
-
-		if team == "" {
-			return nil, fmt.Errorf("team parameter is required")
-		}
-
-		// Build the prompt text according to specification
-		var promptBuilder strings.Builder
-		promptBuilder.WriteString(fmt.Sprintf("Summarize the accomplishments of the `%s` team during `%s`, focusing on the most significant contributions first. Use the following approach:\n\n", team, period))
-		promptBuilder.WriteString(fmt.Sprintf("- Use the `list_team_members` tool to identify all members of `%s`.\n", team))
-		promptBuilder.WriteString("- For each member:\n")
-		promptBuilder.WriteString(fmt.Sprintf("  - Use `list_discussions` to gather discussions they created within `%s`.\n", period))
-		promptBuilder.WriteString(fmt.Sprintf("  - Use `list_issues` to gather issues they closed within `%s`.\n", period))
-		promptBuilder.WriteString(fmt.Sprintf("  - Use `list_pull_requests` to gather pull requests they closed within `%s`.\n", period))
-		promptBuilder.WriteString("- Aggregate all results, removing duplicates.\n")
-		promptBuilder.WriteString("- Prioritize and highlight:\n")
-		promptBuilder.WriteString("  - Discussions (most important)\n")
-		promptBuilder.WriteString("  - Pull requests (next most important)\n")
-		promptBuilder.WriteString("  - Issues (least important)\n")
-		promptBuilder.WriteString("- For each contribution, include a direct link and relevant metrics or facts.\n")
-		promptBuilder.WriteString("- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.")
-
-		// Create prompt result with the generated text
-		result := &mcp.GetPromptResult{
-			Description: fmt.Sprintf("Team summary for %s during %s", team, period),
-			Messages: []mcp.PromptMessage{
-				{
-					Role: "user",
-					Content: mcp.TextContent{
-						Type: "text",
-						Text: promptBuilder.String(),
-					},
-				},
-			},
-		}
-
-		return result, nil
-	})
-
 	return server.ServeStdio(s)
 }
 
@@ -5591,7 +5184,7 @@ func main() {
 
 		// Default pull all items if nothing specified
 		if len(config.Items) == 0 {
-			config.Items = []string{"repositories", "discussions", "issues", "pull-requests", "teams"}
+			config.Items = []string{"repositories", "discussions", "issues", "pull-requests"}
 		}
 
 		// Validate items
@@ -5600,11 +5193,10 @@ func main() {
 			"discussions":   true,
 			"issues":        true,
 			"pull-requests": true,
-			"teams":         true,
 		}
 		for _, item := range config.Items {
 			if !validItems[item] {
-				progress.Log("Error: Invalid item: %s. Valid items are: repositories, discussions, issues, pull-requests, teams", item)
+				progress.Log("Error: Invalid item: %s. Valid items are: repositories, discussions, issues, pull-requests", item)
 				// Give console time to display the error before exiting
 				time.Sleep(3 * time.Second)
 				return
@@ -5616,7 +5208,6 @@ func main() {
 		pullDiscussions := false
 		pullIssues := false
 		pullPullRequests := false
-		pullTeams := false
 		for _, item := range config.Items {
 			switch item {
 			case "repositories":
@@ -5627,8 +5218,6 @@ func main() {
 				pullIssues = true
 			case "pull-requests":
 				pullPullRequests = true
-			case "teams":
-				pullTeams = true
 			}
 		}
 
@@ -5776,27 +5365,6 @@ func main() {
 				progress.MarkItemFailed("pull-requests", err.Error())
 				progress.Log("Error: %v", err)
 				// Stop processing subsequent items if pull requests failed
-				progress.preserveOnExit = true
-				progress.Stop()
-				os.Exit(1)
-			}
-		}
-
-		// Pull teams and team members if requested
-		if pullTeams {
-			// Check if any previous item failed
-			if progress.HasAnyFailed() {
-				progress.Log("Skipping teams due to previous failures")
-				// Exit early if any previous item failed
-				progress.preserveOnExit = true
-				progress.Stop()
-				os.Exit(1)
-			}
-
-			if err := PullTeams(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("teams", err.Error())
-				progress.Log("Error: %v", err)
-				// Stop processing subsequent items if teams failed
 				progress.preserveOnExit = true
 				progress.Stop()
 				os.Exit(1)
