@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -4096,82 +4095,6 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 	return false
 }
 
-// generateSnippet generates a text snippet centered around search terms
-func generateSnippet(text, query string, maxLength int) string {
-	if text == "" {
-		return ""
-	}
-
-	// Split query into individual search terms
-	terms := strings.Fields(strings.ToLower(query))
-	if len(terms) == 0 {
-		// If no terms, return beginning of text
-		if len(text) <= maxLength {
-			return text
-		}
-		return text[:maxLength-3] + "..."
-	}
-
-	textLower := strings.ToLower(text)
-	
-	// Find the first occurrence of any search term
-	earliestPos := len(text)
-	for _, term := range terms {
-		pos := strings.Index(textLower, term)
-		if pos >= 0 && pos < earliestPos {
-			earliestPos = pos
-		}
-	}
-
-	// If no terms found, return beginning of text
-	if earliestPos == len(text) {
-		if len(text) <= maxLength {
-			return text
-		}
-		return text[:maxLength-3] + "..."
-	}
-
-	// Calculate snippet boundaries, trying to center around the match
-	halfLength := maxLength / 2
-	start := earliestPos - halfLength/2
-	if start < 0 {
-		start = 0
-	}
-	
-	end := start + maxLength
-	if end > len(text) {
-		end = len(text)
-		start = end - maxLength
-		if start < 0 {
-			start = 0
-		}
-	}
-
-	snippet := text[start:end]
-	
-	// Add ellipsis if we're not at the beginning/end
-	if start > 0 {
-		snippet = "..." + snippet
-	}
-	if end < len(text) {
-		snippet = snippet + "..."
-	}
-
-	// Highlight search terms with **bold** formatting
-	for _, term := range terms {
-		if term == "" {
-			continue
-		}
-		// Case-insensitive replace while preserving original case
-		pattern := "(?i)" + regexp.QuoteMeta(term)
-		re := regexp.MustCompile(pattern)
-		snippet = re.ReplaceAllStringFunc(snippet, func(match string) string {
-			return "**" + match + "**"
-		})
-	}
-
-	return snippet
-}
 
 // checkPullLockForPrompt checks if a pull operation is running and returns an appropriate error for prompts
 func checkPullLockForPrompt(db *DB) error {
@@ -4943,7 +4866,7 @@ func RunMCPServer(db *DB) error {
 			mcp.Required(),
 		),
 		mcp.WithArray("fields",
-			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"author\", \"type\", \"state\", \"snippet\"]. Defaults to all fields."),
+			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"author\", \"type\", \"state\", \"body\"]. Defaults to all fields."),
 			mcp.Items(map[string]interface{}{
 				"type": "string",
 			}),
@@ -4965,7 +4888,7 @@ func RunMCPServer(db *DB) error {
 		fields := request.GetStringSlice("fields", []string{})
 
 		// Validate fields parameter
-		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "snippet"}
+		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "body"}
 		if err := validateFields(fields, availableFields, "search results"); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -5031,12 +4954,9 @@ func RunMCPServer(db *DB) error {
 				formatted.WriteString(fmt.Sprintf("- State: %s\n", state))
 			}
 
-			if fieldsToInclude["snippet"] {
+			if fieldsToInclude["body"] {
 				formatted.WriteString("\n")
-				
-				// Generate snippet centered around search terms
-				snippet := generateSnippet(body, query, 200)
-				formatted.WriteString(fmt.Sprintf("%s\n", snippet))
+				formatted.WriteString(fmt.Sprintf("%s\n", body))
 			}
 
 			formatted.WriteString("\n---\n\n")

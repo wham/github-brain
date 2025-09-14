@@ -663,7 +663,7 @@ Full-text search across discussions, issues, and pull requests.
 ##### Parameters
 
 - `query`: Search query string. Example: `authentication bug`. (required)
-- `fields`: Array of fields to include in the response. Available fields: `["title", "url", "repository", "created_at", "author", "type", "state", "snippet"]`. Defaults to all fields.
+- `fields`: Array of fields to include in the response. Available fields: `["title", "url", "repository", "created_at", "author", "type", "state", "body"]`. Defaults to all fields.
 
 ##### Response
 
@@ -700,14 +700,14 @@ If results are found, start looping through results and output for each:
 - Author: <author>
 - State: <state>
 
-<snippet>
+<body>
 
 ---
 ```
 
 The example above includes all fields. If `fields` parameter is provided, only include those fields in the output.
 
-For the `snippet` field, show a relevant excerpt from the matched content with the search terms highlighted using **bold** markdown formatting. The snippet should be approximately 150-200 characters centered around the matched terms.
+For the `body` field, show the full content from the matched item.
 
 ### Prompts
 
