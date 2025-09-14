@@ -656,6 +656,59 @@ Showing only the first <n> pull requests. There's <x> more, please refine your s
 
 Where `<n>` is the number of pull requests shown, and `<x>` is the number of pull requests not shown.
 
+#### search
+
+Full-text search across discussions, issues, and pull requests.
+
+##### Parameters
+
+- `query`: Search query string. Example: `authentication bug`. (required)
+- `fields`: Array of fields to include in the response. Available fields: `["title", "url", "repository", "created_at", "author", "type", "state", "snippet"]`. Defaults to all fields.
+
+##### Response
+
+Validate `fields` parameter. If it contains invalid fields, output:
+
+```
+Invalid fields: <invalid_fields>
+
+Use one of the available fields: <available_fields>
+```
+
+Where `<invalid_fields>` is a comma-separated list of invalid fields, and `<available_fields>` is a comma-separated list of available fields.
+
+Next, prepare the FTS5 search query using the `search` table. Build the query with:
+- Use FTS5 MATCH operator for the search query
+- Order by relevance (FTS5 rank)
+- Limit to 10 results
+
+If no results are found, output:
+
+```
+No results found for "<query>".
+```
+
+If results are found, start looping through results and output for each:
+
+```
+## <title>
+
+- URL: <url>
+- Type: <type>
+- Repository: <repository>
+- Created at: <created_at>
+- Author: <author>
+- State: <state>
+
+<snippet>
+
+---
+```
+
+The example above includes all fields. If `fields` parameter is provided, only include those fields in the output.
+
+For the `snippet` field, show a relevant excerpt from the matched content with the search terms highlighted using **bold** markdown formatting. The snippet should be approximately 150-200 characters centered around the matched terms.
+
 ### Prompts
 
 Each prompt should just return the template string with parameter interpolation, and the MCP client will handle calling the actual tools.
