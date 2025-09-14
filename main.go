@@ -4095,6 +4095,7 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 	return false
 }
 
+
 // checkPullLockForPrompt checks if a pull operation is running and returns an appropriate error for prompts
 func checkPullLockForPrompt(db *DB) error {
 	locked, err := db.IsPullLocked()
@@ -4852,6 +4853,118 @@ func RunMCPServer(db *DB) error {
 			formatted.WriteString("\n---\n\n")
 			
 			result.WriteString(formatted.String())
+		}
+
+		return mcp.NewToolResultText(result.String()), nil
+	})
+
+	// Register the search tool
+	searchTool := mcp.NewTool("search",
+		mcp.WithDescription("Full-text search across discussions, issues, and pull requests."),
+		mcp.WithString("query",
+			mcp.Description("Search query string. Example: authentication bug."),
+			mcp.Required(),
+		),
+		mcp.WithArray("fields",
+			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"author\", \"type\", \"state\", \"body\"]. Defaults to all fields."),
+			mcp.Items(map[string]interface{}{
+				"type": "string",
+			}),
+		),
+	)
+
+	// Add tool handler for search
+	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		// Check if a pull is running
+		if lockResult := checkPullLock(db); lockResult != nil {
+			return lockResult, nil
+		}
+
+		// Extract parameters
+		query := request.GetString("query", "")
+		if query == "" {
+			return mcp.NewToolResultError("query parameter is required"), nil
+		}
+		fields := request.GetStringSlice("fields", []string{})
+
+		// Validate fields parameter
+		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "body"}
+		if err := validateFields(fields, availableFields, "search results"); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		// Set default fields if none provided
+		fieldsToInclude := make(map[string]bool)
+		if len(fields) == 0 {
+			for _, field := range availableFields {
+				fieldsToInclude[field] = true
+			}
+		} else {
+			for _, field := range fields {
+				fieldsToInclude[field] = true
+			}
+		}
+
+		// Perform FTS5 search query
+		searchQuery := `
+			SELECT type, title, body, url, repository, author, created_at, state
+			FROM search 
+			WHERE search MATCH ? 
+			ORDER BY bm25(search)
+			LIMIT 10
+		`
+
+		rows, err := db.Query(searchQuery, query)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("search query failed: %v", err)), nil
+		}
+		defer rows.Close()
+
+		var result strings.Builder
+		hasResults := false
+
+		for rows.Next() {
+			hasResults = true
+			var itemType, title, body, url, repository, author, createdAt, state string
+			
+			err := rows.Scan(&itemType, &title, &body, &url, &repository, &author, &createdAt, &state)
+			if err != nil {
+				continue
+			}
+
+			var formatted strings.Builder
+			formatted.WriteString(fmt.Sprintf("## %s\n\n", title))
+
+			if fieldsToInclude["url"] {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", url))
+			}
+			if fieldsToInclude["type"] {
+				formatted.WriteString(fmt.Sprintf("- Type: %s\n", itemType))
+			}
+			if fieldsToInclude["repository"] {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", repository))
+			}
+			if fieldsToInclude["created_at"] {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", createdAt))
+			}
+			if fieldsToInclude["author"] {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", author))
+			}
+			if fieldsToInclude["state"] {
+				formatted.WriteString(fmt.Sprintf("- State: %s\n", state))
+			}
+
+			if fieldsToInclude["body"] {
+				formatted.WriteString("\n")
+				formatted.WriteString(fmt.Sprintf("%s\n", body))
+			}
+
+			formatted.WriteString("\n---\n\n")
+			result.WriteString(formatted.String())
+		}
+
+		if !hasResults {
+			return mcp.NewToolResultText(fmt.Sprintf("No results found for \"%s\".", query)), nil
 		}
 
 		return mcp.NewToolResultText(result.String()), nil
