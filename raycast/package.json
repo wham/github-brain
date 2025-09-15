@@ -1,0 +1,92 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "github-brain-search",
+  "title": "GitHub Brain Search",
+  "description": "Search across GitHub discussions, issues, and pull requests using GitHub Brain",
+  "icon": "icon.png",
+  "author": "github-brain",
+  "categories": ["Developer Tools"],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search",
+      "title": "Search GitHub Brain",
+      "description": "Search across GitHub discussions, issues, and pull requests",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "githubBrainPath",
+      "title": "GitHub Brain Project Path",
+      "description": "Path to the github-brain project directory (containing scripts/run)",
+      "type": "textfield",
+      "default": "~/code/github-brain",
+      "required": false
+    },
+    {
+      "name": "organization",
+      "title": "GitHub Organization",
+      "description": "The GitHub organization to search (must match the one used in 'github-brain pull')",
+      "type": "textfield",
+      "placeholder": "e.g., github, microsoft, google",
+      "required": false
+    },
+    {
+      "name": "resultsLimit",
+      "title": "Results Limit",
+      "description": "Number of results to display",
+      "type": "dropdown",
+      "default": "20",
+      "required": false,
+      "data": [
+        {"title": "5", "value": "5"},
+        {"title": "10", "value": "10"},
+        {"title": "20", "value": "20"},
+        {"title": "30", "value": "30"},
+        {"title": "50", "value": "50"}
+      ]
+    },
+    {
+      "name": "autoOpen",
+      "title": "Auto-open Single Result",
+      "description": "Automatically open when only one match found",
+      "type": "checkbox",
+      "default": false,
+      "required": false
+    },
+    {
+      "name": "previewLength",
+      "title": "Preview Length",
+      "description": "Number of characters to show in body preview",
+      "type": "dropdown",
+      "default": "200",
+      "required": false,
+      "data": [
+        {"title": "100", "value": "100"},
+        {"title": "200", "value": "200"},
+        {"title": "300", "value": "300"},
+        {"title": "500", "value": "500"}
+      ]
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.60.0",
+    "@raycast/utils": "^1.10.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.6",
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "eslint": "^8.51.0",
+    "prettier": "^3.0.3",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}
