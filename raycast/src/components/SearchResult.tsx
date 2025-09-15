@@ -1,6 +1,6 @@
 import { List, ActionPanel, Action, Icon } from '@raycast/api';
 import { SearchResult as SearchResultType } from '../types';
-import { getTypeIcon, formatRelativeTime } from '../utils';
+import { getTypeIcon } from '../utils';
 
 interface SearchResultProps {
   result: SearchResultType;
@@ -9,19 +9,16 @@ interface SearchResultProps {
 
 export function SearchResult({ result }: SearchResultProps) {
   const typeIcon = getTypeIcon(result.type);
-  const relativeTime = formatRelativeTime(result.created_at);
 
   // Display full title without truncation
   const displayTitle = result.title;
 
   // Format subtitle
   const subtitle = `${result.repository} • ${result.author}`;
-  
-  // Prepare accessories
-  const accessories: List.Item.Accessory[] = [
-    { text: typeIcon, tooltip: result.type.replace('_', ' ') }
-  ];
-  
+
+  // Prepare accessories - state first, then type
+  const accessories: List.Item.Accessory[] = [];
+
   if (result.state) {
     accessories.push({
       text: result.state === 'open' ? 'Open' : 'Closed',
@@ -29,10 +26,10 @@ export function SearchResult({ result }: SearchResultProps) {
       tooltip: `Status: ${result.state}`
     });
   }
-  
+
   accessories.push({
-    text: relativeTime,
-    tooltip: result.created_at
+    text: typeIcon,
+    tooltip: result.type.replace('_', ' ')
   });
 
   return (

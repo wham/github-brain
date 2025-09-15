@@ -102,10 +102,9 @@ Display search results in a simple list view:
 
 - **Primary Text**: Item title (full title, no truncation)
 - **Subtitle**: Repository name and author
-- **Accessories**:
-  - Type icon (💬 for discussions, 🐛 for issues, 🔀 for PRs)
-  - State badge ("Open" or "Closed" for issues/PRs)
-  - Creation date (relative format: "2 days ago")
+- **Accessories** (in order):
+  - State badge ("Open" or "Closed" for issues/PRs) - shown first
+  - Type icon (💬 for discussions, 🐛 for issues, 🔀 for PRs) - shown second
 
 No detail view or preview panel - keep the interface clean and focused on the list.
 
