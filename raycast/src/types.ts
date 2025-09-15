@@ -10,9 +10,8 @@ export interface SearchResult {
   url: string;
   type: 'discussion' | 'issue' | 'pull_request';
   repository: string;
-  author: string;
   created_at: string;
-  state?: 'open' | 'closed';
+  state?: 'open' | 'closed' | 'merged';
   body: string;
 }
 

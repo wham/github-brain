@@ -71,9 +71,8 @@ interface SearchResult {
   url: string;
   type: 'discussion' | 'issue' | 'pull_request';
   repository: string;
-  author: string;
   created_at: string;
-  state?: 'open' | 'closed';
+  state?: 'open' | 'closed' | 'merged'; // merged for PRs
   body: string; // Full body content (not displayed in list)
 }
 ```
@@ -92,7 +91,7 @@ Use the `search` MCP tool with the following parameters:
 ```typescript
 const searchParams = {
   query: userInput,
-  fields: ["title", "url", "repository", "created_at", "author", "type", "state", "body"]
+  fields: ["title", "url", "repository", "created_at", "type", "state", "body"]
 };
 ```
 
@@ -100,11 +99,20 @@ const searchParams = {
 
 Display search results in a simple list view:
 
+- **Icon**: Type icon using Raycast's built-in icons with GitHub-style colors (shown as the list item icon):
+  - **Issues**:
+    - Open: Green circle (`Icon.Circle` with green tint #1a7f37)
+    - Closed: Purple X mark circle (`Icon.XMarkCircle` with purple tint #8250df)
+  - **Pull Requests**:
+    - Open: Green circle with dots (`Icon.CircleEllipsis` with green tint #1a7f37)
+    - Closed: Red X mark circle (`Icon.XMarkCircle` with red tint #cf222e)
+    - Merged: Purple check circle (`Icon.CheckCircle` with purple tint #8250df)
+  - **Discussions**:
+    - Open: Green speech bubble (`Icon.SpeechBubble` with green tint #1a7f37)
+    - Closed/Answered: Purple speech bubble (`Icon.SpeechBubbleImportant` with purple tint #8250df)
 - **Primary Text**: Item title (full title, no truncation)
-- **Subtitle**: Repository name and author
-- **Accessories** (in order):
-  - State badge ("Open" or "Closed" for issues/PRs) - shown first
-  - Type icon (💬 for discussions, 🐛 for issues, 🔀 for PRs) - shown second
+- **Subtitle**: Repository name
+- **Accessories**: None - keep the row clean and simple
 
 No detail view or preview panel - keep the interface clean and focused on the list.
 

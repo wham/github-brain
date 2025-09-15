@@ -1,4 +1,32 @@
+import { Icon } from '@raycast/api';
 import { SearchResult } from './types';
+
+export function getResultIcon(type: SearchResult['type'], state?: SearchResult['state']): { source: Icon; tintColor?: string } {
+  switch (type) {
+    case 'issue':
+      if (state === 'closed') {
+        return { source: Icon.XMarkCircle, tintColor: '#8250df' }; // Purple for closed
+      }
+      return { source: Icon.Circle, tintColor: '#1a7f37' }; // Green for open
+
+    case 'pull_request':
+      if (state === 'merged') {
+        return { source: Icon.CheckCircle, tintColor: '#8250df' }; // Purple for merged
+      } else if (state === 'closed') {
+        return { source: Icon.XMarkCircle, tintColor: '#cf222e' }; // Red for closed
+      }
+      return { source: Icon.CircleEllipsis, tintColor: '#1a7f37' }; // Green for open
+
+    case 'discussion':
+      if (state === 'closed') {
+        return { source: Icon.SpeechBubbleImportant, tintColor: '#8250df' }; // Purple for answered/closed
+      }
+      return { source: Icon.SpeechBubble, tintColor: '#1a7f37' }; // Green for open
+
+    default:
+      return { source: Icon.Document };
+  }
+}
 
 export function getTypeIcon(type: SearchResult['type']): string {
   switch (type) {

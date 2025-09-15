@@ -1,6 +1,6 @@
 import { List, ActionPanel, Action, Icon } from '@raycast/api';
 import { SearchResult as SearchResultType } from '../types';
-import { getTypeIcon } from '../utils';
+import { getResultIcon } from '../utils';
 
 interface SearchResultProps {
   result: SearchResultType;
@@ -8,35 +8,20 @@ interface SearchResultProps {
 }
 
 export function SearchResult({ result }: SearchResultProps) {
-  const typeIcon = getTypeIcon(result.type);
+  // Get the appropriate icon based on type and state
+  const icon = getResultIcon(result.type, result.state);
 
   // Display full title without truncation
   const displayTitle = result.title;
 
   // Format subtitle
-  const subtitle = `${result.repository} • ${result.author}`;
-
-  // Prepare accessories - state first, then type
-  const accessories: List.Item.Accessory[] = [];
-
-  if (result.state) {
-    accessories.push({
-      text: result.state === 'open' ? 'Open' : 'Closed',
-      icon: result.state === 'open' ? Icon.Circle : Icon.CheckCircle,
-      tooltip: `Status: ${result.state}`
-    });
-  }
-
-  accessories.push({
-    text: typeIcon,
-    tooltip: result.type.replace('_', ' ')
-  });
+  const subtitle = result.repository;
 
   return (
     <List.Item
+      icon={icon}
       title={displayTitle}
       subtitle={subtitle}
-      accessories={accessories}
       actions={
         <ActionPanel>
           <ActionPanel.Section>

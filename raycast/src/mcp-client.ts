@@ -312,7 +312,7 @@ export class MCPClient extends EventEmitter {
         name: 'search',
         arguments: {
           query,
-          fields: ['title', 'url', 'repository', 'created_at', 'author', 'type', 'state', 'body']
+          fields: ['title', 'url', 'repository', 'created_at', 'type', 'state', 'body']
         } as SearchToolParams
       });
 
@@ -343,7 +343,6 @@ export class MCPClient extends EventEmitter {
         const typeMatch = section.match(/- Type:\s+(.+)$/m);
         const repoMatch = section.match(/- Repository:\s+(.+)$/m);
         const createdMatch = section.match(/- Created at:\s+(.+)$/m);
-        const authorMatch = section.match(/- Author:\s+(.+)$/m);
         const stateMatch = section.match(/- State:\s+(.+)$/m);
 
         if (titleMatch && urlMatch) {
@@ -365,7 +364,6 @@ export class MCPClient extends EventEmitter {
             type,
             repository: repoMatch?.[1] || '',
             created_at: createdMatch?.[1] || '',
-            author: authorMatch?.[1] || '',
             state: stateMatch?.[1]?.toLowerCase() as 'open' | 'closed',
             body
           });
