@@ -8,7 +8,7 @@ Create a TypeScript-based Raycast extension using the official Raycast Extension
 
 ### Extension Metadata
 
-- **Name**: GitHub Brain Search
+- **Name**: GitHub Brain
 - **Description**: Search across GitHub discussions, issues, and pull requests using GitHub Brain
 - **Author**: Your Organization
 - **Category**: Developer Tools
@@ -52,7 +52,7 @@ The extension should:
 ### Command Configuration
 
 - **Name**: `search`
-- **Title**: "Search GitHub Brain"
+- **Title**: "Search"
 - **Description**: "Search across GitHub discussions, issues, and pull requests"
 - **Mode**: `view` with search bar
 

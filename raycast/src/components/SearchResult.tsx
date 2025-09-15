@@ -1,18 +1,13 @@
-import { List, ActionPanel, Action, Icon, Color, getPreferenceValues } from '@raycast/api';
+import { List, ActionPanel, Action, Icon } from '@raycast/api';
 import { SearchResult as SearchResultType } from '../types';
-import { getTypeIcon, formatRelativeTime, truncateText } from '../utils';
+import { getTypeIcon, formatRelativeTime } from '../utils';
 
 interface SearchResultProps {
   result: SearchResultType;
   index: number;
 }
 
-interface Preferences {
-  autoOpen: boolean;
-}
-
-export function SearchResult({ result, index }: SearchResultProps) {
-  const preferences = getPreferenceValues<Preferences>();
+export function SearchResult({ result }: SearchResultProps) {
   const typeIcon = getTypeIcon(result.type);
   const relativeTime = formatRelativeTime(result.created_at);
 

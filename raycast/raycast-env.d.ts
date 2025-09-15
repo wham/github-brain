@@ -15,9 +15,7 @@ type ExtensionPreferences = {
   /** Results Limit - Number of results to display */
   "resultsLimit": "5" | "10" | "20" | "30" | "50",
   /** Auto-open Single Result - Automatically open when only one match found */
-  "autoOpen": boolean,
-  /** Preview Length - Number of characters to show in body preview */
-  "previewLength": "100" | "200" | "300" | "500"
+  "autoOpen": boolean
 }
 
 /** Preferences accessible in all the extension's commands */

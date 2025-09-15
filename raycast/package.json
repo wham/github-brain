@@ -1,7 +1,7 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "github-brain-search",
-  "title": "GitHub Brain Search",
+  "name": "github-brain",
+  "title": "GitHub Brain",
   "description": "Search across GitHub discussions, issues, and pull requests using GitHub Brain",
   "icon": "icon.png",
   "author": "github-brain",
@@ -10,7 +10,7 @@
   "commands": [
     {
       "name": "search",
-      "title": "Search GitHub Brain",
+      "title": "Search",
       "description": "Search across GitHub discussions, issues, and pull requests",
       "mode": "view"
     }
@@ -54,20 +54,6 @@
       "type": "checkbox",
       "default": false,
       "required": false
-    },
-    {
-      "name": "previewLength",
-      "title": "Preview Length",
-      "description": "Number of characters to show in body preview",
-      "type": "dropdown",
-      "default": "200",
-      "required": false,
-      "data": [
-        {"title": "100", "value": "100"},
-        {"title": "200", "value": "200"},
-        {"title": "300", "value": "300"},
-        {"title": "500", "value": "500"}
-      ]
     }
   ],
   "dependencies": {
