@@ -206,7 +206,6 @@ export default function SearchCommand() {
       onSearchTextChange={handleSearchTextChange}
       searchBarPlaceholder="Search discussions, issues, and pull requests..."
       throttle
-      isShowingDetail={state.results.length > 0}
     >
       {state.results.length === 0 && state.query.length >= 2 && !state.isLoading ? (
         <List.EmptyView

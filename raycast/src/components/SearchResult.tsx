@@ -15,10 +15,10 @@ export function SearchResult({ result, index }: SearchResultProps) {
   const preferences = getPreferenceValues<Preferences>();
   const typeIcon = getTypeIcon(result.type);
   const relativeTime = formatRelativeTime(result.created_at);
-  
-  // Truncate title for display
-  const displayTitle = truncateText(result.title, 60);
-  
+
+  // Display full title without truncation
+  const displayTitle = result.title;
+
   // Format subtitle
   const subtitle = `${result.repository} • ${result.author}`;
   
@@ -45,24 +45,6 @@ export function SearchResult({ result, index }: SearchResultProps) {
       title={displayTitle}
       subtitle={subtitle}
       accessories={accessories}
-      detail={
-        <List.Item.Detail
-          markdown={`# ${result.title}\n\n${result.body}`}
-          metadata={
-            <List.Item.Detail.Metadata>
-              <List.Item.Detail.Metadata.Label title="Type" text={result.type.replace('_', ' ')} />
-              <List.Item.Detail.Metadata.Label title="Repository" text={result.repository} />
-              <List.Item.Detail.Metadata.Label title="Author" text={result.author} />
-              <List.Item.Detail.Metadata.Label title="Created" text={result.created_at} />
-              {result.state && (
-                <List.Item.Detail.Metadata.Label title="Status" text={result.state} />
-              )}
-              <List.Item.Detail.Metadata.Separator />
-              <List.Item.Detail.Metadata.Link title="Open on GitHub" target={result.url} text={result.url} />
-            </List.Item.Detail.Metadata>
-          }
-        />
-      }
       actions={
         <ActionPanel>
           <ActionPanel.Section>

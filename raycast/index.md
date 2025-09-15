@@ -74,7 +74,7 @@ interface SearchResult {
   author: string;
   created_at: string;
   state?: 'open' | 'closed';
-  body: string; // First 200 characters for preview
+  body: string; // Full body content (not displayed in list)
 }
 ```
 
@@ -98,15 +98,16 @@ const searchParams = {
 
 ### Result Display
 
-Each search result should display:
+Display search results in a simple list view:
 
-- **Primary Text**: Item title (truncated to 60 characters)
-- **Secondary Text**: Repository name and author
-- **Accessories**: 
+- **Primary Text**: Item title (full title, no truncation)
+- **Subtitle**: Repository name and author
+- **Accessories**:
   - Type icon (💬 for discussions, 🐛 for issues, 🔀 for PRs)
   - State badge ("Open" or "Closed" for issues/PRs)
   - Creation date (relative format: "2 days ago")
-- **Preview**: First 200 characters of body content
+
+No detail view or preview panel - keep the interface clean and focused on the list.
 
 ### Result Actions
 
@@ -123,14 +124,9 @@ Each search result should display:
    - **Action**: Copy GitHub URL to system clipboard
 
 2. **Copy Title**
-   - **Title**: "Copy Title to Clipboard" 
+   - **Title**: "Copy Title to Clipboard"
    - **Key**: `⌘⇧C`
    - **Action**: Copy item title to system clipboard
-
-3. **Show Details**
-   - **Title**: "Show Full Content"
-   - **Key**: `⌘D`
-   - **Action**: Open detail view with full body content
 
 ## Error Handling
 
@@ -184,7 +180,6 @@ When no results found, show suggestions:
 - `Enter`: Open selected result in browser
 - `⌘C`: Copy URL of selected result
 - `⌘⇧C`: Copy title of selected result
-- `⌘D`: Show full content details
 - `Escape`: Clear search and return to input
 
 ## Configuration
@@ -196,7 +191,6 @@ Allow users to configure:
 1. **GitHub Brain Path**: Custom path to `github-brain` binary
 2. **Results Limit**: Number of results to display (5-50, default: 20)
 3. **Auto-open**: Automatically open first result when only one match found
-4. **Preview Length**: Number of characters to show in body preview (100-500, default: 200)
 
 ### Settings Validation
 
