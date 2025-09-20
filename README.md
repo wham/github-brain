@@ -156,6 +156,13 @@ Add to the VS Code MCP configuration file:
 
 Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `servers` already exists.
 
-## Raycast
+## Raycast Extension
 
-Run with `scripts/raycast`.
+Run the Raycast extension with:
+
+```sh
+scripts/raycast [<args>]
+```
+
+The extension uses the MCP server to search GitHub data. The extension will start the MCP server with `scripts/run mcp` and passthrough
+the provided `<args>`.
