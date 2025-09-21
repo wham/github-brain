@@ -10,6 +10,36 @@ import {
 } from "@raycast/api";
 import { spawn } from "child_process";
 
+function parseMCPResponse(responseData: string): SearchResult[] {
+  // Handle both single line responses and multi-line responses
+  const lines = responseData.split("\n").filter((line) => line.trim());
+
+  // Try to parse each line as JSON
+  for (const line of lines) {
+    try {
+      const response = JSON.parse(line);
+      console.log("Parsed JSON response:", response);
+
+      if (response.result && response.result.content) {
+        const content = response.result.content[0]?.text || "";
+        console.log("Extracted content:", content);
+        return parseSearchResults(content);
+      } else if (response.error) {
+        console.error("MCP returned error:", response.error);
+        throw new Error(
+          `MCP server error: ${response.error.message || "Unknown error"}`
+        );
+      }
+    } catch (e) {
+      console.log("Failed to parse line as JSON:", line, "Error:", e);
+      // Continue to next line
+    }
+  }
+
+  console.log("No valid JSON-RPC response found in:", responseData);
+  return [];
+}
+
 interface Preferences {
   mcpCommand: string;
 }
@@ -50,30 +80,100 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
-    const mcpCommand = preferences.mcpCommand;
+    let mcpCommand = preferences.mcpCommand;
 
-    // Parse command and arguments
+    console.log("=== MCP Search Debug Info ===");
+    console.log("Query:", query);
+    console.log("Raw mcpCommand from preferences:", mcpCommand);
+
+    // Auto-fix old command format if detected
+    if (mcpCommand && mcpCommand.includes(" -db ")) {
+      // Check if this is the old format: "/path/to/binary -db /path/to/db"
+      const parts = mcpCommand.split(" ");
+      if (parts.length >= 3 && parts[1] === "-db" && !parts.includes("mcp")) {
+        // Convert to new format: "/path/to/binary mcp -db /path/to/db"
+        const binaryPath = parts[0];
+        const dbPath = parts.slice(2).join(" ");
+        mcpCommand = `${binaryPath} mcp -db ${dbPath}`;
+        console.log("Auto-corrected command format to:", mcpCommand);
+      }
+    }
+
+    // Parse command and arguments - the command should now include 'mcp' in the right place
     const commandParts = mcpCommand.split(" ");
     const binaryPath = commandParts[0];
-    const args = [...commandParts.slice(1), "mcp"];
+    const args = commandParts.slice(1);
+
+    console.log("Parsed binary path:", binaryPath);
+    console.log("Parsed args:", args);
+    console.log("Full command will be:", binaryPath, args.join(" "));
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        ORGANIZATION: "github", // Set the required environment variable
+      },
     });
 
     let responseData = "";
     let errorData = "";
+    let hasReceivedResponse = false;
+    let responseTimeout: NodeJS.Timeout;
+
+    // Set a timeout for the MCP response
+    responseTimeout = setTimeout(() => {
+      if (!hasReceivedResponse) {
+        console.log("MCP request timed out after 10 seconds");
+        mcpProcess.kill();
+        reject(new Error("MCP request timed out"));
+      }
+    }, 10000); // 10 second timeout
 
     mcpProcess.stdout.on("data", (data) => {
-      responseData += data.toString();
+      const output = data.toString();
+      console.log("MCP stdout:", output);
+      responseData += output;
+
+      // Check if we have a complete JSON-RPC response
+      const lines = responseData.split("\n");
+      for (const line of lines) {
+        if (
+          line.trim() &&
+          line.includes('"jsonrpc":"2.0"') &&
+          line.includes('"id":1')
+        ) {
+          hasReceivedResponse = true;
+          clearTimeout(responseTimeout);
+
+          // Process the response immediately
+          try {
+            console.log("Processing complete response:", line);
+            const results = parseMCPResponse(line);
+            console.log("Parsed results:", results);
+            mcpProcess.kill(); // Clean up the process
+            resolve(results);
+            return;
+          } catch (error) {
+            console.error("Parse error:", error);
+            mcpProcess.kill();
+            reject(new Error(`Failed to parse MCP response: ${error.message}`));
+            return;
+          }
+        }
+      }
     });
 
     mcpProcess.stderr.on("data", (data) => {
-      errorData += data.toString();
+      const error = data.toString();
+      console.log("MCP stderr:", error);
+      errorData += error;
     });
 
     mcpProcess.on("error", (error) => {
+      console.error("MCP process error:", error);
+      clearTimeout(responseTimeout);
       reject(new Error(`Failed to start MCP server: ${error.message}`));
     });
 
@@ -99,21 +199,48 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       },
     };
 
-    mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
-    mcpProcess.stdin.end();
+    console.log(
+      "Sending JSON-RPC request:",
+      JSON.stringify(searchRequest, null, 2)
+    );
+
+    try {
+      mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
+      // Don't end stdin immediately - let the process handle the response first
+      // The stdin will be closed when we kill the process after getting the response
+    } catch (error) {
+      console.error("Error writing to MCP stdin:", error);
+      clearTimeout(responseTimeout);
+      reject(
+        new Error(`Failed to send request to MCP server: ${error.message}`)
+      );
+    }
 
     mcpProcess.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`MCP server exited with code ${code}: ${errorData}`));
-        return;
-      }
+      console.log("MCP process closed with code:", code);
+      clearTimeout(responseTimeout);
 
-      try {
-        // Parse the MCP response
-        const results = parseMCPResponse(responseData);
-        resolve(results);
-      } catch (error) {
-        reject(new Error(`Failed to parse MCP response: ${error.message}`));
+      // Only handle close event if we haven't already processed a response
+      if (!hasReceivedResponse) {
+        console.log("Final stdout:", responseData);
+        console.log("Final stderr:", errorData);
+
+        if (code !== 0) {
+          const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
+          console.error("MCP Error:", errorMessage);
+          reject(new Error(errorMessage));
+          return;
+        }
+
+        // Try to parse any remaining response data
+        try {
+          const results = parseMCPResponse(responseData);
+          console.log("Parsed results from close event:", results);
+          resolve(results);
+        } catch (error) {
+          console.error("Parse error on close:", error);
+          reject(new Error(`Failed to parse MCP response: ${error.message}`));
+        }
       }
     });
   });

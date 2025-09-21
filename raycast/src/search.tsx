@@ -81,15 +81,58 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        ORGANIZATION: "github", // Set the required environment variable
+      },
     });
 
     let responseData = "";
     let errorData = "";
+    let hasReceivedResponse = false;
+    let responseTimeout: NodeJS.Timeout;
+
+    // Set a timeout for the MCP response
+    responseTimeout = setTimeout(() => {
+      if (!hasReceivedResponse) {
+        console.log("MCP request timed out after 10 seconds");
+        mcpProcess.kill();
+        reject(new Error("MCP request timed out"));
+      }
+    }, 10000); // 10 second timeout
 
     mcpProcess.stdout.on("data", (data) => {
       const output = data.toString();
       console.log("MCP stdout:", output);
       responseData += output;
+
+      // Check if we have a complete JSON-RPC response
+      const lines = responseData.split("\n");
+      for (const line of lines) {
+        if (
+          line.trim() &&
+          line.includes('"jsonrpc":"2.0"') &&
+          line.includes('"id":1')
+        ) {
+          hasReceivedResponse = true;
+          clearTimeout(responseTimeout);
+
+          // Process the response immediately
+          try {
+            console.log("Processing complete response:", line);
+            const results = parseMCPResponse(line);
+            console.log("Parsed results:", results);
+            mcpProcess.kill(); // Clean up the process
+            resolve(results);
+            return;
+          } catch (error) {
+            console.error("Parse error:", error);
+            mcpProcess.kill();
+            reject(new Error(`Failed to parse MCP response: ${error.message}`));
+            return;
+          }
+        }
+      }
     });
 
     mcpProcess.stderr.on("data", (data) => {
@@ -129,49 +172,76 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       "Sending JSON-RPC request:",
       JSON.stringify(searchRequest, null, 2)
     );
-    mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
-    mcpProcess.stdin.end();
+
+    try {
+      mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
+      // Don't end stdin immediately - let the process handle the response first
+      // The stdin will be closed when we kill the process after getting the response
+    } catch (error) {
+      console.error("Error writing to MCP stdin:", error);
+      clearTimeout(responseTimeout);
+      reject(
+        new Error(`Failed to send request to MCP server: ${error.message}`)
+      );
+    }
 
     mcpProcess.on("close", (code) => {
       console.log("MCP process closed with code:", code);
-      console.log("Final stdout:", responseData);
-      console.log("Final stderr:", errorData);
+      clearTimeout(responseTimeout);
 
-      if (code !== 0) {
-        const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
-        console.error("MCP Error:", errorMessage);
-        reject(new Error(errorMessage));
-        return;
-      }
+      // Only handle close event if we haven't already processed a response
+      if (!hasReceivedResponse) {
+        console.log("Final stdout:", responseData);
+        console.log("Final stderr:", errorData);
 
-      try {
-        // Parse the MCP response
-        const results = parseMCPResponse(responseData);
-        console.log("Parsed results:", results);
-        resolve(results);
-      } catch (error) {
-        console.error("Parse error:", error);
-        reject(new Error(`Failed to parse MCP response: ${error.message}`));
+        if (code !== 0) {
+          const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
+          console.error("MCP Error:", errorMessage);
+          reject(new Error(errorMessage));
+          return;
+        }
+
+        // Try to parse any remaining response data
+        try {
+          const results = parseMCPResponse(responseData);
+          console.log("Parsed results from close event:", results);
+          resolve(results);
+        } catch (error) {
+          console.error("Parse error on close:", error);
+          reject(new Error(`Failed to parse MCP response: ${error.message}`));
+        }
       }
     });
   });
 }
 
 function parseMCPResponse(responseData: string): SearchResult[] {
+  // Handle both single line responses and multi-line responses
   const lines = responseData.split("\n").filter((line) => line.trim());
 
+  // Try to parse each line as JSON
   for (const line of lines) {
     try {
       const response = JSON.parse(line);
+      console.log("Parsed JSON response:", response);
+
       if (response.result && response.result.content) {
         const content = response.result.content[0]?.text || "";
+        console.log("Extracted content:", content);
         return parseSearchResults(content);
+      } else if (response.error) {
+        console.error("MCP returned error:", response.error);
+        throw new Error(
+          `MCP server error: ${response.error.message || "Unknown error"}`
+        );
       }
     } catch (e) {
+      console.log("Failed to parse line as JSON:", line, "Error:", e);
       // Continue to next line
     }
   }
 
+  console.log("No valid JSON-RPC response found in:", responseData);
   return [];
 }
 
