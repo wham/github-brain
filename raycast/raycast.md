@@ -8,7 +8,10 @@ Read the official docs:
   - https://developers.raycast.com/basics/getting-started
   - https://developers.raycast.com/basics/create-your-first-extension
 
-Put everything into one file `src/raycast.tsx`. Use TypeScript.
+Put everything into one file `src/raycast.tsx`. Use TypeScript. Create no other
+TypeScript files.
+
+Minimize the overall number of files and dependencies to the absolute minimum.
 
 ## Protocol
 

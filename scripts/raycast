@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")/../raycast"
+
+# Build and run the Raycast extension
+npm run dev
