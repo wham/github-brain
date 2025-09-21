@@ -57,19 +57,9 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
 
-    console.log("=== MCP Search Debug Info ===");
-    console.log("Query:", query);
-    console.log("Organization:", preferences.organization);
-    console.log("GitHub Brain Command:", preferences.githubBrainCommand);
-    console.log("DB Directory:", preferences.dbDir);
-
     // Build the command: <githubBrainCommand> mcp
     const binaryPath = preferences.githubBrainCommand;
     const args = ["mcp"];
-
-    console.log("Parsed binary path:", binaryPath);
-    console.log("Parsed args:", args);
-    console.log("Full command will be:", binaryPath, args.join(" "));
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
@@ -89,7 +79,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     // Set a timeout for the MCP response
     responseTimeout = setTimeout(() => {
       if (!hasReceivedResponse) {
-        console.log("MCP request timed out after 10 seconds");
         mcpProcess.kill();
         reject(new Error("MCP request timed out"));
       }
@@ -97,7 +86,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
     mcpProcess.stdout.on("data", (data) => {
       const output = data.toString();
-      console.log("MCP stdout:", output);
       responseData += output;
 
       // Check if we have a complete JSON-RPC response
@@ -113,9 +101,7 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
           // Process the response immediately
           try {
-            console.log("Processing complete response:", line);
             const results = parseMCPResponse(line);
-            console.log("Parsed results:", results);
             mcpProcess.kill(); // Clean up the process
             resolve(results);
             return;
@@ -131,7 +117,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
     mcpProcess.stderr.on("data", (data) => {
       const error = data.toString();
-      console.log("MCP stderr:", error);
       errorData += error;
     });
 
@@ -162,11 +147,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       },
     };
 
-    console.log(
-      "Sending JSON-RPC request:",
-      JSON.stringify(searchRequest, null, 2)
-    );
-
     try {
       mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
       // Don't end stdin immediately - let the process handle the response first
@@ -180,14 +160,10 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     }
 
     mcpProcess.on("close", (code) => {
-      console.log("MCP process closed with code:", code);
       clearTimeout(responseTimeout);
 
       // Only handle close event if we haven't already processed a response
       if (!hasReceivedResponse) {
-        console.log("Final stdout:", responseData);
-        console.log("Final stderr:", errorData);
-
         if (code !== 0) {
           const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
           console.error("MCP Error:", errorMessage);
@@ -198,7 +174,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
         // Try to parse any remaining response data
         try {
           const results = parseMCPResponse(responseData);
-          console.log("Parsed results from close event:", results);
           resolve(results);
         } catch (error) {
           console.error("Parse error on close:", error);
@@ -217,11 +192,9 @@ function parseMCPResponse(responseData: string): SearchResult[] {
   for (const line of lines) {
     try {
       const response = JSON.parse(line);
-      console.log("Parsed JSON response:", response);
 
       if (response.result && response.result.content) {
         const content = response.result.content[0]?.text || "";
-        console.log("Extracted content:", content);
         return parseSearchResults(content);
       } else if (response.error) {
         console.error("MCP returned error:", response.error);
@@ -230,12 +203,10 @@ function parseMCPResponse(responseData: string): SearchResult[] {
         );
       }
     } catch (e) {
-      console.log("Failed to parse line as JSON:", line, "Error:", e);
       // Continue to next line
     }
   }
 
-  console.log("No valid JSON-RPC response found in:", responseData);
   return [];
 }
 
@@ -296,15 +267,6 @@ export default function Command() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Log the current preference values on component mount
-  useEffect(() => {
-    const preferences = getPreferenceValues<Preferences>();
-    console.log("=== Current Preferences on Mount ===");
-    console.log("organization:", preferences.organization);
-    console.log("githubBrainCommand:", preferences.githubBrainCommand);
-    console.log("dbDir:", preferences.dbDir);
-  }, []);
 
   useEffect(() => {
     if (searchText.trim()) {
