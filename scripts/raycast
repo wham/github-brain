@@ -7,10 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Build GitHub Brain with scripts/run
 echo "Building GitHub Brain..."
 cd "$ROOT_DIR"
-./scripts/run --help > /dev/null 2>&1 || {
-  echo "Building github-brain binary..."
-  CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -o ./build/github-brain .
-}
+./scripts/run
 
 # Determine full paths
 GITHUB_BRAIN_BINARY="$ROOT_DIR/build/github-brain"
