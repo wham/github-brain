@@ -2,7 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "github-brain",
   "title": "GitHub Brain",
-  "description": "Search across GitHub discussions, issues, and pull requests from your organization",
+  "description": "Search GitHub issues, pull requests, and discussions",
   "icon": "🧠",
   "author": "wham",
   "categories": [
@@ -19,27 +19,27 @@
   ],
   "preferences": [
     {
-      "name": "dbDir",
-      "title": "Path to the SQLite database directory",
-      "description": "Absolute path to the SQLite database directory",
-      "type": "textfield",
-      "required": true,
-      "default": "/Users/wham/code/github-brain/db"
-    },
-    {
-      "name": "githubBrainCommand",
-      "title": "GitHub Brain executable command",
-      "description": "Absolute path to the GitHub Brain executable command or binary",
-      "type": "textfield",
-      "required": true,
-      "default": "github-brain"
-    },
-    {
       "name": "organization",
       "title": "GitHub organization",
       "description": "The GitHub organization to work with",
       "type": "textfield",
       "required": true
+    },
+    {
+      "name": "githubBrainCommand",
+      "title": "GitHub Brain executable",
+      "description": "Absolute path to the GitHub Brain executable command or binary",
+      "type": "textfield",
+      "required": true,
+      "default": "/Users/wham/code/github-brain/build/github-brain"
+    },
+    {
+      "name": "dbDir",
+      "title": "Database directory",
+      "description": "Absolute path to the GitHub Brain database directory",
+      "type": "textfield",
+      "required": true,
+      "default": "/Users/wham/code/github-brain/db"
     }
   ],
   "dependencies": {

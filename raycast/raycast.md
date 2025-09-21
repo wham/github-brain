@@ -34,15 +34,15 @@ See https://developers.raycast.com/information/manifest#preference-properties
 - `required`: true
 
 - `name`: `githubBrainCommand`
-- `title`: GitHub Brain executablecommand
+- `title`: GitHub Brain executable
 - `description`: Absolute path to the GitHub Brain executable command or binary
 - `type`: textfield
 - `required`: true
 - `default`: github-brain
 
 - `name`: `dbDir`
-- `title`: Path to the SQLite database directory
-- `description`: Absolute path to the SQLite database directory
+- `title`: Database directory
+- `description`: Absolute path to the GitHub Brain database directory
 - `type`: textfield
 - `required`: true
 - `default`: /Users/wham/code/github-brain/db

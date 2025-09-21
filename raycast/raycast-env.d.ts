@@ -8,12 +8,12 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** Path to the SQLite database directory - Absolute path to the SQLite database directory */
-  "dbDir": string,
-  /** GitHub Brain executable command - Absolute path to the GitHub Brain executable command or binary */
-  "githubBrainCommand": string,
   /** GitHub organization - The GitHub organization to work with */
-  "organization": string
+  "organization": string,
+  /** GitHub Brain executable - Absolute path to the GitHub Brain executable command or binary */
+  "githubBrainCommand": string,
+  /** Database directory - Absolute path to the GitHub Brain database directory */
+  "dbDir": string
 }
 
 /** Preferences accessible in all the extension's commands */
