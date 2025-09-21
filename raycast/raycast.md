@@ -13,6 +13,15 @@ TypeScript files.
 
 Minimize the overall number of files and dependencies to the absolute minimum.
 
+## Launcher
+
+- The extension is launched with `scripts/raycast`
+- The script first builds GitHub Brain with `scripts/run`
+- This creates `build/github-brain` binary
+- The launcher determines the full path to `build/github-brain` and `db` directory
+- The launcher updates the extension command propery `githubBrainRunCommand` with the full path to `build/github-brain` and argument `-db <db-dir>`. It also appends any arguments passed to the launcher.
+- The launcher then starts the Raycast extension with `npm run dev` in the `ray
+
 ## Protocol
 
 Connect to github-brain server via MCP stdio transport. Spawn process: `scripts/run mcp <arg>`. Use the `search` tool.
