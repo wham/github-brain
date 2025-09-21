@@ -41,7 +41,7 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
   return new Promise((resolve, reject) => {
     // Get the full path to scripts/run from environment variable
     const scriptPath = process.env.GITHUB_BRAIN_SCRIPT_PATH || "../scripts/run";
-    
+
     // Start the MCP server process
     const mcpProcess = spawn(scriptPath, ["mcp"], {
       stdio: ["pipe", "pipe", "pipe"],
