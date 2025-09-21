@@ -17,7 +17,7 @@ GITHUB_BRAIN_BINARY="$ROOT_DIR/build/github-brain"
 DB_DIR="$ROOT_DIR/db"
 
 # Create the MCP command with full path to binary and db directory
-MCP_COMMAND="$GITHUB_BRAIN_BINARY -db $DB_DIR"
+MCP_COMMAND="$GITHUB_BRAIN_BINARY mcp -db $DB_DIR"
 
 # Add any additional arguments passed to the launcher
 if [ $# -gt 0 ]; then

@@ -22,7 +22,7 @@
           "description": "Absolute path to GitHub Brain executable",
           "type": "textfield",
           "required": true,
-          "default": "/Users/wham/code/github-brain/build/github-brain -db /Users/wham/code/github-brain/db"
+          "default": "/Users/wham/code/github-brain/build/github-brain mcp -db /Users/wham/code/github-brain/db"
         }
       ]
     }

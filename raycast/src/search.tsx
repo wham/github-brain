@@ -1,6 +1,13 @@
 // @ts-nocheck
 import React, { useState, useEffect } from "react";
-import { ActionPanel, Action, List, Icon, Color, getPreferenceValues } from "@raycast/api";
+import {
+  ActionPanel,
+  Action,
+  List,
+  Icon,
+  Color,
+  getPreferenceValues,
+} from "@raycast/api";
 import { spawn } from "child_process";
 
 interface Preferences {
@@ -43,12 +50,33 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
-    const mcpCommand = preferences.mcpCommand;
-    
-    // Parse command and arguments
+    let mcpCommand = preferences.mcpCommand;
+
+    console.log("=== MCP Search Debug Info ===");
+    console.log("Query:", query);
+    console.log("Raw mcpCommand from preferences:", mcpCommand);
+
+    // Auto-fix old command format if detected
+    if (mcpCommand && mcpCommand.includes(" -db ")) {
+      // Check if this is the old format: "/path/to/binary -db /path/to/db"
+      const parts = mcpCommand.split(" ");
+      if (parts.length >= 3 && parts[1] === "-db" && !parts.includes("mcp")) {
+        // Convert to new format: "/path/to/binary mcp -db /path/to/db"
+        const binaryPath = parts[0];
+        const dbPath = parts.slice(2).join(" ");
+        mcpCommand = `${binaryPath} mcp -db ${dbPath}`;
+        console.log("Auto-corrected command format to:", mcpCommand);
+      }
+    }
+
+    // Parse command and arguments - the command should now include 'mcp' in the right place
     const commandParts = mcpCommand.split(" ");
     const binaryPath = commandParts[0];
-    const args = [...commandParts.slice(1), "mcp"];
+    const args = commandParts.slice(1);
+
+    console.log("Parsed binary path:", binaryPath);
+    console.log("Parsed args:", args);
+    console.log("Full command will be:", binaryPath, args.join(" "));
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
@@ -59,14 +87,19 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     let errorData = "";
 
     mcpProcess.stdout.on("data", (data) => {
-      responseData += data.toString();
+      const output = data.toString();
+      console.log("MCP stdout:", output);
+      responseData += output;
     });
 
     mcpProcess.stderr.on("data", (data) => {
-      errorData += data.toString();
+      const error = data.toString();
+      console.log("MCP stderr:", error);
+      errorData += error;
     });
 
     mcpProcess.on("error", (error) => {
+      console.error("MCP process error:", error);
       reject(new Error(`Failed to start MCP server: ${error.message}`));
     });
 
@@ -92,20 +125,32 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       },
     };
 
+    console.log(
+      "Sending JSON-RPC request:",
+      JSON.stringify(searchRequest, null, 2)
+    );
     mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
     mcpProcess.stdin.end();
 
     mcpProcess.on("close", (code) => {
+      console.log("MCP process closed with code:", code);
+      console.log("Final stdout:", responseData);
+      console.log("Final stderr:", errorData);
+
       if (code !== 0) {
-        reject(new Error(`MCP server exited with code ${code}: ${errorData}`));
+        const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
+        console.error("MCP Error:", errorMessage);
+        reject(new Error(errorMessage));
         return;
       }
 
       try {
         // Parse the MCP response
         const results = parseMCPResponse(responseData);
+        console.log("Parsed results:", results);
         resolve(results);
       } catch (error) {
+        console.error("Parse error:", error);
         reject(new Error(`Failed to parse MCP response: ${error.message}`));
       }
     });
@@ -187,6 +232,13 @@ export default function Command() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Log the current preference value on component mount
+  useEffect(() => {
+    const preferences = getPreferenceValues<Preferences>();
+    console.log("=== Current Preferences on Mount ===");
+    console.log("mcpCommand:", preferences.mcpCommand);
+  }, []);
 
   useEffect(() => {
     if (searchText.trim()) {
