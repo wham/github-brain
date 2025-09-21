@@ -10,36 +10,6 @@ import {
 } from "@raycast/api";
 import { spawn } from "child_process";
 
-function parseMCPResponse(responseData: string): SearchResult[] {
-  // Handle both single line responses and multi-line responses
-  const lines = responseData.split("\n").filter((line) => line.trim());
-
-  // Try to parse each line as JSON
-  for (const line of lines) {
-    try {
-      const response = JSON.parse(line);
-      console.log("Parsed JSON response:", response);
-
-      if (response.result && response.result.content) {
-        const content = response.result.content[0]?.text || "";
-        console.log("Extracted content:", content);
-        return parseSearchResults(content);
-      } else if (response.error) {
-        console.error("MCP returned error:", response.error);
-        throw new Error(
-          `MCP server error: ${response.error.message || "Unknown error"}`
-        );
-      }
-    } catch (e) {
-      console.log("Failed to parse line as JSON:", line, "Error:", e);
-      // Continue to next line
-    }
-  }
-
-  console.log("No valid JSON-RPC response found in:", responseData);
-  return [];
-}
-
 interface Preferences {
   mcpCommand: string;
 }
@@ -173,7 +143,6 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
     mcpProcess.on("error", (error) => {
       console.error("MCP process error:", error);
-      clearTimeout(responseTimeout);
       reject(new Error(`Failed to start MCP server: ${error.message}`));
     });
 
@@ -247,20 +216,32 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 }
 
 function parseMCPResponse(responseData: string): SearchResult[] {
+  // Handle both single line responses and multi-line responses
   const lines = responseData.split("\n").filter((line) => line.trim());
 
+  // Try to parse each line as JSON
   for (const line of lines) {
     try {
       const response = JSON.parse(line);
+      console.log("Parsed JSON response:", response);
+
       if (response.result && response.result.content) {
         const content = response.result.content[0]?.text || "";
+        console.log("Extracted content:", content);
         return parseSearchResults(content);
+      } else if (response.error) {
+        console.error("MCP returned error:", response.error);
+        throw new Error(
+          `MCP server error: ${response.error.message || "Unknown error"}`
+        );
       }
     } catch (e) {
+      console.log("Failed to parse line as JSON:", line, "Error:", e);
       // Continue to next line
     }
   }
 
+  console.log("No valid JSON-RPC response found in:", responseData);
   return [];
 }
 
@@ -321,6 +302,13 @@ export default function Command() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Log the current preference value on component mount
+  useEffect(() => {
+    const preferences = getPreferenceValues<Preferences>();
+    console.log("=== Current Preferences on Mount ===");
+    console.log("mcpCommand:", preferences.mcpCommand);
+  }, []);
 
   useEffect(() => {
     if (searchText.trim()) {
