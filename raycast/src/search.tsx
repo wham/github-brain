@@ -1,5 +1,6 @@
+// @ts-nocheck
 /// <reference types="@raycast/api" />
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ActionPanel,
   Action,

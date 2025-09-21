@@ -5,10 +5,11 @@ AI coding agent specification. Human documentation in [README.md](../README.md#r
 ## Overview
 
 Read the official docs:
-  - https://developers.raycast.com/basics/getting-started
-  - https://developers.raycast.com/basics/create-your-first-extension
 
-Put everything into one file `src/raycast.tsx`. Use TypeScript. Create no other
+- https://developers.raycast.com/basics/getting-started
+- https://developers.raycast.com/basics/create-your-first-extension
+
+Put everything into one file `src/search.tsx`. Use TypeScript. Create no other
 TypeScript files.
 
 Minimize the overall number of files and dependencies to the absolute minimum.
@@ -38,7 +39,7 @@ See https://developers.raycast.com/information/manifest#preference-properties
 ### Search
 
 - `name`: search
-- `title`: Search GitHub Brain
+- `title`: Search
 - `description`: Search GitHub issues, pull requests, and discussions
 - `mode`: view
 
@@ -57,15 +58,15 @@ When user selects a result, open the URL in the browser.
 
 Type/state to Raycast icon and color:
 
-| Type | State | Icon | Color |
-|------|-------|------|-------|
-| issue | open | Circle | #1a7f37 |
-| issue | closed | XMarkCircle | #8250df |
-| pull_request | open | CircleEllipsis | #1a7f37 |
-| pull_request | closed | XMarkCircle | #cf222e |
-| pull_request | merged | CheckCircle | #8250df |
-| discussion | open | SpeechBubble | #1a7f37 |
-| discussion | closed | SpeechBubbleImportant | #8250df |
+| Type         | State  | Icon                  | Color   |
+| ------------ | ------ | --------------------- | ------- |
+| issue        | open   | Circle                | #1a7f37 |
+| issue        | closed | XMarkCircle           | #8250df |
+| pull_request | open   | CircleEllipsis        | #1a7f37 |
+| pull_request | closed | XMarkCircle           | #cf222e |
+| pull_request | merged | CheckCircle           | #8250df |
+| discussion   | open   | SpeechBubble          | #1a7f37 |
+| discussion   | closed | SpeechBubbleImportant | #8250df |
 
 ## Launcher
 

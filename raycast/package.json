@@ -12,19 +12,19 @@
   "commands": [
     {
       "name": "search",
-      "title": "Search GitHub Brain",
+      "title": "Search",
       "description": "Search GitHub issues, pull requests, and discussions",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "mcpCommand",
-          "title": "GitHub Brain MCP command",
-          "description": "Absolute path to GitHub Brain executable",
-          "type": "textfield",
-          "required": true,
-          "default": "/Users/wham/code/github-brain/build/github-brain mcp -db /Users/wham/code/github-brain/db -o github"
-        }
-      ]
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "mcpCommand",
+      "title": "GitHub Brain MCP command",
+      "description": "Absolute path to GitHub Brain executable",
+      "type": "textfield",
+      "required": true,
+      "default": "/Users/wham/code/github-brain/build/github-brain mcp -db /Users/wham/code/github-brain/db -o github"
     }
   ],
   "dependencies": {

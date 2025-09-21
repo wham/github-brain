@@ -7,17 +7,17 @@
 
 /* eslint-disable @typescript-eslint/ban-types */
 
-type ExtensionPreferences = {}
+type ExtensionPreferences = {
+  /** GitHub Brain MCP command - Absolute path to GitHub Brain executable */
+  "mcpCommand": string
+}
 
 /** Preferences accessible in all the extension's commands */
 declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
   /** Preferences accessible in the `search` command */
-  export type Search = ExtensionPreferences & {
-  /** GitHub Brain MCP command - Absolute path to GitHub Brain executable */
-  "mcpCommand": string
-}
+  export type Search = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
