@@ -27,12 +27,25 @@ See https://developers.raycast.com/information/manifest
 
 See https://developers.raycast.com/information/manifest#preference-properties
 
-- `name`: `mcpCommand`
-- `title`: GitHub Brain MCP command
-- `description`: Absolute path to GitHub Brain executable
+- `name`: `organization`
+- `title`: GitHub organization
+- `description`: The GitHub organization to work with
+- `type`: textfield
+- `required`: true
+
+- `name`: `githubBrainCommand`
+- `title`: GitHub Brain executablecommand
+- `description`: Absolute path to the GitHub Brain executable command or binary
 - `type`: textfield
 - `required`: true
 - `default`: github-brain
+
+- `name`: `dbDir`
+- `title`: Path to the SQLite database directory
+- `description`: Absolute path to the SQLite database directory
+- `type`: textfield
+- `required`: true
+- `default`: /Users/wham/code/github-brain/db
 
 ## Commands
 
@@ -73,12 +86,12 @@ Type/state to Raycast icon and color:
 - The extension is launched with `scripts/raycast`
 - The script first builds GitHub Brain with `scripts/run`
 - This creates `build/github-brain` binary
-- The launcher determines the full path to `build/github-brain` and `db` directory
-- The launcher puts together the full command to launch the MCP: Full path to `build/github-brain` and argument `-db <db-dir>, and any arguments passed to the launcher.
-- The launcher then updates the `package.json` preference `mcpCommand` and sets the `default` value to the computed string
+- The launched determines the absolute path to the `build/github-brain` binary and
+sets is as the `default` value of the `githubBrainCommand` preference in `package.json`
+- The launcher determines the absolute path to the DB directory and sets it as the `default` value of the `dbDir` preference in `package.json`
 - The launcher then starts the Raycast extension with `npm run dev` in the `ray
 
 ## Protocol
 
-Connect to github-brain server via MCP stdio transport. Spawn process: `scripts/run mcp <arg>`. Use the `search` tool.
+Connect to github-brain server via MCP stdio transport. Spawn process: `<githubBrainCommand> mcp`. Use the `search` tool.
 The tool is specified in [maind.md](..main.md#tools). You can find the input and output there.

@@ -161,8 +161,7 @@ Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain reposit
 Run the Raycast extension with:
 
 ```sh
-scripts/raycast [<args>]
+scripts/raycast
 ```
 
-The extension uses the MCP server to search GitHub data. The extension will start the MCP server with `scripts/run mcp` and passthrough
-the provided `<args>`.
+The extension uses the MCP server to search GitHub data.
