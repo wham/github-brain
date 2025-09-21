@@ -22,6 +22,10 @@ As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast sear
 
 ![](./docs/ui.png)
 
+As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search of the discussions, issues, and pull requests.
+
+![](./docs/raycast.png)
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
@@ -153,3 +157,13 @@ Add to the VS Code MCP configuration file:
 ```
 
 Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `servers` already exists.
+
+## Raycast Extension
+
+Run the Raycast extension with:
+
+```sh
+scripts/raycast
+```
+
+The extension uses the MCP server to search GitHub data.

@@ -1,4 +1,5 @@
 /build
 /db
+/raycast/node_modules
 .env
 mcp-server.log

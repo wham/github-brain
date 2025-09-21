@@ -1,0 +1,64 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "github-brain",
+  "title": "GitHub Brain",
+  "description": "Search GitHub issues, pull requests, and discussions",
+  "icon": "🧠",
+  "author": "wham",
+  "categories": [
+    "Developer Tools"
+  ],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "search",
+      "title": "Search",
+      "description": "Search GitHub issues, pull requests, and discussions",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "organization",
+      "title": "GitHub organization",
+      "description": "The GitHub organization to work with",
+      "type": "textfield",
+      "required": true
+    },
+    {
+      "name": "githubBrainCommand",
+      "title": "GitHub Brain executable",
+      "description": "Absolute path to the GitHub Brain executable command or binary",
+      "type": "textfield",
+      "required": true,
+      "default": "/Users/wham/code/github-brain/build/github-brain"
+    },
+    {
+      "name": "dbDir",
+      "title": "Database directory",
+      "description": "Absolute path to the GitHub Brain database directory",
+      "type": "textfield",
+      "required": true,
+      "default": "/Users/wham/code/github-brain/db"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.69.0",
+    "@raycast/utils": "^1.14.0"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.6",
+    "@types/node": "18.8.3",
+    "@types/react": "18.0.9",
+    "eslint": "^8.51.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.2.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}
