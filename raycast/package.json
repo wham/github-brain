@@ -11,11 +11,20 @@
   "license": "MIT",
   "commands": [
     {
-      "name": "raycast",
+      "name": "search",
       "title": "Search GitHub Brain",
-      "description": "Search across discussions, issues, and pull requests",
+      "description": "Search GitHub issues, pull requests, and discussions",
       "mode": "view",
-      "preferences": []
+      "preferences": [
+        {
+          "name": "mcpCommand",
+          "title": "GitHub Brain MCP command",
+          "description": "Absolute path to GitHub Brain executable",
+          "type": "textfield",
+          "required": true,
+          "default": "/Users/wham/code/github-brain/build/github-brain -db /Users/wham/code/github-brain/db"
+        }
+      ]
     }
   ],
   "dependencies": {

@@ -1,11 +1,46 @@
 #!/bin/bash
 set -e
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GITHUB_BRAIN_SCRIPT_PATH="$SCRIPT_DIR/run"
-cd "$SCRIPT_DIR/../raycast"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Export the full path to scripts/run for the extension to use
-export GITHUB_BRAIN_SCRIPT_PATH
+# Build GitHub Brain with scripts/run
+echo "Building GitHub Brain..."
+cd "$ROOT_DIR"
+./scripts/run --help > /dev/null 2>&1 || {
+  echo "Building github-brain binary..."
+  CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -o ./build/github-brain .
+}
 
-# Build and run the Raycast extension
+# Determine full paths
+GITHUB_BRAIN_BINARY="$ROOT_DIR/build/github-brain"
+DB_DIR="$ROOT_DIR/db"
+
+# Create the MCP command with full path to binary and db directory
+MCP_COMMAND="$GITHUB_BRAIN_BINARY -db $DB_DIR"
+
+# Add any additional arguments passed to the launcher
+if [ $# -gt 0 ]; then
+  MCP_COMMAND="$MCP_COMMAND $@"
+fi
+
+echo "MCP Command: $MCP_COMMAND"
+
+# Update the package.json preference default value
+cd "$ROOT_DIR/raycast"
+PACKAGE_JSON="package.json"
+
+# Use node to update the package.json default value
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('$PACKAGE_JSON', 'utf8'));
+if (pkg.commands && pkg.commands[0] && pkg.commands[0].preferences && pkg.commands[0].preferences[0]) {
+  pkg.commands[0].preferences[0].default = '$MCP_COMMAND';
+  fs.writeFileSync('$PACKAGE_JSON', JSON.stringify(pkg, null, 2) + '\n');
+  console.log('Updated package.json mcpCommand default to: $MCP_COMMAND');
+}
+"
+
+# Start the Raycast extension
+echo "Starting Raycast extension..."
 npm run dev

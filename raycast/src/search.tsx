@@ -1,13 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from "react";
-import {
-  ActionPanel,
-  Action,
-  List,
-  Icon,
-  Color,
-  getPreferenceValues,
-} from "@raycast/api";
+import { ActionPanel, Action, List, Icon, Color, getPreferenceValues } from "@raycast/api";
 import { spawn } from "child_process";
 
 interface Preferences {
@@ -51,7 +44,7 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
     const mcpCommand = preferences.mcpCommand;
-
+    
     // Parse command and arguments
     const commandParts = mcpCommand.split(" ");
     const binaryPath = commandParts[0];

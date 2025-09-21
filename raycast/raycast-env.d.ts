@@ -13,12 +13,15 @@ type ExtensionPreferences = {}
 declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
-  /** Preferences accessible in the `raycast` command */
-  export type Raycast = ExtensionPreferences & {}
+  /** Preferences accessible in the `search` command */
+  export type Search = ExtensionPreferences & {
+  /** GitHub Brain MCP command - Absolute path to GitHub Brain executable */
+  "mcpCommand": string
+}
 }
 
 declare namespace Arguments {
-  /** Arguments passed to the `raycast` command */
-  export type Raycast = {}
+  /** Arguments passed to the `search` command */
+  export type Search = {}
 }
 
