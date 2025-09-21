@@ -24,6 +24,8 @@ As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast sear
 
 As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search of the discussions, issues, and pull requests.
 
+![](./docs/raycast.png)
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
