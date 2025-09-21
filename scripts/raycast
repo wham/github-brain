@@ -13,28 +13,29 @@ cd "$ROOT_DIR"
 GITHUB_BRAIN_BINARY="$ROOT_DIR/build/github-brain"
 DB_DIR="$ROOT_DIR/db"
 
-# Create the MCP command with full path to binary and db directory
-MCP_COMMAND="$GITHUB_BRAIN_BINARY mcp -db $DB_DIR"
+echo "GitHub Brain Binary: $GITHUB_BRAIN_BINARY"
+echo "Database Directory: $DB_DIR"
 
-# Add any additional arguments passed to the launcher
-if [ $# -gt 0 ]; then
-  MCP_COMMAND="$MCP_COMMAND $@"
-fi
-
-echo "MCP Command: $MCP_COMMAND"
-
-# Update the package.json preference default value
+# Update the package.json preference default values
 cd "$ROOT_DIR/raycast"
 PACKAGE_JSON="package.json"
 
-# Use node to update the package.json default value
+# Use node to update the package.json default values
 node -e "
 const fs = require('fs');
 const pkg = JSON.parse(fs.readFileSync('$PACKAGE_JSON', 'utf8'));
-if (pkg.preferences && pkg.preferences[0]) {
-  pkg.preferences[0].default = '$MCP_COMMAND';
+if (pkg.preferences) {
+  // Find and update each preference by name
+  pkg.preferences.forEach(pref => {
+    if (pref.name === 'githubBrainCommand') {
+      pref.default = '$GITHUB_BRAIN_BINARY';
+      console.log('Updated githubBrainCommand default to: $GITHUB_BRAIN_BINARY');
+    } else if (pref.name === 'dbDir') {
+      pref.default = '$DB_DIR';
+      console.log('Updated dbDir default to: $DB_DIR');
+    }
+  });
   fs.writeFileSync('$PACKAGE_JSON', JSON.stringify(pkg, null, 2) + '\n');
-  console.log('Updated package.json mcpCommand default to: $MCP_COMMAND');
 } else {
   console.log('Warning: Could not find preferences in package.json');
 }

@@ -19,12 +19,27 @@
   ],
   "preferences": [
     {
-      "name": "mcpCommand",
-      "title": "GitHub Brain MCP command",
-      "description": "Absolute path to GitHub Brain executable",
+      "name": "dbDir",
+      "title": "Path to the SQLite database directory",
+      "description": "Absolute path to the SQLite database directory",
       "type": "textfield",
       "required": true,
-      "default": "/Users/wham/code/github-brain/build/github-brain mcp -db /Users/wham/code/github-brain/db -o github"
+      "default": "/Users/wham/code/github-brain/db"
+    },
+    {
+      "name": "githubBrainCommand",
+      "title": "GitHub Brain executable command",
+      "description": "Absolute path to the GitHub Brain executable command or binary",
+      "type": "textfield",
+      "required": true,
+      "default": "github-brain"
+    },
+    {
+      "name": "organization",
+      "title": "GitHub organization",
+      "description": "The GitHub organization to work with",
+      "type": "textfield",
+      "required": true
     }
   ],
   "dependencies": {

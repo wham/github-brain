@@ -8,8 +8,12 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** GitHub Brain MCP command - Absolute path to GitHub Brain executable */
-  "mcpCommand": string
+  /** Path to the SQLite database directory - Absolute path to the SQLite database directory */
+  "dbDir": string,
+  /** GitHub Brain executable command - Absolute path to the GitHub Brain executable command or binary */
+  "githubBrainCommand": string,
+  /** GitHub organization - The GitHub organization to work with */
+  "organization": string
 }
 
 /** Preferences accessible in all the extension's commands */

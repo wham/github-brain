@@ -12,7 +12,9 @@ import {
 import { spawn } from "child_process";
 
 interface Preferences {
-  mcpCommand: string;
+  organization: string;
+  githubBrainCommand: string;
+  dbDir: string;
 }
 
 interface SearchResult {
@@ -54,29 +56,16 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
-    let mcpCommand = preferences.mcpCommand;
 
     console.log("=== MCP Search Debug Info ===");
     console.log("Query:", query);
-    console.log("Raw mcpCommand from preferences:", mcpCommand);
+    console.log("Organization:", preferences.organization);
+    console.log("GitHub Brain Command:", preferences.githubBrainCommand);
+    console.log("DB Directory:", preferences.dbDir);
 
-    // Auto-fix old command format if detected
-    if (mcpCommand && mcpCommand.includes(" -db ")) {
-      // Check if this is the old format: "/path/to/binary -db /path/to/db"
-      const parts = mcpCommand.split(" ");
-      if (parts.length >= 3 && parts[1] === "-db" && !parts.includes("mcp")) {
-        // Convert to new format: "/path/to/binary mcp -db /path/to/db"
-        const binaryPath = parts[0];
-        const dbPath = parts.slice(2).join(" ");
-        mcpCommand = `${binaryPath} mcp -db ${dbPath}`;
-        console.log("Auto-corrected command format to:", mcpCommand);
-      }
-    }
-
-    // Parse command and arguments - the command should now include 'mcp' in the right place
-    const commandParts = mcpCommand.split(" ");
-    const binaryPath = commandParts[0];
-    const args = commandParts.slice(1);
+    // Build the command: <githubBrainCommand> mcp
+    const binaryPath = preferences.githubBrainCommand;
+    const args = ["mcp"];
 
     console.log("Parsed binary path:", binaryPath);
     console.log("Parsed args:", args);
@@ -87,7 +76,8 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        ORGANIZATION: "github", // Set the required environment variable
+        ORGANIZATION: preferences.organization,
+        DB_DIR: preferences.dbDir,
       },
     });
 
@@ -307,11 +297,13 @@ export default function Command() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Log the current preference value on component mount
+  // Log the current preference values on component mount
   useEffect(() => {
     const preferences = getPreferenceValues<Preferences>();
     console.log("=== Current Preferences on Mount ===");
-    console.log("mcpCommand:", preferences.mcpCommand);
+    console.log("organization:", preferences.organization);
+    console.log("githubBrainCommand:", preferences.githubBrainCommand);
+    console.log("dbDir:", preferences.dbDir);
   }, []);
 
   useEffect(() => {
