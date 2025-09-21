@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
-cd "$(dirname "$0")/../raycast"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GITHUB_BRAIN_SCRIPT_PATH="$SCRIPT_DIR/run"
+cd "$SCRIPT_DIR/../raycast"
+
+# Export the full path to scripts/run for the extension to use
+export GITHUB_BRAIN_SCRIPT_PATH
 
 # Build and run the Raycast extension
 npm run dev

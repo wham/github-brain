@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { useState, useEffect } from "react";
 import { ActionPanel, Action, List, Icon, Color } from "@raycast/api";
+import { spawn } from "child_process";
+import { promisify } from "util";
 
 interface SearchResult {
   title: string;
@@ -33,48 +35,169 @@ function getIconAndColor(type: string, state: string) {
   }
 }
 
-function searchMockData(query: string): SearchResult[] {
+async function callMCPSearch(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
 
-  // Mock data for now - in reality this would call the MCP server
-  return [
-    {
-      title: `Mock issue: ${query}`,
-      url: "https://github.com/example/repo/issues/1",
-      repository: "example-repo",
-      type: "issue",
-      state: "open",
-      author: "user123",
-      created_at: new Date().toISOString(),
-    },
-    {
-      title: `Mock PR: ${query}`,
-      url: "https://github.com/example/repo/pulls/2",
-      repository: "example-repo",
-      type: "pull_request",
-      state: "merged",
-      author: "user456",
-      created_at: new Date().toISOString(),
-    },
-  ];
+  return new Promise((resolve, reject) => {
+    // Get the full path to scripts/run from environment variable
+    const scriptPath = process.env.GITHUB_BRAIN_SCRIPT_PATH || "../scripts/run";
+    
+    // Start the MCP server process
+    const mcpProcess = spawn(scriptPath, ["mcp"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let responseData = "";
+    let errorData = "";
+
+    mcpProcess.stdout.on("data", (data) => {
+      responseData += data.toString();
+    });
+
+    mcpProcess.stderr.on("data", (data) => {
+      errorData += data.toString();
+    });
+
+    mcpProcess.on("error", (error) => {
+      reject(new Error(`Failed to start MCP server: ${error.message}`));
+    });
+
+    // Send the search request via JSON-RPC
+    const searchRequest = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "search",
+        arguments: {
+          query: query,
+          fields: [
+            "title",
+            "url",
+            "repository",
+            "created_at",
+            "author",
+            "type",
+            "state",
+          ],
+        },
+      },
+    };
+
+    mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
+    mcpProcess.stdin.end();
+
+    mcpProcess.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`MCP server exited with code ${code}: ${errorData}`));
+        return;
+      }
+
+      try {
+        // Parse the MCP response
+        const results = parseMCPResponse(responseData);
+        resolve(results);
+      } catch (error) {
+        reject(new Error(`Failed to parse MCP response: ${error.message}`));
+      }
+    });
+  });
+}
+
+function parseMCPResponse(responseData: string): SearchResult[] {
+  const lines = responseData.split("\n").filter((line) => line.trim());
+
+  for (const line of lines) {
+    try {
+      const response = JSON.parse(line);
+      if (response.result && response.result.content) {
+        const content = response.result.content[0]?.text || "";
+        return parseSearchResults(content);
+      }
+    } catch (e) {
+      // Continue to next line
+    }
+  }
+
+  return [];
+}
+
+function parseSearchResults(content: string): SearchResult[] {
+  const results: SearchResult[] = [];
+  const sections = content.split("---").filter((section) => section.trim());
+
+  for (const section of sections) {
+    const lines = section.trim().split("\n");
+    if (lines.length < 2) continue;
+
+    const titleMatch = lines[0].match(/^##\s*(.+)$/);
+    if (!titleMatch) continue;
+
+    const title = titleMatch[1];
+    let url = "";
+    let repository = "";
+    let type: "issue" | "pull_request" | "discussion" = "issue";
+    let state: "open" | "closed" | "merged" = "open";
+    let author = "";
+    let created_at = "";
+
+    for (const line of lines.slice(1)) {
+      const urlMatch = line.match(/^-\s*URL:\s*(.+)$/);
+      const repoMatch = line.match(/^-\s*Repository:\s*(.+)$/);
+      const typeMatch = line.match(/^-\s*Type:\s*(.+)$/);
+      const stateMatch = line.match(/^-\s*State:\s*(.+)$/);
+      const authorMatch = line.match(/^-\s*Author:\s*(.+)$/);
+      const createdMatch = line.match(/^-\s*Created at:\s*(.+)$/);
+
+      if (urlMatch) url = urlMatch[1];
+      if (repoMatch) repository = repoMatch[1];
+      if (typeMatch)
+        type = typeMatch[1] as "issue" | "pull_request" | "discussion";
+      if (stateMatch) state = stateMatch[1] as "open" | "closed" | "merged";
+      if (authorMatch) author = authorMatch[1];
+      if (createdMatch) created_at = createdMatch[1];
+    }
+
+    if (url && title) {
+      results.push({
+        title,
+        url,
+        repository,
+        type,
+        state,
+        author,
+        created_at,
+      });
+    }
+  }
+
+  return results.slice(0, 10); // Limit to 10 results as specified
 }
 
 export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchText.trim()) {
       setIsLoading(true);
-      // Simulate async search
-      setTimeout(() => {
-        const searchResults = searchMockData(searchText);
-        setResults(searchResults);
-        setIsLoading(false);
-      }, 300);
+      setError(null);
+
+      callMCPSearch(searchText)
+        .then((searchResults) => {
+          setResults(searchResults);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          setError(err.message);
+          setResults([]);
+          setIsLoading(false);
+        });
     } else {
       setResults([]);
+      setError(null);
       setIsLoading(false);
     }
   }, [searchText]);
@@ -86,7 +209,13 @@ export default function Command() {
       searchBarPlaceholder="Search discussions, issues, and pull requests..."
       throttle={true}
     >
-      {results.length === 0 && searchText.trim() ? (
+      {error ? (
+        <List.Item
+          title="Error occurred"
+          subtitle={error}
+          icon={{ source: Icon.ExclamationMark, tintColor: Color.Red }}
+        />
+      ) : results.length === 0 && searchText.trim() ? (
         <List.Item
           title="No results found"
           subtitle={`No results for "${searchText}"`}
