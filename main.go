@@ -642,6 +642,7 @@ type Progress struct {
 	savedCursorPos    bool                  // Whether cursor position has been saved
 	preserveOnExit    bool                  // Whether to preserve display on signal exit
 	signalChan        chan os.Signal        // Channel for signal handling
+	signalDone        chan struct{}         // Channel to signal the signal handler to exit
 	boxWidth          int                   // Calculated box width for current terminal
 	startTime         time.Time             // Track when the process started
 }
@@ -680,6 +681,7 @@ func NewProgress(message string) *Progress {
 		savedCursorPos:    false,
 		preserveOnExit:    true,                        // Default to preserving display on exit
 		signalChan:        make(chan os.Signal, 1),     // Channel for signal handling
+		signalDone:        make(chan struct{}),         // Channel to signal the signal handler to exit
 		boxWidth:          max(64, width-8),            // Minimum 64 chars, scale with terminal, more margin for safety
 		startTime:         time.Now(),                  // Track start time
 	}
@@ -709,16 +711,21 @@ func NewProgress(message string) *Progress {
 
 // handleSignals handles OS signals for graceful shutdown with preserved display and window resize
 func (p *Progress) handleSignals() {
-	for sig := range p.signalChan {
-		switch sig {
-		case syscall.SIGINT, syscall.SIGTERM:
-			// Preserve display on signal exit
-			p.preserveOnExit = true
-			p.StopWithPreserve()
-			os.Exit(0)
-		case syscall.SIGWINCH:
-			// Handle terminal resize
-			p.handleTerminalResize()
+	for {
+		select {
+		case sig := <-p.signalChan:
+			switch sig {
+			case syscall.SIGINT, syscall.SIGTERM:
+				// Preserve display on signal exit
+				p.preserveOnExit = true
+				p.StopWithPreserve()
+				os.Exit(0)
+			case syscall.SIGWINCH:
+				// Handle terminal resize
+				p.handleTerminalResize()
+			}
+		case <-p.signalDone:
+			return
 		}
 	}
 }
@@ -1350,6 +1357,10 @@ func (p *Progress) UpdateRequestRate(requestsPerSecond int) {
 
 // StopWithPreserve stops the progress indicator and preserves the console display
 func (p *Progress) StopWithPreserve() {
+	// Stop signal handling to clean up the goroutine
+	signal.Stop(p.signalChan)
+	close(p.signalDone)
+	
 	// Stop the ticker and console update loop first
 	if p.ticker != nil {
 		p.ticker.Stop()
@@ -1385,6 +1396,10 @@ func (p *Progress) Stop() {
 		p.StopWithPreserve()
 		return
 	}
+	
+	// Stop signal handling to clean up the goroutine
+	signal.Stop(p.signalChan)
+	close(p.signalDone)
 	
 	// Stop the ticker and console update loop first
 	if p.ticker != nil {
