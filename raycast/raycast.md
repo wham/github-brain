@@ -69,17 +69,16 @@ When user selects a result, open the URL in the browser.
 
 #### Display Mapping
 
-Type/state to Raycast icon and color:
+Type/state to Raycast [icon](https://developers.raycast.com/api-reference/user-interface/icons-and-images) and [color](https://developers.raycast.com/api-reference/user-interface/colors):
 
-| Type         | State  | Icon                  | Color   |
-| ------------ | ------ | --------------------- | ------- |
-| issue        | open   | Circle                | #1a7f37 |
-| issue        | closed | XMarkCircle           | #8250df |
-| pull_request | open   | CircleEllipsis        | #1a7f37 |
-| pull_request | closed | XMarkCircle           | #cf222e |
-| pull_request | merged | CheckCircle           | #8250df |
-| discussion   | open   | SpeechBubble          | #1a7f37 |
-| discussion   | closed | SpeechBubbleImportant | #8250df |
+| Type         | State  | Icon         | Color  |
+| ------------ | ------ | ------------ | ------ |
+| issue        | open   | Circle       | Green  |
+| issue        | closed | Circle       | Purple |
+| pull_request | open   | Code         | Green  |
+| pull_request | closed | Code         | Red    |
+| pull_request | merged | CheckCircle  | Purple |
+| discussion   | open   | SpeechBubble | Green  |
 
 ## Launcher
 
@@ -87,7 +86,7 @@ Type/state to Raycast icon and color:
 - The script first builds GitHub Brain with `scripts/run`
 - This creates `build/github-brain` binary
 - The launched determines the absolute path to the `build/github-brain` binary and
-sets is as the `default` value of the `githubBrainCommand` preference in `package.json`
+  sets is as the `default` value of the `githubBrainCommand` preference in `package.json`
 - The launcher determines the absolute path to the DB directory and sets it as the `default` value of the `dbDir` preference in `package.json`
 - The launcher then starts the Raycast extension with `npm run dev` in the `ray
 
