@@ -10,10 +10,10 @@ Concurrency control:
 
 - Prevent concurrent `pull` commands using database lock
 - Return error if `pull` already running
-- All `mcp` tools and prompts return "A pull is currently running. Please wait until it finishes." error if `pull` is running
-- All `ui` actions return "A pull is currently running. Please wait until it finishes." error if `pull` is running
 - Lock renewal: 1-second intervals
 - Lock expiration: 5 seconds
+- Release the lock when `pull` finishes
+- Other commands (`mcp`, `ui`) can run concurrently
 
 Use RFC3339 date format consistently.
 Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not use `fmt.Println` or `log.Println`.

@@ -4111,29 +4111,7 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 }
 
 
-// checkPullLockForPrompt checks if a pull operation is running and returns an appropriate error for prompts
-func checkPullLockForPrompt(db *DB) error {
-	locked, err := db.IsPullLocked()
-	if err != nil {
-		return fmt.Errorf("failed to check pull lock: %v", err)
-	}
-	if locked {
-		return fmt.Errorf("a pull is currently running, please wait until it finishes")
-	}
-	return nil
-}
 
-// checkPullLock checks if a pull operation is running and returns an appropriate error result
-func checkPullLock(db *DB) *mcp.CallToolResult {
-	locked, err := db.IsPullLocked()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to check pull lock: %v", err))
-	}
-	if locked {
-		return mcp.NewToolResultError("a pull is currently running, please wait until it finishes")
-	}
-	return nil
-}
 
 // RunMCPServer runs the MCP server using the mcp-go library
 func RunMCPServer(db *DB) error {
@@ -4179,11 +4157,6 @@ func RunMCPServer(db *DB) error {
 
 	// Add tool handler for list_discussions
 	s.AddTool(listDiscussionsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if a pull is running
-		if lockResult := checkPullLock(db); lockResult != nil {
-			return lockResult, nil
-		}
-
 		// Extract parameters using the library's parameter methods
 		repository := request.GetString("repository", "")
 		createdFromStr := request.GetString("created_from", "")
@@ -4341,11 +4314,6 @@ func RunMCPServer(db *DB) error {
 
 	// Add tool handler for list_issues
 	s.AddTool(listIssuesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if a pull is running
-		if lockResult := checkPullLock(db); lockResult != nil {
-			return lockResult, nil
-		}
-
 		// Extract parameters using the library's parameter methods
 		repository := request.GetString("repository", "")
 		createdFromStr := request.GetString("created_from", "")
@@ -4552,11 +4520,6 @@ func RunMCPServer(db *DB) error {
 
 	// Add tool handler for list_pull_requests
 	s.AddTool(listPullRequestsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if a pull is running
-		if lockResult := checkPullLock(db); lockResult != nil {
-			return lockResult, nil
-		}
-
 		// Extract parameters using the library's parameter methods
 		repository := request.GetString("repository", "")
 		createdFromStr := request.GetString("created_from", "")
@@ -4890,11 +4853,6 @@ func RunMCPServer(db *DB) error {
 
 	// Add tool handler for search
 	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Check if a pull is running
-		if lockResult := checkPullLock(db); lockResult != nil {
-			return lockResult, nil
-		}
-
 		// Extract parameters
 		query := request.GetString("query", "")
 		if query == "" {
@@ -4994,11 +4952,6 @@ func RunMCPServer(db *DB) error {
 
 	// Add prompt handler for user_summary
 	s.AddPrompt(userSummaryPrompt, func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		// Check if a pull is running
-		if err := checkPullLockForPrompt(db); err != nil {
-			return nil, err
-		}
-
 		// Extract parameters from request
 		username := ""
 		period := ""
