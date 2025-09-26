@@ -30,22 +30,20 @@ interface SearchResult {
 function getIconAndColor(
   type: string,
   state: string
-): { icon: Icon; color: string } {
+): { icon: Icon; color: Color } {
   switch (`${type}:${state}`) {
     case "issue:open":
-      return { icon: Icon.Circle, color: "#1a7f37" };
+      return { icon: Icon.Circle, color: Color.Green };
     case "issue:closed":
-      return { icon: Icon.XMarkCircle, color: "#8250df" };
+      return { icon: Icon.Circle, color: Color.Purple };
     case "pull_request:open":
-      return { icon: Icon.CircleEllipsis, color: "#1a7f37" };
+      return { icon: Icon.Code, color: Color.Green };
     case "pull_request:closed":
-      return { icon: Icon.XMarkCircle, color: "#cf222e" };
+      return { icon: Icon.Code, color: Color.Red };
     case "pull_request:merged":
-      return { icon: Icon.CheckCircle, color: "#8250df" };
+      return { icon: Icon.CheckCircle, color: Color.Purple };
     case "discussion:open":
-      return { icon: Icon.SpeechBubble, color: "#1a7f37" };
-    case "discussion:closed":
-      return { icon: Icon.SpeechBubbleImportant, color: "#8250df" };
+      return { icon: Icon.SpeechBubble, color: Color.Green };
     default:
       return { icon: Icon.Circle, color: Color.SecondaryText };
   }
