@@ -1834,10 +1834,10 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create search table (FTS5) with column weights for better ranking
+	// Create search table (FTS5) for full-text search (title prioritization handled in queries)
 	_, err = db.Exec(`
 		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
-			type, title * 3, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 		)
 	`)
 	if err != nil {
@@ -1848,9 +1848,10 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 }
 
 // PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
-func (db *DB) PopulateSearchTable() error {
+func (db *DB) PopulateSearchTable(progress *Progress) error {
 	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 	slog.Info("Truncating and repopulating search FTS table...")
+	progress.Log("Clearing existing search index...")
 	
 	// Delete all data from search table
 	if _, err := db.Exec("DELETE FROM search"); err != nil {
@@ -1863,43 +1864,66 @@ func (db *DB) PopulateSearchTable() error {
 	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
 	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
 	
+	totalItems := discussionCount + issueCount + prCount
+	progress.Log("Indexing %d total items: %d discussions, %d issues, %d pull requests", 
+		totalItems, discussionCount, issueCount, prCount)
+	
 	slog.Info("Indexing content into search table", 
 		"discussions", discussionCount, "issues", issueCount, "pull_requests", prCount)
 	
 	// Insert discussions
-	slog.Info("Indexing discussions...")
-	_, err := db.Exec(`
-		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
-		SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to populate discussions in search table: %w", err)
+	if discussionCount > 0 {
+		progress.Log("Indexing %d discussions into search table...", discussionCount)
+		slog.Info("Indexing discussions...")
+		_, err := db.Exec(`
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to populate discussions in search table: %w", err)
+		}
+		progress.Log("✅ Completed indexing %d discussions", discussionCount)
+	} else {
+		progress.Log("No discussions to index")
 	}
 
 	// Insert issues
-	slog.Info("Indexing issues...")
-	_, err = db.Exec(`
-		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
-		SELECT 'issue', title, body, url, repository, author, created_at, 
-		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-		FROM issues
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to populate issues in search table: %w", err)
+	if issueCount > 0 {
+		progress.Log("Indexing %d issues into search table...", issueCount)
+		slog.Info("Indexing issues...")
+		_, err := db.Exec(`
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+			SELECT 'issue', title, body, url, repository, author, created_at, 
+			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+			FROM issues
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to populate issues in search table: %w", err)
+		}
+		progress.Log("✅ Completed indexing %d issues", issueCount)
+	} else {
+		progress.Log("No issues to index")
 	}
 
 	// Insert pull requests
-	slog.Info("Indexing pull requests...")
-	_, err = db.Exec(`
-		INSERT INTO search(type, title, body, url, repository, author, created_at, state)
-		SELECT 'pull_request', title, body, url, repository, author, created_at, 
-		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-		FROM pull_requests
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
+	if prCount > 0 {
+		progress.Log("Indexing %d pull requests into search table...", prCount)
+		slog.Info("Indexing pull requests...")
+		_, err := db.Exec(`
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+			SELECT 'pull_request', title, body, url, repository, author, created_at, 
+			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+			FROM pull_requests
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
+		}
+		progress.Log("✅ Completed indexing %d pull requests", prCount)
+	} else {
+		progress.Log("No pull requests to index")
 	}
 
+	progress.Log("🎉 Search index rebuild completed successfully with %d total items", totalItems)
 	return nil
 }
 
@@ -5000,7 +5024,6 @@ type SearchResult struct {
 	Author     string    `json:"author"`      // Author username
 	CreatedAt  time.Time `json:"created_at"`  // Creation timestamp
 	State      string    `json:"state"`       // Item state ("open", "closed", etc.)
-	Score      int       `json:"score"`       // Search relevance score
 }
 
 // SearchEngine performs basic text search across all entities
@@ -5043,15 +5066,16 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
 	
-	// Use pure FTS5 search with bm25 ranking (matches MCP implementation)
+	// Use pure FTS5 search with bm25() column weights for title prioritization
+	// bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(3x), body, url, repository, author
 	query := `
-		SELECT type, title, body, url, repository, author, created_at, state, bm25(search) as score
+		SELECT type, title, body, url, repository, author, created_at, state
 		FROM search 
 		WHERE search MATCH ?
-		ORDER BY bm25(search)
+		ORDER BY bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0)
 		LIMIT ?`
 	
-	// Build args: FTS query + limit (simplified, no custom scoring)
+	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
 
 	rows, err := se.db.Query(query, args...)
@@ -5064,10 +5088,9 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	for rows.Next() {
 		var result SearchResult
 		var createdAtStr string
-		var score float64
 		
 		err := rows.Scan(&result.Type, &result.Title, &result.Body, &result.URL,
-			&result.Repository, &result.Author, &createdAtStr, &result.State, &score)
+			&result.Repository, &result.Author, &createdAtStr, &result.State)
 		if err != nil {
 			continue
 		}
@@ -5077,7 +5100,6 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 			result.CreatedAt = createdAt
 		}
 		
-		result.Score = int(score)
 		results = append(results, result)
 	}
 	
@@ -5432,12 +5454,10 @@ func main() {
 
 		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 		progress.UpdateMessage("Updating search index...")
-		progress.Log("Truncating search FTS5 table and repopulating from discussions, issues, and pull_requests tables")
-		if err := db.PopulateSearchTable(); err != nil {
-			progress.Log("Warning: Failed to populate search table: %v", err)
+		progress.Log("Starting search FTS5 table rebuild...")
+		if err := db.PopulateSearchTable(progress); err != nil {
+			progress.Log("❌ Warning: Failed to populate search table: %v", err)
 			// Continue despite search table error - don't fail the entire operation
-		} else {
-			progress.Log("Search index updated successfully")
 		}
 
 		// Final status update through Progress system
