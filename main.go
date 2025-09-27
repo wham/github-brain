@@ -1834,10 +1834,10 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create search table (FTS5) as specified in main.md
+	// Create search table (FTS5) with column weights for better ranking
 	_, err = db.Exec(`
 		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
-			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+			type, title * 3, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 		)
 	`)
 	if err != nil {
@@ -4121,6 +4121,9 @@ func RunMCPServer(db *DB) error {
 		return fmt.Errorf("ORGANIZATION environment variable is required for MCP server")
 	}
 
+	// Create SearchEngine instance for unified search functionality
+	searchEngine := NewSearchEngine(db)
+
 	// Create a new MCP server - enable both tool and prompt capabilities
 	s := server.NewMCPServer(
 		"GitHub Offline MCP Server",
@@ -4878,58 +4881,41 @@ func RunMCPServer(db *DB) error {
 			}
 		}
 
-		// Perform FTS5 search query
-		searchQuery := `
-			SELECT type, title, body, url, repository, author, created_at, state
-			FROM search 
-			WHERE search MATCH ? 
-			ORDER BY bm25(search)
-			LIMIT 10
-		`
-
-		rows, err := db.Query(searchQuery, query)
+		// Use unified SearchEngine for consistent results
+		searchResults, err := searchEngine.Search(query, 10)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("search query failed: %v", err)), nil
 		}
-		defer rows.Close()
 
 		var result strings.Builder
-		hasResults := false
+		hasResults := len(searchResults) > 0
 
-		for rows.Next() {
-			hasResults = true
-			var itemType, title, body, url, repository, author, createdAt, state string
-			
-			err := rows.Scan(&itemType, &title, &body, &url, &repository, &author, &createdAt, &state)
-			if err != nil {
-				continue
-			}
-
+		for _, searchResult := range searchResults {
 			var formatted strings.Builder
-			formatted.WriteString(fmt.Sprintf("## %s\n\n", title))
+			formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
 
 			if fieldsToInclude["url"] {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", url))
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", searchResult.URL))
 			}
 			if fieldsToInclude["type"] {
-				formatted.WriteString(fmt.Sprintf("- Type: %s\n", itemType))
+				formatted.WriteString(fmt.Sprintf("- Type: %s\n", searchResult.Type))
 			}
 			if fieldsToInclude["repository"] {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", repository))
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", searchResult.Repository))
 			}
 			if fieldsToInclude["created_at"] {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", createdAt))
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", searchResult.CreatedAt.Format(time.RFC3339)))
 			}
 			if fieldsToInclude["author"] {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", author))
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", searchResult.Author))
 			}
 			if fieldsToInclude["state"] {
-				formatted.WriteString(fmt.Sprintf("- State: %s\n", state))
+				formatted.WriteString(fmt.Sprintf("- State: %s\n", searchResult.State))
 			}
 
 			if fieldsToInclude["body"] {
 				formatted.WriteString("\n")
-				formatted.WriteString(fmt.Sprintf("%s\n", body))
+				formatted.WriteString(fmt.Sprintf("%s\n", searchResult.Body))
 			}
 
 			formatted.WriteString("\n---\n\n")
@@ -5013,6 +4999,7 @@ type SearchResult struct {
 	Repository string    `json:"repository"`  // Repository name
 	Author     string    `json:"author"`      // Author username
 	CreatedAt  time.Time `json:"created_at"`  // Creation timestamp
+	State      string    `json:"state"`       // Item state ("open", "closed", etc.)
 	Score      int       `json:"score"`       // Search relevance score
 }
 
@@ -5056,26 +5043,17 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
 	
-	// Use search FTS table for fast text search
+	// Use pure FTS5 search with bm25 ranking (matches MCP implementation)
 	query := `
-		SELECT type, url, title, body, repository, author, created_at,
-		       (CASE 
-		         WHEN LOWER(title) LIKE ? THEN 10 ELSE 0 END +
-		         CASE WHEN LOWER(repository) LIKE ? THEN 5 ELSE 0 END +
-		         CASE WHEN LOWER(author) LIKE ? THEN 3 ELSE 0 END + 
-		         bm25(search) * -1) as score
+		SELECT type, title, body, url, repository, author, created_at, state, bm25(search) as score
 		FROM search 
 		WHERE search MATCH ?
-		ORDER BY score DESC
+		ORDER BY bm25(search)
 		LIMIT ?`
 	
-	// Build args: LIKE patterns for scoring + FTS query for matching
-	likePattern := "%" + strings.ToLower(tokens[0]) + "%"
-	args := []interface{}{
-		likePattern, likePattern, likePattern, ftsQuery, // scoring + match
-		limit,
-	}
-	
+	// Build args: FTS query + limit (simplified, no custom scoring)
+	args := []interface{}{ftsQuery, limit}
+
 	rows, err := se.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("FTS search failed: %w", err)
@@ -5088,8 +5066,8 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		var createdAtStr string
 		var score float64
 		
-		err := rows.Scan(&result.Type, &result.URL, &result.Title, &result.Body, 
-			&result.Repository, &result.Author, &createdAtStr, &score)
+		err := rows.Scan(&result.Type, &result.Title, &result.Body, &result.URL,
+			&result.Repository, &result.Author, &createdAtStr, &result.State, &score)
 		if err != nil {
 			continue
 		}
