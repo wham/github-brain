@@ -450,7 +450,7 @@ Console when an error occurs:
 
 ### Finally
 
-- Truncate `search_X` FTS5 table and repopulate it from `discussions_X`, `issues_X`, and `pull_requests_X` tables (where X represents current version numbers)
+- Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
 
 ## mcp
 
@@ -772,57 +772,43 @@ Centralize error handling into a single function. Use for each GraphQL query.
 
 SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
 
-### Database Versioning
+### Database Versioning System
 
-#### Table-Specific Version Management
+The application uses a simple GUID-based versioning system to handle schema changes:
 
-- Each table has its own version number suffix: `<table_name>_v<version>`
-- Version numbers are simple integers that increment with each schema change per table
-- Each table maintains its own version constant in the code
-- At startup, drop all tables with different version numbers than expected
-- Create tables with current version suffix if they don't exist
+- Single schema version GUID for the entire database
+- On any schema change, generate a new unique GUID
+- At startup, check if stored schema GUID matches current GUID
+- If different or missing, drop entire database and recreate from scratch
 
-#### Version Constants
+#### Schema Version
 
-````go
-const (
-    REPOSITORIES_VERSION   = 1  // repositories_v1
-    DISCUSSIONS_VERSION    = 1  // discussions_v1
-    ISSUES_VERSION         = 1  // issues_v1
-    PULL_REQUESTS_VERSION  = 1  // pull_requests_v1
-
-)
+```go
+const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID on any schema modification
 ```
 
 #### Startup Flow
 
-1. For each table type (repositories, discussions, issues, pull_requests, search):
-   - Check for existing tables with pattern `<table_name>_v*`
-   - Drop any tables that don't match the current version suffix
-   - Create table with current version suffix if it doesn't exist
-2. Log cleanup actions (dropped old versions, created new tables)
+1. Check if database exists and has a `schema_version` table
+2. If table exists, read the stored GUID and compare with `SCHEMA_GUID`
+3. If GUID matches, proceed normally
+4. If GUID is different or missing:
+   - Log schema version mismatch
+   - Drop entire database file
+   - Create new database with current schema
+   - Store current `SCHEMA_GUID` in `schema_version` table
 
 #### Schema Change Process
 
 1. Update table definitions, indexes, or constraints in code
-2. Increment the appropriate table version constant
-3. On next startup, application detects version mismatch for that table only
-4. Drops old version(s) of that specific table and creates new version
-5. Other tables remain untouched if their versions haven't changed
-
-#### Example Table Names
-
-- `repositories_v1` (current version)
-- `discussions_v1` (current version)
-- `issues_v1` (current version)
-- `pull_requests_v1` (current version)
-- `search` (FTS5 virtual table, not versioned)
+2. Generate new unique GUID and update `SCHEMA_GUID` constant
+3. On next startup, application detects GUID mismatch
+4. Drops entire database and recreates with new schema
+5. All data is re-fetched from GitHub APIs
 
 ### Tables
 
-All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Use the version constants to generate actual table names in queries.
-
-#### table:discussions_X (where X = DISCUSSIONS_VERSION)
+#### table:discussions
 
 - Primary key: `url`
 - Index: `repository`
@@ -839,7 +825,7 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:issues_X (where X = ISSUES_VERSION)
+#### table:issues
 
 - Primary key: `url`
 - Index: `repository`
@@ -858,7 +844,7 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:pull_requests_X (where X = PULL_REQUESTS_VERSION)
+#### table:pull_requests
 
 - Primary key: `url`
 - Index: `repository`
@@ -879,7 +865,7 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:repositories_X (where X = REPOSITORIES_VERSION)
+#### table:repositories
 
 - Primary key: `name`
 - Index: `updated_at`
@@ -895,7 +881,12 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`
 - Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
-- Use workaround https://stackoverflow.com/questions/40877078/drop-a-table-originally-created-with-unknown-tokenizer?rq=1 to drop the table
+
+#### table:schema_version
+
+- Stores the current schema GUID for version tracking
+- Single row table with `guid` column
+- Used to detect schema changes and trigger database recreation
 
 ### Database Performance
 
@@ -914,4 +905,7 @@ Performance indexes are implemented to optimize common query patterns:
 #### Incremental sync optimization
 
 - Index on `repositories.updated_at` optimizes `MAX(updated_at)` queries for determining last sync timestamps
-````
+
+```
+
+```
