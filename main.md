@@ -792,7 +792,9 @@ const (
     PULL_REQUESTS_VERSION  = 1  // pull_requests_v1
 
 )
-```#### Startup Flow
+```
+
+#### Startup Flow
 
 1. For each table type (repositories, discussions, issues, pull_requests, search):
    - Check for existing tables with pattern `<table_name>_v*`
