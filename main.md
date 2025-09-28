@@ -450,7 +450,7 @@ Console when an error occurs:
 
 ### Finally
 
-- Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
+- Truncate `search_X` FTS5 table and repopulate it from `discussions_X`, `issues_X`, and `pull_requests_X` tables (where X represents current version numbers)
 
 ## mcp
 
@@ -774,43 +774,55 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 
 ### Database Versioning
 
-#### Version Management
+#### Table-Specific Version Management
 
-- Generate a unique GUID (UUID v4) and store it as a constant in the code
-- With each schema change (table structure, indexes, constraints), regenerate the GUID
-- At application startup, check if stored schema version matches application's expected version
-- If versions don't match: drop all tables and recreate from scratch
+- Each table has its own version number suffix: `<table_name>_<version>`
+- Version numbers are simple integers that increment with each schema change per table
+- Each table maintains its own version constant in the code
+- At startup, drop all tables with different version numbers than expected
+- Create tables with current version suffix if they don't exist
 
-#### Implementation
+#### Version Constants
 
-```sql
--- Version tracking table (always created first)
-CREATE TABLE IF NOT EXISTS schema_version (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    version TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+```go
+const (
+    REPOSITORIES_VERSION   = 1  // repositories_1
+    DISCUSSIONS_VERSION    = 2  // discussions_2
+    ISSUES_VERSION         = 1  // issues_1
+    PULL_REQUESTS_VERSION  = 3  // pull_requests_3
+    SEARCH_VERSION         = 1  // search_1
+)
 ```
 
 #### Startup Flow
 
-1. Create `schema_version` table if it doesn't exist
-2. Check if a version record exists
-3. Compare stored version with application's expected GUID:
-   - **Match**: Continue with normal startup
-   - **No match or missing**: Drop all tables except `schema_version`, recreate schema, update version
-4. Log version actions (schema reset, version updated, etc.)
+1. For each table type (repositories, discussions, issues, pull_requests, search):
+   - Check for existing tables with pattern `<table_name>_*`
+   - Drop any tables that don't match the current version suffix
+   - Create table with current version suffix if it doesn't exist
+2. Log cleanup actions (dropped old versions, created new tables)
 
 #### Schema Change Process
 
 1. Update table definitions, indexes, or constraints in code
-2. Generate new GUID and update the constant in application
-3. On next startup, application detects version mismatch and resets database
-4. Fresh schema is created with new version stored
+2. Increment the appropriate table version constant
+3. On next startup, application detects version mismatch for that table only
+4. Drops old version(s) of that specific table and creates new version
+5. Other tables remain untouched if their versions haven't changed
+
+#### Example Table Names
+
+- `repositories_1` (current version)
+- `discussions_2` (current version, upgraded from discussions_1)
+- `issues_1` (current version)
+- `pull_requests_3` (current version, upgraded from pull_requests_1, pull_requests_2)
+- `search_1` (current version)
 
 ### Tables
 
-#### table:discussions
+All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Use the version constants to generate actual table names in queries.
+
+#### table:discussions_X (where X = DISCUSSIONS_VERSION)
 
 - Primary key: `url`
 - Index: `repository`
@@ -827,7 +839,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:issues
+#### table:issues_X (where X = ISSUES_VERSION)
 
 - Primary key: `url`
 - Index: `repository`
@@ -846,7 +858,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:pull_requests
+#### table:pull_requests_X (where X = PULL_REQUESTS_VERSION)
 
 - Primary key: `url`
 - Index: `repository`
@@ -867,7 +879,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 - `repository`: Repository name, without organization prefix (e.g., `repo`)
 - `author`: Username
 
-#### table:repositories
+#### table:repositories_X (where X = REPOSITORIES_VERSION)
 
 - Primary key: `name`
 - Index: `updated_at`
@@ -877,7 +889,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 - `has_issues_enabled`: Boolean indicating if the repository has issues feature enabled
 - `updated_at`: Last update timestamp
 
-#### table:search
+#### table:search_X (where X = SEARCH_VERSION)
 
 - FTS5 virtual table for full-text search across discussions, issues, and pull requests
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
