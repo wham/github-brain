@@ -81,7 +81,7 @@ The first call for an organization may take a while. Subsequent calls are faster
 
     For private organizations, the token must have the following configuration:
 
-    - Repository permissions: Read access to discussions, issues, metadata, and pull requests
+    - Repository permissions: Read access to discussions, issues, metadata, and pull requests. Click [here](https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read) to generate.
 
     For public organizations, an empty token is sufficient, as the data is publicly accessible.
 

@@ -776,7 +776,7 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 
 #### Table-Specific Version Management
 
-- Each table has its own version number suffix: `<table_name>_<version>`
+- Each table has its own version number suffix: `<table_name>_v<version>`
 - Version numbers are simple integers that increment with each schema change per table
 - Each table maintains its own version constant in the code
 - At startup, drop all tables with different version numbers than expected
@@ -786,16 +786,16 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 
 ````go
 const (
-    REPOSITORIES_VERSION   = 1  // repositories_1
-    DISCUSSIONS_VERSION    = 1  // discussions_1
-    ISSUES_VERSION         = 1  // issues_1
-    PULL_REQUESTS_VERSION  = 1  // pull_requests_1
-    SEARCH_VERSION         = 1  // search_1
+    REPOSITORIES_VERSION   = 1  // repositories_v1
+    DISCUSSIONS_VERSION    = 1  // discussions_v1
+    ISSUES_VERSION         = 1  // issues_v1
+    PULL_REQUESTS_VERSION  = 1  // pull_requests_v1
+    SEARCH_VERSION         = 1  // search_v1
 )
 ```#### Startup Flow
 
 1. For each table type (repositories, discussions, issues, pull_requests, search):
-   - Check for existing tables with pattern `<table_name>_*`
+   - Check for existing tables with pattern `<table_name>_v*`
    - Drop any tables that don't match the current version suffix
    - Create table with current version suffix if it doesn't exist
 2. Log cleanup actions (dropped old versions, created new tables)
@@ -810,11 +810,11 @@ const (
 
 #### Example Table Names
 
-- `repositories_1` (current version)
-- `discussions_1` (current version)
-- `issues_1` (current version)
-- `pull_requests_1` (current version)
-- `search_1` (current version)
+- `repositories_v1` (current version)
+- `discussions_v1` (current version)
+- `issues_v1` (current version)
+- `pull_requests_v1` (current version)
+- `search_v1` (current version)
 
 ### Tables
 

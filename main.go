@@ -1487,15 +1487,15 @@ func (d *DB) Close() error {
 func getTableName(tableType string) string {
 	switch tableType {
 	case "repositories":
-		return fmt.Sprintf("repositories_%d", REPOSITORIES_VERSION)
+		return fmt.Sprintf("repositories_v%d", REPOSITORIES_VERSION)
 	case "discussions":
-		return fmt.Sprintf("discussions_%d", DISCUSSIONS_VERSION)
+		return fmt.Sprintf("discussions_v%d", DISCUSSIONS_VERSION)
 	case "issues":
-		return fmt.Sprintf("issues_%d", ISSUES_VERSION)
+		return fmt.Sprintf("issues_v%d", ISSUES_VERSION)
 	case "pull_requests":
-		return fmt.Sprintf("pull_requests_%d", PULL_REQUESTS_VERSION)
+		return fmt.Sprintf("pull_requests_v%d", PULL_REQUESTS_VERSION)
 	case "search":
-		return fmt.Sprintf("search_%d", SEARCH_VERSION)
+		return fmt.Sprintf("search_v%d", SEARCH_VERSION)
 	default:
 		panic(fmt.Sprintf("Unknown table type: %s", tableType))
 	}
@@ -1656,7 +1656,7 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 			// Check if it's a versioned table we care about
 			isVersionedTable := false
 			for tableType := range expectedTables {
-				if strings.HasPrefix(tableName, tableType+"_") {
+				if strings.HasPrefix(tableName, tableType+"_v") {
 					isVersionedTable = true
 					break
 				}
@@ -1670,10 +1670,11 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 				}
 				
 				// Use special handling for FTS5 virtual tables
-				if strings.HasPrefix(tableName, "search_") {
-					if err := dropFTS5Table(db, tableName); err != nil {
+				if strings.HasPrefix(tableName, "search_v") {
+					if _, err := dropFTS5Table(db, tableName); err != nil {
 						return fmt.Errorf("failed to drop FTS5 table %s: %w", tableName, err)
 					}
+					// Note: Ideally we'd reopen the DB here, but we're in InitDB so we continue
 				} else {
 					if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
 						return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
@@ -1697,10 +1698,11 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 
 // dropFTS5Table handles dropping FTS5 virtual tables using the workaround from:
 // https://stackoverflow.com/questions/40877078/drop-a-table-originally-created-with-unknown-tokenizer
-func dropFTS5Table(db *DB, tableName string) error {
+// Returns true if database needs to be reopened (as recommended in the article)
+func dropFTS5Table(db *DB, tableName string) (bool, error) {
 	// First try normal DROP TABLE
 	if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err == nil {
-		return nil // Normal drop worked
+		return false, nil // Normal drop worked, no reopen needed
 	}
 	
 	// If normal drop fails, use the workaround for corrupted FTS5 tables
@@ -1721,7 +1723,8 @@ func dropFTS5Table(db *DB, tableName string) error {
 	// Force WAL checkpoint to clear cached state
 	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	
-	return nil
+	// Return true to indicate that database should be reopened as per the article
+	return true, nil
 }
 
 func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
@@ -2027,25 +2030,40 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	issuesTable := getTableName("issues")
 	pullRequestsTable := getTableName("pull_requests")
 	
-	// Delete all data from search table, with FTS5 workaround if needed
+	// Try to clear search table data, recreate if corrupted
 	if _, err := db.Exec(fmt.Sprintf("DELETE FROM [%s]", searchTable)); err != nil {
-		progress.Log("Search table corrupted, recreating with FTS5 workaround...")
+		progress.Log("Search table corrupted, dropping and recreating...")
 		
-		// Drop and recreate using FTS5 workaround
-		if dropErr := dropFTS5Table(db, searchTable); dropErr != nil {
+		// Force drop the table completely using FTS5 workaround
+		if _, dropErr := dropFTS5Table(db, searchTable); dropErr != nil {
 			return fmt.Errorf("failed to drop corrupted search table: %w", dropErr)
 		}
 		
-		// Recreate the table
+		// Verify table is gone and recreate
+		var exists int
+		for i := 0; i < 3; i++ { // Try up to 3 times with small delays
+			checkErr := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name=?", searchTable).Scan(&exists)
+			if checkErr != nil {
+				return fmt.Errorf("failed to check if search table exists: %w", checkErr)
+			}
+			if exists == 0 {
+				break
+			}
+			progress.Log("Table still exists, waiting for cleanup...")
+			time.Sleep(100 * time.Millisecond)
+		}
+		
+		// Recreate the search table
 		if _, createErr := db.Exec(fmt.Sprintf(`
 			CREATE VIRTUAL TABLE [%s] USING fts5(
 				type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 			)
 		`, searchTable)); createErr != nil {
-			return fmt.Errorf("failed to recreate search table: %w", createErr)
+			// If creation still fails, provide more detailed error info
+			return fmt.Errorf("failed to recreate search table [%s]: %w", searchTable, createErr)
 		}
 		
-		progress.Log("Successfully recreated search table")
+		progress.Log("Successfully recreated search table [%s]", searchTable)
 	}
 	
 	// Get counts for progress reporting
