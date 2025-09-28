@@ -784,17 +784,15 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 
 #### Version Constants
 
-```go
+````go
 const (
     REPOSITORIES_VERSION   = 1  // repositories_1
-    DISCUSSIONS_VERSION    = 2  // discussions_2
+    DISCUSSIONS_VERSION    = 1  // discussions_1
     ISSUES_VERSION         = 1  // issues_1
-    PULL_REQUESTS_VERSION  = 3  // pull_requests_3
+    PULL_REQUESTS_VERSION  = 1  // pull_requests_1
     SEARCH_VERSION         = 1  // search_1
 )
-```
-
-#### Startup Flow
+```#### Startup Flow
 
 1. For each table type (repositories, discussions, issues, pull_requests, search):
    - Check for existing tables with pattern `<table_name>_*`
@@ -813,9 +811,9 @@ const (
 #### Example Table Names
 
 - `repositories_1` (current version)
-- `discussions_2` (current version, upgraded from discussions_1)
+- `discussions_1` (current version)
 - `issues_1` (current version)
-- `pull_requests_3` (current version, upgraded from pull_requests_1, pull_requests_2)
+- `pull_requests_1` (current version)
 - `search_1` (current version)
 
 ### Tables
@@ -913,3 +911,4 @@ Performance indexes are implemented to optimize common query patterns:
 #### Incremental sync optimization
 
 - Index on `repositories.updated_at` optimizes `MAX(updated_at)` queries for determining last sync timestamps
+````

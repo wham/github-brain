@@ -29,6 +29,15 @@ import (
 	"golang.org/x/term"
 )
 
+// Database version constants for table-specific versioning
+const (
+	REPOSITORIES_VERSION   = 1 // repositories_1
+	DISCUSSIONS_VERSION    = 1 // discussions_1
+	ISSUES_VERSION         = 1 // issues_1
+	PULL_REQUESTS_VERSION  = 1 // pull_requests_1
+	SEARCH_VERSION         = 1 // search_1
+)
+
 // Global variables for rate limit handling and status tracking
 var (
 	rateLimitMutex        sync.Mutex
@@ -1474,6 +1483,35 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+// getTableName returns the versioned table name for a given table type
+func getTableName(tableType string) string {
+	switch tableType {
+	case "repositories":
+		return fmt.Sprintf("repositories_%d", REPOSITORIES_VERSION)
+	case "discussions":
+		return fmt.Sprintf("discussions_%d", DISCUSSIONS_VERSION)
+	case "issues":
+		return fmt.Sprintf("issues_%d", ISSUES_VERSION)
+	case "pull_requests":
+		return fmt.Sprintf("pull_requests_%d", PULL_REQUESTS_VERSION)
+	case "search":
+		return fmt.Sprintf("search_%d", SEARCH_VERSION)
+	default:
+		panic(fmt.Sprintf("Unknown table type: %s", tableType))
+	}
+}
+
+// getAllTableNames returns all current versioned table names
+func getAllTableNames() map[string]string {
+	return map[string]string{
+		"repositories":   getTableName("repositories"),
+		"discussions":    getTableName("discussions"),
+		"issues":         getTableName("issues"),
+		"pull_requests":  getTableName("pull_requests"),
+		"search":         getTableName("search"),
+	}
+}
+
 // Repository represents a GitHub repository
 type Repository struct {
 	Name                    string    `json:"name"`                      // Repository name without organization prefix
@@ -1572,6 +1610,84 @@ func getDBPath(dbDir, organization string) string {
 	return fmt.Sprintf("%s/%s.db", dbDir, organization)
 }
 
+// cleanupOldTables drops all tables that don't match current version suffixes
+func cleanupOldTables(db *DB, progress *Progress) error {
+	// Get list of all tables in the database (including virtual tables)
+	rows, err := db.Query("SELECT name FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name NOT LIKE 'sqlite_%'")
+	if err != nil {
+		return fmt.Errorf("failed to query existing tables: %w", err)
+	}
+	defer rows.Close()
+
+	var existingTables []string
+	for rows.Next() {
+		var tableName string
+		if err := rows.Scan(&tableName); err != nil {
+			return fmt.Errorf("failed to scan table name: %w", err)
+		}
+		existingTables = append(existingTables, tableName)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error reading table names: %w", err)
+	}
+
+	// Get map of current expected table names
+	expectedTables := getAllTableNames()
+	
+	// Check each existing table and drop if it doesn't match current versions
+	droppedTables := 0
+	for _, tableName := range existingTables {
+		// Skip lock table as it's not versioned
+		if tableName == "lock" {
+			continue
+		}
+		
+		// Check if this table matches any current expected table name
+		isCurrentVersion := false
+		for _, expectedName := range expectedTables {
+			if tableName == expectedName {
+				isCurrentVersion = true
+				break
+			}
+		}
+		
+		// If it doesn't match current version, drop it
+		if !isCurrentVersion {
+			// Check if it's a versioned table we care about
+			isVersionedTable := false
+			for tableType := range expectedTables {
+				if strings.HasPrefix(tableName, tableType+"_") {
+					isVersionedTable = true
+					break
+				}
+			}
+			
+			if isVersionedTable {
+				if progress != nil {
+					progress.Log("Dropping old table version: %s", tableName)
+				} else {
+					slog.Info("Dropping old table version", "table", tableName)
+				}
+				
+				if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
+					return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
+				}
+				droppedTables++
+			}
+		}
+	}
+	
+	if droppedTables > 0 {
+		if progress != nil {
+			progress.Log("Cleaned up %d old table version(s)", droppedTables)
+		} else {
+			slog.Info("Cleaned up old table versions", "count", droppedTables)
+		}
+	}
+	
+	return nil
+}
+
 func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	dbPath := getDBPath(dbDir, organization)
 	
@@ -1636,28 +1752,36 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		}
 	}
 
-	// Create repositories table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS repositories (
+	// Cleanup tables with incorrect version suffixes
+	if err := cleanupOldTables(&DB{db: db}, progress); err != nil {
+		return nil, fmt.Errorf("failed to cleanup old tables: %w", err)
+	}
+
+	// Create repositories table with version suffix
+	repositoriesTable := getTableName("repositories")
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
 			name TEXT PRIMARY KEY,
 			has_discussions_enabled BOOLEAN DEFAULT 0,
 			has_issues_enabled BOOLEAN DEFAULT 0,
 			updated_at DATETIME
 		)
-	`)
+	`, repositoriesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repositories table: %w", err)
 	}
 
 	// Create performance index for repositories table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_repositories_updated_at ON repositories (updated_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated_at ON %s (updated_at)", 
+		repositoriesTable, repositoriesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create updated_at index on repositories table: %w", err)
 	}
 
-	// Create discussions table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS discussions (
+	// Create discussions table with version suffix
+	discussionsTable := getTableName("discussions")
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
 			url TEXT PRIMARY KEY,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
@@ -1666,42 +1790,48 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 			repository TEXT NOT NULL,
 			author TEXT NOT NULL
 		)
-	`)
+	`, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create discussions table: %w", err)
 	}
 
 	// Create indexes for discussions table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_repository ON discussions (repository)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repository ON %s (repository)", 
+		discussionsTable, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository index on discussions table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_author ON discussions (author)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_author ON %s (author)", 
+		discussionsTable, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create author index on discussions table: %w", err)
 	}
 
 	// Create performance indexes for discussions table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_created_at ON discussions (created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_created_at ON %s (created_at)", 
+		discussionsTable, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create created_at index on discussions table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_updated_at ON discussions (updated_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated_at ON %s (updated_at)", 
+		discussionsTable, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create updated_at index on discussions table: %w", err)
 	}
 
 	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_repo_created ON discussions (repository, created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repo_created ON %s (repository, created_at)", 
+		discussionsTable, discussionsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository+created_at index on discussions table: %w", err)
 	}
 
-	// Create issues table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS issues (
+	// Create issues table with version suffix
+	issuesTable := getTableName("issues")
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
 			url TEXT PRIMARY KEY,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
@@ -1711,47 +1841,54 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 			repository TEXT NOT NULL,
 			author TEXT NOT NULL
 		)
-	`)
+	`, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create issues table: %w", err)
 	}
 
 	// Create indexes for issues table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_repository ON issues (repository)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repository ON %s (repository)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository index on issues table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_author ON issues (author)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_author ON %s (author)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create author index on issues table: %w", err)
 	}
 
 	// Create performance indexes for issues table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_created_at ON issues (created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_created_at ON %s (created_at)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create created_at index on issues table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_updated_at ON issues (updated_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated_at ON %s (updated_at)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create updated_at index on issues table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_closed_at ON issues (closed_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_closed_at ON %s (closed_at)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create closed_at index on issues table: %w", err)
 	}
 
 	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_repo_created ON issues (repository, created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repo_created ON %s (repository, created_at)", 
+		issuesTable, issuesTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository+created_at index on issues table: %w", err)
 	}
 
-	// Create pull_requests table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS pull_requests (
+	// Create pull_requests table with version suffix
+	pullRequestsTable := getTableName("pull_requests")
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE TABLE IF NOT EXISTS %s (
 			url TEXT PRIMARY KEY,
 			title TEXT NOT NULL,
 			body TEXT NOT NULL,
@@ -1762,59 +1899,53 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 			repository TEXT NOT NULL,
 			author TEXT NOT NULL
 		)
-	`)
+	`, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pull_requests table: %w", err)
 	}
 
 	// Create indexes for pull_requests table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_repository ON pull_requests (repository)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repository ON %s (repository)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository index on pull_requests table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_author ON pull_requests (author)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_author ON %s (author)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create author index on pull_requests table: %w", err)
 	}
 
 	// Create performance indexes for pull_requests table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_created_at ON pull_requests (created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_created_at ON %s (created_at)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create created_at index on pull_requests table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_updated_at ON pull_requests (updated_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_updated_at ON %s (updated_at)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create updated_at index on pull_requests table: %w", err)
 	}
 
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_closed_at ON pull_requests (closed_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_closed_at ON %s (closed_at)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create closed_at index on pull_requests table: %w", err)
 	}
 
 	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_repo_created ON pull_requests (repository, created_at)`)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_repo_created ON %s (repository, created_at)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create repository+created_at index on pull_requests table: %w", err)
 	}
 
-	// Add merged_at column to pull_requests table if it doesn't exist
-	_, err = db.Exec(`ALTER TABLE pull_requests ADD COLUMN merged_at DATETIME`)
-	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-		return nil, fmt.Errorf("failed to add merged_at column to pull_requests table: %w", err)
-	}
-	if err == nil {
-		if progress != nil {
-			progress.Log("Added merged_at column to pull_requests table")
-		} else {
-			slog.Info("Added merged_at column to pull_requests table")
-		}
-	}
-
-	// Create merged_at index after column is added
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
+	// Create merged_at index (merged_at column already included in table creation)
+	_, err = db.Exec(fmt.Sprintf("CREATE INDEX IF NOT EXISTS idx_%s_merged_at ON %s (merged_at)", 
+		pullRequestsTable, pullRequestsTable))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
 	}
@@ -1834,12 +1965,13 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create search table (FTS5) for full-text search (title prioritization handled in queries)
-	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
+	// Create search table (FTS5) for full-text search (title prioritization handled in queries) with version suffix
+	searchTable := getTableName("search")
+	_, err = db.Exec(fmt.Sprintf(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS [%s] USING fts5(
 			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 		)
-	`)
+	`, searchTable))
 	if err != nil {
 		return nil, fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
 	}
@@ -1853,16 +1985,22 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	slog.Info("Truncating and repopulating search FTS table...")
 	progress.Log("Clearing existing search index...")
 	
+	// Get versioned table names
+	searchTable := getTableName("search")
+	discussionsTable := getTableName("discussions")
+	issuesTable := getTableName("issues")
+	pullRequestsTable := getTableName("pull_requests")
+	
 	// Delete all data from search table
-	if _, err := db.Exec("DELETE FROM search"); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("DELETE FROM [%s]", searchTable)); err != nil {
 		return fmt.Errorf("failed to truncate search table: %w", err)
 	}
 	
 	// Get counts for progress reporting
 	var discussionCount, issueCount, prCount int
-	db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
-	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
-	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
+	db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", discussionsTable)).Scan(&discussionCount)
+	db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", issuesTable)).Scan(&issueCount)
+	db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", pullRequestsTable)).Scan(&prCount)
 	
 	totalItems := discussionCount + issueCount + prCount
 	progress.Log("Indexing %d total items: %d discussions, %d issues, %d pull requests", 
@@ -1875,10 +2013,10 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	if discussionCount > 0 {
 		progress.Log("Indexing %d discussions into search table...", discussionCount)
 		slog.Info("Indexing discussions...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
-			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
-		`)
+		_, err := db.Exec(fmt.Sprintf(`
+			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
+			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM [%s]
+		`, searchTable, discussionsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate discussions in search table: %w", err)
 		}
@@ -1891,12 +2029,12 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	if issueCount > 0 {
 		progress.Log("Indexing %d issues into search table...", issueCount)
 		slog.Info("Indexing issues...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		_, err := db.Exec(fmt.Sprintf(`
+			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
 			SELECT 'issue', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-			FROM issues
-		`)
+			FROM [%s]
+		`, searchTable, issuesTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate issues in search table: %w", err)
 		}
@@ -1909,12 +2047,12 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	if prCount > 0 {
 		progress.Log("Indexing %d pull requests into search table...", prCount)
 		slog.Info("Indexing pull requests...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+		_, err := db.Exec(fmt.Sprintf(`
+			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
 			SELECT 'pull_request', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-			FROM pull_requests
-		`)
+			FROM [%s]
+		`, searchTable, pullRequestsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
 		}
@@ -2029,7 +2167,7 @@ func (db *DB) executeWithRetry(operation func() error, operationName string) err
 func (db *DB) SaveRepository(repo *Repository) error {
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
-			"INSERT OR REPLACE INTO repositories (name, updated_at, has_issues_enabled, has_discussions_enabled) VALUES (?, ?, ?, ?)",
+			fmt.Sprintf("INSERT OR REPLACE INTO %s (name, updated_at, has_issues_enabled, has_discussions_enabled) VALUES (?, ?, ?, ?)", getTableName("repositories")),
 			repo.Name, repo.UpdatedAt.Format(time.RFC3339), repo.HasIssuesEnabled, repo.HasDiscussionsEnabled,
 		)
 		return err
@@ -2040,7 +2178,7 @@ func (db *DB) SaveRepository(repo *Repository) error {
 func (db *DB) SaveDiscussion(discussion *Discussion) error {
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
-			"INSERT OR REPLACE INTO discussions (url, title, body, created_at, updated_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			fmt.Sprintf("INSERT OR REPLACE INTO %s (url, title, body, created_at, updated_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?)", getTableName("discussions")),
 			discussion.URL, discussion.Title, discussion.Body, discussion.CreatedAt.Format(time.RFC3339), discussion.UpdatedAt.Format(time.RFC3339), discussion.Repository, discussion.Author,
 		)
 		return err
@@ -2056,7 +2194,7 @@ func (db *DB) SaveIssue(issue *Issue) error {
 	
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
-			"INSERT OR REPLACE INTO issues (url, title, body, created_at, updated_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+			fmt.Sprintf("INSERT OR REPLACE INTO %s (url, title, body, created_at, updated_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", getTableName("issues")),
 			issue.URL, issue.Title, issue.Body, issue.CreatedAt.Format(time.RFC3339), issue.UpdatedAt.Format(time.RFC3339), closedAtStr, issue.Repository, issue.Author,
 		)
 		return err
@@ -2077,7 +2215,7 @@ func (db *DB) SavePullRequest(pr *PullRequest) error {
 	
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
-			"INSERT OR REPLACE INTO pull_requests (url, title, body, created_at, updated_at, merged_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			fmt.Sprintf("INSERT OR REPLACE INTO %s (url, title, body, created_at, updated_at, merged_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", getTableName("pull_requests")),
 			pr.URL, pr.Title, pr.Body, pr.CreatedAt.Format(time.RFC3339), pr.UpdatedAt.Format(time.RFC3339), mergedAtStr, closedAtStr, pr.Repository, pr.Author,
 		)
 		return err
@@ -2086,7 +2224,7 @@ func (db *DB) SavePullRequest(pr *PullRequest) error {
 
 // GetRepositories gets all repositories from the database
 func (db *DB) GetRepositories() ([]Repository, error) {
-	rows, err := db.Query("SELECT name, updated_at, has_issues_enabled, has_discussions_enabled FROM repositories")
+	rows, err := db.Query(fmt.Sprintf("SELECT name, updated_at, has_issues_enabled, has_discussions_enabled FROM %s", getTableName("repositories")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to query repositories: %w", err)
 	}
@@ -2116,7 +2254,7 @@ func (db *DB) GetRepositories() ([]Repository, error) {
 
 // GetRepository gets a specific repository from the database
 func (db *DB) GetRepository(name string) (*Repository, error) {
-	query := "SELECT name, updated_at, has_issues_enabled, has_discussions_enabled FROM repositories WHERE name = ?"
+	query := fmt.Sprintf("SELECT name, updated_at, has_issues_enabled, has_discussions_enabled FROM %s WHERE name = ?", getTableName("repositories"))
 	row := db.QueryRow(query, name)
 
 	var repo Repository
@@ -2239,7 +2377,7 @@ func (db *DB) GetDiscussions(repository string, fromDate time.Time, toDate time.
 
 	query := `
 		SELECT url, title, body, author, created_at, updated_at, repository
-		FROM discussions ` + whereClause + `
+		FROM ` + getTableName("discussions") + ` ` + whereClause + `
 		ORDER BY created_at ASC`
 
 	rows, err := db.Query(query, args...)
@@ -2297,7 +2435,7 @@ func (db *DB) GetIssues(repository string, createdFromDate time.Time, createdToD
 
 	query := `
 		SELECT url, title, body, author, created_at, updated_at, closed_at, repository
-		FROM issues ` + whereClause + `
+		FROM ` + getTableName("issues") + ` ` + whereClause + `
 		ORDER BY created_at ASC`
 
 	rows, err := db.Query(query, args...)
@@ -2362,7 +2500,7 @@ func (db *DB) GetPullRequests(repository string, createdFromDate time.Time, crea
 
 	query := `
 		SELECT url, title, body, author, created_at, updated_at, merged_at, closed_at, repository
-		FROM pull_requests ` + whereClause + `
+		FROM ` + getTableName("pull_requests") + ` ` + whereClause + `
 		ORDER BY created_at ASC`
 
 	rows, err := db.Query(query, args...)
@@ -2408,7 +2546,7 @@ func (db *DB) GetPullRequests(repository string, createdFromDate time.Time, crea
 
 // getLastUpdatedForTable gets the most recent updated_at date for a repository from a specific table
 func (db *DB) getLastUpdatedForTable(tableName, repository string) (time.Time, error) {
-	query := fmt.Sprintf("SELECT MAX(updated_at) FROM %s WHERE repository = ?", tableName)
+	query := fmt.Sprintf("SELECT MAX(updated_at) FROM %s WHERE repository = ?", getTableName(tableName))
 	var lastUpdatedStr sql.NullString
 	err := db.QueryRow(query, repository).Scan(&lastUpdatedStr)
 	if err != nil {
@@ -2447,25 +2585,25 @@ func (db *DB) removeRepositoryAndAssociatedData(repositoryName string, progress 
 	progress.Log("Repository %s does not exist, removing repository and all associated data from database", repositoryName)
 	
 	// Remove the repository
-	_, cleanupErr := db.Exec("DELETE FROM repositories WHERE name = ?", repositoryName)
+	_, cleanupErr := db.Exec(fmt.Sprintf("DELETE FROM %s WHERE name = ?", getTableName("repositories")), repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove repository %s from database: %v", repositoryName, cleanupErr)
 	}
 	
 	// Remove all associated discussions
-	_, cleanupErr = db.Exec("DELETE FROM discussions WHERE repository = ?", repositoryName)
+	_, cleanupErr = db.Exec(fmt.Sprintf("DELETE FROM %s WHERE repository = ?", getTableName("discussions")), repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove discussions for repository %s from database: %v", repositoryName, cleanupErr)
 	}
 	
 	// Remove all associated issues
-	_, cleanupErr = db.Exec("DELETE FROM issues WHERE repository = ?", repositoryName)
+	_, cleanupErr = db.Exec(fmt.Sprintf("DELETE FROM %s WHERE repository = ?", getTableName("issues")), repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove issues for repository %s from database: %v", repositoryName, cleanupErr)
 	}
 	
 	// Remove all associated pull requests
-	_, cleanupErr = db.Exec("DELETE FROM pull_requests WHERE repository = ?", repositoryName)
+	_, cleanupErr = db.Exec(fmt.Sprintf("DELETE FROM %s WHERE repository = ?", getTableName("pull_requests")), repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove pull requests for repository %s from database: %v", repositoryName, cleanupErr)
 	}
@@ -2481,10 +2619,10 @@ func (db *DB) GetMostRecentRepositoryTimestamp(progress *Progress) (time.Time, e
 		return time.Time{}, fmt.Errorf("failed to check table schema: %w", err)
 	}
 
-	// Add updated_at column if it doesn't exist
-	_, err = db.Exec(`
-		ALTER TABLE repositories ADD COLUMN updated_at DATETIME
-	`)
+	// Add updated_at column if it doesn't exist (versioned table already has it)
+	_, err = db.Exec(fmt.Sprintf(`
+		ALTER TABLE %s ADD COLUMN updated_at DATETIME
+	`, getTableName("repositories")))
 	if err == nil {
 		if progress != nil {
 			progress.Log("Added updated_at column to repositories table")
@@ -2496,7 +2634,7 @@ func (db *DB) GetMostRecentRepositoryTimestamp(progress *Progress) (time.Time, e
 	}
 
 	// Query for most recent timestamp
-	row := db.QueryRow("SELECT MAX(updated_at) FROM repositories")
+	row := db.QueryRow(fmt.Sprintf("SELECT MAX(updated_at) FROM %s", getTableName("repositories")))
 	var timestampStr sql.NullString
 	if err := row.Scan(&timestampStr); err != nil {
 		return time.Time{}, fmt.Errorf("failed to get most recent repository timestamp: %w", err)
@@ -2887,25 +3025,25 @@ func ClearData(db *DB, config *Config, progress *Progress) error {
 			switch item {
 			case "repositories":
 				progress.Log("Deleting repositories table")
-				_, err := db.Exec("DELETE FROM repositories")
+				_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", getTableName("repositories")))
 				if err != nil {
 					return fmt.Errorf("failed to clear repositories: %w", err)
 				}
 			case "discussions":
 				progress.Log("Deleting discussions table")
-				_, err := db.Exec("DELETE FROM discussions")
+				_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", getTableName("discussions")))
 				if err != nil {
 					return fmt.Errorf("failed to clear discussions: %w", err)
 				}
 			case "issues":
 				progress.Log("Deleting issues table")
-				_, err := db.Exec("DELETE FROM issues")
+				_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", getTableName("issues")))
 				if err != nil {
 					return fmt.Errorf("failed to clear issues: %w", err)
 				}
 			case "pull-requests":
 				progress.Log("Deleting pull_requests table")
-				_, err := db.Exec("DELETE FROM pull_requests")
+				_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", getTableName("pull_requests")))
 				if err != nil {
 					return fmt.Errorf("failed to clear pull requests: %w", err)
 				}
@@ -2914,11 +3052,11 @@ func ClearData(db *DB, config *Config, progress *Progress) error {
 		}
 	} else {
 		// Clear all data
-		tables := []string{"pull_requests", "issues", "discussions", "repositories"}
-		for _, table := range tables {
-			_, err := db.Exec("DELETE FROM " + table)
+		tableTypes := []string{"pull_requests", "issues", "discussions", "repositories"}
+		for _, tableType := range tableTypes {
+			_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", getTableName(tableType)))
 			if err != nil {
-				return fmt.Errorf("failed to clear %s: %w", table, err)
+				return fmt.Errorf("failed to clear %s: %w", tableType, err)
 			}
 		}
 	}
@@ -4009,11 +4147,11 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 // GetDiscussionByID gets a specific discussion by its URL
 func (db *DB) GetDiscussionByID(discussionURL string) (*Discussion, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT url, title, body, author, created_at, updated_at, repository
-		FROM discussions
+		FROM %s
 		WHERE url = ?
-	`
+	`, getTableName("discussions"))
 	row := db.QueryRow(query, discussionURL)
 
 	var discussion Discussion
@@ -4038,11 +4176,11 @@ func (db *DB) GetDiscussionByID(discussionURL string) (*Discussion, error) {
 
 // GetDiscussionsByRepository gets all discussions for a specific repository
 func (db *DB) GetDiscussionsByRepository(repositoryName string) ([]Discussion, error) {
-	query := `
+	query := fmt.Sprintf(`
 		SELECT url, title, body, author, created_at, updated_at, repository
-		FROM discussions
+		FROM %s
 		WHERE repository = ?
-	`
+	`, getTableName("discussions"))
 	rows, err := db.Query(query, repositoryName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query discussions: %w", err)
@@ -5068,12 +5206,13 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
-	query := `
+	searchTable := getTableName("search")
+	query := fmt.Sprintf(`
 		SELECT type, title, body, url, repository, author, created_at, state
-		FROM search 
-		WHERE search MATCH ?
-		ORDER BY bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
-		LIMIT ?`
+		FROM [%s] 
+		WHERE [%s] MATCH ?
+		ORDER BY bm25([%s], 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
+		LIMIT ?`, searchTable, searchTable, searchTable)
 	
 	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
