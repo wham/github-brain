@@ -1669,8 +1669,15 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 					slog.Info("Dropping old table version", "table", tableName)
 				}
 				
-				if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
-					return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
+				// Use special handling for FTS5 virtual tables
+				if strings.HasPrefix(tableName, "search_") {
+					if err := dropFTS5Table(db, tableName); err != nil {
+						return fmt.Errorf("failed to drop FTS5 table %s: %w", tableName, err)
+					}
+				} else {
+					if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
+						return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
+					}
 				}
 				droppedTables++
 			}
@@ -1684,6 +1691,35 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 			slog.Info("Cleaned up old table versions", "count", droppedTables)
 		}
 	}
+	
+	return nil
+}
+
+// dropFTS5Table handles dropping FTS5 virtual tables using the workaround from:
+// https://stackoverflow.com/questions/40877078/drop-a-table-originally-created-with-unknown-tokenizer
+func dropFTS5Table(db *DB, tableName string) error {
+	// First try normal DROP TABLE
+	if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err == nil {
+		return nil // Normal drop worked
+	}
+	
+	// If normal drop fails, use the workaround for corrupted FTS5 tables
+	// Remove all FTS5-related entries from sqlite_master (with IF EXISTS safety)
+	ftsTableQueries := []string{
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s')", tableName, tableName),
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_data' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_data')", tableName, tableName),
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_idx' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_idx')", tableName, tableName),
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_content' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_content')", tableName, tableName),
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_docsize' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_docsize')", tableName, tableName),
+		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_config' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_config')", tableName, tableName),
+	}
+	
+	for _, query := range ftsTableQueries {
+		_, _ = db.Exec(query) // Ignore errors as some tables might not exist
+	}
+	
+	// Force WAL checkpoint to clear cached state
+	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	
 	return nil
 }
@@ -1991,9 +2027,25 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	issuesTable := getTableName("issues")
 	pullRequestsTable := getTableName("pull_requests")
 	
-	// Delete all data from search table
+	// Delete all data from search table, with FTS5 workaround if needed
 	if _, err := db.Exec(fmt.Sprintf("DELETE FROM [%s]", searchTable)); err != nil {
-		return fmt.Errorf("failed to truncate search table: %w", err)
+		progress.Log("Search table corrupted, recreating with FTS5 workaround...")
+		
+		// Drop and recreate using FTS5 workaround
+		if dropErr := dropFTS5Table(db, searchTable); dropErr != nil {
+			return fmt.Errorf("failed to drop corrupted search table: %w", dropErr)
+		}
+		
+		// Recreate the table
+		if _, createErr := db.Exec(fmt.Sprintf(`
+			CREATE VIRTUAL TABLE [%s] USING fts5(
+				type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+			)
+		`, searchTable)); createErr != nil {
+			return fmt.Errorf("failed to recreate search table: %w", createErr)
+		}
+		
+		progress.Log("Successfully recreated search table")
 	}
 	
 	// Get counts for progress reporting
@@ -5176,33 +5228,43 @@ func NewSearchEngine(db *DB) *SearchEngine {
 
 // Search performs a basic search across discussions, issues, and pull requests
 func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) {
+	slog.Debug("Search requested", "query", query, "limit", limit)
+	
 	if query == "" {
 		return []SearchResult{}, nil
 	}
 
 	// Minimum 3 characters for search
 	if len(strings.TrimSpace(query)) < 3 {
+		slog.Debug("Search query too short", "query", query, "length", len(strings.TrimSpace(query)))
 		return []SearchResult{}, nil
 	}
 
 	// Tokenize the query
 	tokens := strings.Fields(strings.ToLower(query))
 	if len(tokens) == 0 {
+		slog.Debug("Search query has no tokens", "query", query)
 		return []SearchResult{}, nil
 	}
 
+	slog.Debug("Search tokens extracted", "tokens", tokens)
+	
 	// Use UNION query to search all tables at once with database-level filtering
 	return se.searchAllTables(tokens, limit)
 }
 
 // searchAllTables performs fast full-text search using the search FTS table
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
+	slog.Debug("Performing FTS search", "tokens", tokens, "limit", limit)
+	
 	// Build FTS query - FTS5 supports phrase queries and AND operations
 	// Join tokens with AND to require all terms to match
 	ftsQuery := strings.Join(tokens, " AND ")
 	
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
+	
+	slog.Debug("Built FTS query", "fts_query", ftsQuery)
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
@@ -5214,11 +5276,14 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		ORDER BY bm25([%s], 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
 		LIMIT ?`, searchTable, searchTable, searchTable)
 	
+	slog.Debug("Executing FTS query", "sql", query, "search_table", searchTable, "fts_query", ftsQuery, "limit", limit)
+	
 	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
 
 	rows, err := se.db.Query(query, args...)
 	if err != nil {
+		slog.Error("FTS search query failed", "sql", query, "search_table", searchTable, "fts_query", ftsQuery, "error", err)
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
 	defer rows.Close()
@@ -5242,6 +5307,7 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		results = append(results, result)
 	}
 	
+	slog.Debug("FTS search completed", "results_count", len(results), "fts_query", ftsQuery)
 	return results, nil
 }
 
@@ -5249,6 +5315,7 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 // RunUIServer starts the web UI server
 // RunUIServer starts the web UI server
 func RunUIServer(db *DB, port string) error {
+	slog.Info("Initializing search engine for UI server")
 	searchEngine := NewSearchEngine(db)
 
 	// Read the index.html file and parse it as a template
@@ -5266,7 +5333,10 @@ func RunUIServer(db *DB, port string) error {
 	// Serve the index.html file for the root route
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		tmpl.Execute(w, nil)
+		if err := tmpl.Execute(w, nil); err != nil {
+			slog.Error("Failed to execute index template", "error", err)
+			http.Error(w, "Template error", http.StatusInternalServerError)
+		}
 	})
 
 	// Serve the HTMX JavaScript file
@@ -5281,20 +5351,27 @@ func RunUIServer(db *DB, port string) error {
 		if query == "" {
 			// Return empty results for empty query
 			w.Header().Set("Content-Type", "text/html")
-			tmpl.ExecuteTemplate(w, "empty-results", nil)
+			if err := tmpl.ExecuteTemplate(w, "empty-results", nil); err != nil {
+				slog.Error("Failed to execute empty-results template", "error", err)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+			}
 			return
 		}
 
 		results, err := searchEngine.Search(query, 10)
 		if err != nil {
-			http.Error(w, "Search error", http.StatusInternalServerError)
+			slog.Error("Search query failed", "query", query, "error", err)
+			http.Error(w, fmt.Sprintf("Search error: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/html")
 		
 		if len(results) == 0 {
-			tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)})
+			if err := tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)}); err != nil {
+				slog.Error("Failed to execute no-results template", "error", err)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -5334,7 +5411,11 @@ func RunUIServer(db *DB, port string) error {
 				"Body":       html.EscapeString(body),
 			}
 
-			tmpl.ExecuteTemplate(w, "result-item", templateData)
+			if err := tmpl.ExecuteTemplate(w, "result-item", templateData); err != nil {
+				slog.Error("Failed to execute result-item template", "error", err, "result_url", result.URL)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+				return
+			}
 		}
 	})
 

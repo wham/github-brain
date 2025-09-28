@@ -893,6 +893,7 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`
 - Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
+- Use workaround https://stackoverflow.com/questions/40877078/drop-a-table-originally-created-with-unknown-tokenizer?rq=1 to drop the table
 
 ### Database Performance
 
