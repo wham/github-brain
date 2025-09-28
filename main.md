@@ -846,7 +846,7 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - FTS5 virtual table for full-text search across discussions, issues, and pull requests
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`
-- Uses `bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0)` ranking with 3x title weight for relevance scoring
+- Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
 
 ### Database Performance
 

@@ -5067,12 +5067,12 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
-	// bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(3x), body, url, repository, author
+	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
 	query := `
 		SELECT type, title, body, url, repository, author, created_at, state
 		FROM search 
 		WHERE search MATCH ?
-		ORDER BY bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0)
+		ORDER BY bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
 		LIMIT ?`
 	
 	// Build args: FTS query + limit
