@@ -35,7 +35,7 @@ const (
 	DISCUSSIONS_VERSION    = 1 // discussions_1
 	ISSUES_VERSION         = 1 // issues_1
 	PULL_REQUESTS_VERSION  = 1 // pull_requests_1
-	SEARCH_VERSION         = 1 // search_1
+
 )
 
 // Global variables for rate limit handling and status tracking
@@ -1494,8 +1494,6 @@ func getTableName(tableType string) string {
 		return fmt.Sprintf("issues_v%d", ISSUES_VERSION)
 	case "pull_requests":
 		return fmt.Sprintf("pull_requests_v%d", PULL_REQUESTS_VERSION)
-	case "search":
-		return "search"
 	default:
 		panic(fmt.Sprintf("Unknown table type: %s", tableType))
 	}
@@ -1508,7 +1506,6 @@ func getAllTableNames() map[string]string {
 		"discussions":    getTableName("discussions"),
 		"issues":         getTableName("issues"),
 		"pull_requests":  getTableName("pull_requests"),
-		"search":         getTableName("search"),
 	}
 }
 
@@ -1653,6 +1650,11 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 		
 		// If it doesn't match current version, drop it
 		if !isCurrentVersion {
+			// Skip the unversioned search table as it's not part of the versioning system
+			if tableName == "search" {
+				continue
+			}
+			
 			// Check if it's a versioned table we care about
 			isVersionedTable := false
 			isOldSearchTable := false
@@ -1678,13 +1680,8 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 					slog.Info("Dropping old table version", "table", tableName)
 				}
 				
-				// Use special handling for FTS5 virtual tables (old search patterns)
-				if isOldSearchTable {
-					if _, err := dropFTS5Table(db, tableName); err != nil {
-						return fmt.Errorf("failed to drop FTS5 table %s: %w", tableName, err)
-					}
-					// Note: Ideally we'd reopen the DB here, but we're in InitDB so we continue
-				} else {
+				// Drop old tables using simple DROP TABLE
+				if isOldSearchTable || true {
 					if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
 						return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
 					}
@@ -1705,36 +1702,7 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 	return nil
 }
 
-// dropFTS5Table handles dropping FTS5 virtual tables using the workaround from:
-// https://stackoverflow.com/questions/40877078/drop-a-table-originally-created-with-unknown-tokenizer
-// Returns true if database needs to be reopened (as recommended in the article)
-func dropFTS5Table(db *DB, tableName string) (bool, error) {
-	// First try normal DROP TABLE
-	if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err == nil {
-		return false, nil // Normal drop worked, no reopen needed
-	}
-	
-	// If normal drop fails, use the workaround for corrupted FTS5 tables
-	// Remove all FTS5-related entries from sqlite_master (with IF EXISTS safety)
-	ftsTableQueries := []string{
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s')", tableName, tableName),
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_data' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_data')", tableName, tableName),
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_idx' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_idx')", tableName, tableName),
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_content' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_content')", tableName, tableName),
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_docsize' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_docsize')", tableName, tableName),
-		fmt.Sprintf("DELETE FROM sqlite_master WHERE type='table' AND name='%s_config' AND EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='%s_config')", tableName, tableName),
-	}
-	
-	for _, query := range ftsTableQueries {
-		_, _ = db.Exec(query) // Ignore errors as some tables might not exist
-	}
-	
-	// Force WAL checkpoint to clear cached state
-	_, _ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-	
-	// Return true to indicate that database should be reopened as per the article
-	return true, nil
-}
+
 
 func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	dbPath := getDBPath(dbDir, organization)
@@ -2013,13 +1981,12 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	// Ensure single row exists
 	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
 
-	// Create search table (FTS5) for full-text search (title prioritization handled in queries) with version suffix
-	searchTable := getTableName("search")
-	_, err = db.Exec(fmt.Sprintf(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS [%s] USING fts5(
+	// Create search table (FTS5) for full-text search (title prioritization handled in queries)
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
 			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 		)
-	`, searchTable))
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
 	}
@@ -2034,45 +2001,30 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	progress.Log("Clearing existing search index...")
 	
 	// Get versioned table names
-	searchTable := getTableName("search")
+	searchTable := "search"
 	discussionsTable := getTableName("discussions")
 	issuesTable := getTableName("issues")
 	pullRequestsTable := getTableName("pull_requests")
 	
 	// Try to clear search table data, recreate if corrupted
-	if _, err := db.Exec(fmt.Sprintf("DELETE FROM [%s]", searchTable)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", searchTable)); err != nil {
 		progress.Log("Search table corrupted, dropping and recreating...")
 		
-		// Force drop the table completely using FTS5 workaround
-		if _, dropErr := dropFTS5Table(db, searchTable); dropErr != nil {
+		// Drop the table using simple DROP TABLE
+		if _, dropErr := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", searchTable)); dropErr != nil {
 			return fmt.Errorf("failed to drop corrupted search table: %w", dropErr)
-		}
-		
-		// Verify table is gone and recreate
-		var exists int
-		for i := 0; i < 3; i++ { // Try up to 3 times with small delays
-			checkErr := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name=?", searchTable).Scan(&exists)
-			if checkErr != nil {
-				return fmt.Errorf("failed to check if search table exists: %w", checkErr)
-			}
-			if exists == 0 {
-				break
-			}
-			progress.Log("Table still exists, waiting for cleanup...")
-			time.Sleep(100 * time.Millisecond)
 		}
 		
 		// Recreate the search table
 		if _, createErr := db.Exec(fmt.Sprintf(`
-			CREATE VIRTUAL TABLE [%s] USING fts5(
+			CREATE VIRTUAL TABLE %s USING fts5(
 				type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
 			)
 		`, searchTable)); createErr != nil {
-			// If creation still fails, provide more detailed error info
 			return fmt.Errorf("failed to recreate search table [%s]: %w", searchTable, createErr)
 		}
 		
-		progress.Log("Successfully recreated search table [%s]", searchTable)
+		progress.Log("Successfully recreated search table %s", searchTable)
 	}
 	
 	// Get counts for progress reporting
@@ -2093,8 +2045,8 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d discussions into search table...", discussionCount)
 		slog.Info("Indexing discussions...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
-			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM [%s]
+			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
+			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM %s
 		`, searchTable, discussionsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate discussions in search table: %w", err)
@@ -2109,10 +2061,10 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d issues into search table...", issueCount)
 		slog.Info("Indexing issues...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
+			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
 			SELECT 'issue', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-			FROM [%s]
+			FROM %s
 		`, searchTable, issuesTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate issues in search table: %w", err)
@@ -2127,10 +2079,10 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d pull requests into search table...", prCount)
 		slog.Info("Indexing pull requests...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO [%s](type, title, body, url, repository, author, created_at, state)
+			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
 			SELECT 'pull_request', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
-			FROM [%s]
+			FROM %s
 		`, searchTable, pullRequestsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
@@ -5295,12 +5247,12 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
-	searchTable := getTableName("search")
+	searchTable := "search"
 	query := fmt.Sprintf(`
 		SELECT type, title, body, url, repository, author, created_at, state
-		FROM [%s] 
-		WHERE [%s] MATCH ?
-		ORDER BY bm25([%s], 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
+		FROM %s 
+		WHERE %s MATCH ?
+		ORDER BY bm25(%s, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
 		LIMIT ?`, searchTable, searchTable, searchTable)
 	
 	slog.Debug("Executing FTS query", "sql", query, "search_table", searchTable, "fts_query", ftsQuery, "limit", limit)

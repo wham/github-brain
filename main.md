@@ -790,7 +790,7 @@ const (
     DISCUSSIONS_VERSION    = 1  // discussions_v1
     ISSUES_VERSION         = 1  // issues_v1
     PULL_REQUESTS_VERSION  = 1  // pull_requests_v1
-    SEARCH_VERSION         = 1  // search (no version suffix)
+
 )
 ```#### Startup Flow
 
@@ -814,7 +814,7 @@ const (
 - `discussions_v1` (current version)
 - `issues_v1` (current version)
 - `pull_requests_v1` (current version)
-- `search` (no versioning)
+- `search` (FTS5 virtual table, not versioned)
 
 ### Tables
 
@@ -887,7 +887,7 @@ All table names include version suffixes (e.g., `discussions_2`, `issues_1`). Us
 - `has_issues_enabled`: Boolean indicating if the repository has issues feature enabled
 - `updated_at`: Last update timestamp
 
-#### table:search_X (where X = SEARCH_VERSION)
+#### table:search
 
 - FTS5 virtual table for full-text search across discussions, issues, and pull requests
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
