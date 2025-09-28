@@ -790,7 +790,7 @@ const (
     DISCUSSIONS_VERSION    = 1  // discussions_v1
     ISSUES_VERSION         = 1  // issues_v1
     PULL_REQUESTS_VERSION  = 1  // pull_requests_v1
-    SEARCH_VERSION         = 1  // search_v1
+    SEARCH_VERSION         = 1  // search (no version suffix)
 )
 ```#### Startup Flow
 
@@ -814,7 +814,7 @@ const (
 - `discussions_v1` (current version)
 - `issues_v1` (current version)
 - `pull_requests_v1` (current version)
-- `search_v1` (current version)
+- `search` (no versioning)
 
 ### Tables
 

@@ -1495,7 +1495,7 @@ func getTableName(tableType string) string {
 	case "pull_requests":
 		return fmt.Sprintf("pull_requests_v%d", PULL_REQUESTS_VERSION)
 	case "search":
-		return fmt.Sprintf("search_v%d", SEARCH_VERSION)
+		return "search"
 	default:
 		panic(fmt.Sprintf("Unknown table type: %s", tableType))
 	}
@@ -1655,11 +1655,20 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 		if !isCurrentVersion {
 			// Check if it's a versioned table we care about
 			isVersionedTable := false
+			isOldSearchTable := false
+			
 			for tableType := range expectedTables {
 				if strings.HasPrefix(tableName, tableType+"_v") {
 					isVersionedTable = true
 					break
 				}
+			}
+			
+			// Special handling for old search table patterns (search_v*, search1, search2, etc.)
+			// We want to clean up any old versioned search tables since we now use just "search"
+			if strings.HasPrefix(tableName, "search_v") || (strings.HasPrefix(tableName, "search") && tableName != "search") {
+				isOldSearchTable = true
+				isVersionedTable = true
 			}
 			
 			if isVersionedTable {
@@ -1669,8 +1678,8 @@ func cleanupOldTables(db *DB, progress *Progress) error {
 					slog.Info("Dropping old table version", "table", tableName)
 				}
 				
-				// Use special handling for FTS5 virtual tables
-				if strings.HasPrefix(tableName, "search_v") {
+				// Use special handling for FTS5 virtual tables (old search patterns)
+				if isOldSearchTable {
 					if _, err := dropFTS5Table(db, tableName); err != nil {
 						return fmt.Errorf("failed to drop FTS5 table %s: %w", tableName, err)
 					}
