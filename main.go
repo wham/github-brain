@@ -2001,30 +2001,13 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	progress.Log("Clearing existing search index...")
 	
 	// Get versioned table names
-	searchTable := "search"
 	discussionsTable := getTableName("discussions")
 	issuesTable := getTableName("issues")
 	pullRequestsTable := getTableName("pull_requests")
 	
-	// Try to clear search table data, recreate if corrupted
-	if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", searchTable)); err != nil {
-		progress.Log("Search table corrupted, dropping and recreating...")
-		
-		// Drop the table using simple DROP TABLE
-		if _, dropErr := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", searchTable)); dropErr != nil {
-			return fmt.Errorf("failed to drop corrupted search table: %w", dropErr)
-		}
-		
-		// Recreate the search table
-		if _, createErr := db.Exec(fmt.Sprintf(`
-			CREATE VIRTUAL TABLE %s USING fts5(
-				type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
-			)
-		`, searchTable)); createErr != nil {
-			return fmt.Errorf("failed to recreate search table [%s]: %w", searchTable, createErr)
-		}
-		
-		progress.Log("Successfully recreated search table %s", searchTable)
+	// Delete all data from search table
+	if _, err := db.Exec("DELETE FROM search"); err != nil {
+		return fmt.Errorf("failed to truncate search table: %w", err)
 	}
 	
 	// Get counts for progress reporting
@@ -2045,9 +2028,9 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d discussions into search table...", discussionCount)
 		slog.Info("Indexing discussions...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM %s
-		`, searchTable, discussionsTable))
+		`, discussionsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate discussions in search table: %w", err)
 		}
@@ -2061,11 +2044,11 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d issues into search table...", issueCount)
 		slog.Info("Indexing issues...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 			SELECT 'issue', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
 			FROM %s
-		`, searchTable, issuesTable))
+		`, issuesTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate issues in search table: %w", err)
 		}
@@ -2079,11 +2062,11 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("Indexing %d pull requests into search table...", prCount)
 		slog.Info("Indexing pull requests...")
 		_, err := db.Exec(fmt.Sprintf(`
-			INSERT INTO %s(type, title, body, url, repository, author, created_at, state)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
 			SELECT 'pull_request', title, body, url, repository, author, created_at, 
 			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
 			FROM %s
-		`, searchTable, pullRequestsTable))
+		`, pullRequestsTable))
 		if err != nil {
 			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
 		}
@@ -5247,22 +5230,21 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
-	searchTable := "search"
-	query := fmt.Sprintf(`
+	query := `
 		SELECT type, title, body, url, repository, author, created_at, state
-		FROM %s 
-		WHERE %s MATCH ?
-		ORDER BY bm25(%s, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
-		LIMIT ?`, searchTable, searchTable, searchTable)
+		FROM search 
+		WHERE search MATCH ?
+		ORDER BY bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
+		LIMIT ?`
 	
-	slog.Debug("Executing FTS query", "sql", query, "search_table", searchTable, "fts_query", ftsQuery, "limit", limit)
+	slog.Debug("Executing FTS query", "sql", query, "search_table", "search", "fts_query", ftsQuery, "limit", limit)
 	
 	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
 
 	rows, err := se.db.Query(query, args...)
 	if err != nil {
-		slog.Error("FTS search query failed", "sql", query, "search_table", searchTable, "fts_query", ftsQuery, "error", err)
+		slog.Error("FTS search query failed", "sql", query, "search_table", "search", "fts_query", ftsQuery, "error", err)
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
 	defer rows.Close()
