@@ -678,9 +678,11 @@ Use one of the available fields: <available_fields>
 Where `<invalid_fields>` is a comma-separated list of invalid fields, and `<available_fields>` is a comma-separated list of available fields.
 
 Next, prepare the FTS5 search query using the `search` table. Build the query with:
+
 - Use FTS5 MATCH operator for the search query
-- Order by relevance (FTS5 rank)
+- Order by `bm25(search)` for optimal relevance ranking (titles are weighted 3x higher)
 - Limit to 10 results
+- Use the unified SearchEngine implementation shared with the UI
 
 If no results are found, output:
 
@@ -747,7 +749,7 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 - Use HTMX for dynamic search and result updates
 - Display top 10 results
 - Design: modern brutalism with purple accents, dark theme
-- Use the `search` table for full-text search
+- Use the unified SearchEngine with FTS5 `bm25(search)` ranking (same as MCP)
 
 ## GitHub
 
@@ -844,6 +846,7 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - FTS5 virtual table for full-text search across discussions, issues, and pull requests
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`
+- Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
 
 ### Database Performance
 
