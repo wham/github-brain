@@ -1499,15 +1499,7 @@ func getTableName(tableType string) string {
 	}
 }
 
-// getAllTableNames returns all current versioned table names
-func getAllTableNames() map[string]string {
-	return map[string]string{
-		"repositories":   getTableName("repositories"),
-		"discussions":    getTableName("discussions"),
-		"issues":         getTableName("issues"),
-		"pull_requests":  getTableName("pull_requests"),
-	}
-}
+
 
 // Repository represents a GitHub repository
 type Repository struct {
@@ -1607,87 +1599,79 @@ func getDBPath(dbDir, organization string) string {
 	return fmt.Sprintf("%s/%s.db", dbDir, organization)
 }
 
-// cleanupOldTables drops all tables that don't match current version suffixes
+// cleanupOldTables drops old versions of specific versioned tables only
 func cleanupOldTables(db *DB, progress *Progress) error {
-	// Get list of all tables in the database (including virtual tables)
-	rows, err := db.Query("SELECT name FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name NOT LIKE 'sqlite_%'")
-	if err != nil {
-		return fmt.Errorf("failed to query existing tables: %w", err)
-	}
-	defer rows.Close()
-
-	var existingTables []string
-	for rows.Next() {
-		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return fmt.Errorf("failed to scan table name: %w", err)
-		}
-		existingTables = append(existingTables, tableName)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("error reading table names: %w", err)
-	}
-
-	// Get map of current expected table names
-	expectedTables := getAllTableNames()
+	// Define the table types that use versioning
+	versionedTableTypes := []string{"repositories", "discussions", "issues", "pull_requests"}
 	
-	// Check each existing table and drop if it doesn't match current versions
+	// Get current version for each table type
+	currentVersions := map[string]int{
+		"repositories":   REPOSITORIES_VERSION,
+		"discussions":    DISCUSSIONS_VERSION,
+		"issues":         ISSUES_VERSION,
+		"pull_requests":  PULL_REQUESTS_VERSION,
+	}
+	
 	droppedTables := 0
-	for _, tableName := range existingTables {
-		// Skip lock table as it's not versioned
-		if tableName == "lock" {
-			continue
-		}
+	
+	// For each versioned table type, clean up old versions
+	for _, tableType := range versionedTableTypes {
+		currentVersion := currentVersions[tableType]
 		
-		// Check if this table matches any current expected table name
-		isCurrentVersion := false
-		for _, expectedName := range expectedTables {
-			if tableName == expectedName {
-				isCurrentVersion = true
-				break
-			}
-		}
-		
-		// If it doesn't match current version, drop it
-		if !isCurrentVersion {
-			// Skip the unversioned search table as it's not part of the versioning system
-			if tableName == "search" {
-				continue
+		// Check for old versions (from v1 to v99, excluding current version)
+		for version := 1; version <= 99; version++ {
+			if version == currentVersion {
+				continue // Skip current version
 			}
 			
-			// Check if it's a versioned table we care about
-			isVersionedTable := false
-			isOldSearchTable := false
+			oldTableName := fmt.Sprintf("%s_v%d", tableType, version)
 			
-			for tableType := range expectedTables {
-				if strings.HasPrefix(tableName, tableType+"_v") {
-					isVersionedTable = true
-					break
-				}
+			// Check if this old version exists
+			var exists int
+			err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name=?", oldTableName).Scan(&exists)
+			if err != nil {
+				return fmt.Errorf("failed to check if table %s exists: %w", oldTableName, err)
 			}
 			
-			// Special handling for old search table patterns (search_v*, search1, search2, etc.)
-			// We want to clean up any old versioned search tables since we now use just "search"
-			if strings.HasPrefix(tableName, "search_v") || (strings.HasPrefix(tableName, "search") && tableName != "search") {
-				isOldSearchTable = true
-				isVersionedTable = true
-			}
-			
-			if isVersionedTable {
+			if exists > 0 {
 				if progress != nil {
-					progress.Log("Dropping old table version: %s", tableName)
+					progress.Log("Dropping old table version: %s", oldTableName)
 				} else {
-					slog.Info("Dropping old table version", "table", tableName)
+					slog.Info("Dropping old table version", "table", oldTableName)
 				}
 				
-				// Drop old tables using simple DROP TABLE
-				if isOldSearchTable || true {
-					if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS [%s]", tableName)); err != nil {
-						return fmt.Errorf("failed to drop old table %s: %w", tableName, err)
-					}
+				if _, err := db.Exec("DROP TABLE IF EXISTS " + oldTableName); err != nil {
+					return fmt.Errorf("failed to drop old table %s: %w", oldTableName, err)
 				}
 				droppedTables++
 			}
+		}
+	}
+	
+	// Also clean up any old search table versions (search_v*, search1, etc.) but NOT FTS5 helper tables
+	oldSearchPatterns := []string{
+		"search_v1", "search_v2", "search_v3", "search_v4", "search_v5",
+		"search1", "search2", "search3", "search4", "search5",
+	}
+	
+	for _, oldSearchTable := range oldSearchPatterns {
+		var exists int
+		err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE (type='table' OR type='virtual table') AND name=?", oldSearchTable).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("failed to check if table %s exists: %w", oldSearchTable, err)
+		}
+		
+		if exists > 0 {
+			if progress != nil {
+				progress.Log("Dropping old search table: %s", oldSearchTable)
+			} else {
+				slog.Info("Dropping old search table", "table", oldSearchTable)
+			}
+			
+			if _, err := db.Exec("DROP TABLE IF EXISTS " + oldSearchTable); err != nil {
+				return fmt.Errorf("failed to drop old search table %s: %w", oldSearchTable, err)
+			}
+			droppedTables++
 		}
 	}
 	
