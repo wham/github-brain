@@ -772,6 +772,42 @@ Centralize error handling into a single function. Use for each GraphQL query.
 
 SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
 
+### Database Versioning
+
+#### Version Management
+
+- Generate a unique GUID (UUID v4) and store it as a constant in the code
+- With each schema change (table structure, indexes, constraints), regenerate the GUID
+- At application startup, check if stored schema version matches application's expected version
+- If versions don't match: drop all tables and recreate from scratch
+
+#### Implementation
+
+```sql
+-- Version tracking table (always created first)
+CREATE TABLE IF NOT EXISTS schema_version (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### Startup Flow
+
+1. Create `schema_version` table if it doesn't exist
+2. Check if a version record exists
+3. Compare stored version with application's expected GUID:
+   - **Match**: Continue with normal startup
+   - **No match or missing**: Drop all tables except `schema_version`, recreate schema, update version
+4. Log version actions (schema reset, version updated, etc.)
+
+#### Schema Change Process
+
+1. Update table definitions, indexes, or constraints in code
+2. Generate new GUID and update the constant in application
+3. On next startup, application detects version mismatch and resets database
+4. Fresh schema is created with new version stored
+
 ### Tables
 
 #### table:discussions
