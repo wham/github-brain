@@ -772,6 +772,40 @@ Centralize error handling into a single function. Use for each GraphQL query.
 
 SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
 
+### Database Versioning System
+
+The application uses a simple GUID-based versioning system to handle schema changes:
+
+- Single schema version GUID for the entire database
+- On any schema change, generate a new unique GUID
+- At startup, check if stored schema GUID matches current GUID
+- If different or missing, drop entire database and recreate from scratch
+
+#### Schema Version
+
+```go
+const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID on any schema modification
+```
+
+#### Startup Flow
+
+1. Check if database exists and has a `schema_version` table
+2. If table exists, read the stored GUID and compare with `SCHEMA_GUID`
+3. If GUID matches, proceed normally
+4. If GUID is different or missing:
+   - Log schema version mismatch
+   - Drop entire database file
+   - Create new database with current schema
+   - Store current `SCHEMA_GUID` in `schema_version` table
+
+#### Schema Change Process
+
+1. Update table definitions, indexes, or constraints in code
+2. Generate new unique GUID and update `SCHEMA_GUID` constant
+3. On next startup, application detects GUID mismatch
+4. Drops entire database and recreates with new schema
+5. All data is re-fetched from GitHub APIs
+
 ### Tables
 
 #### table:discussions
@@ -848,6 +882,12 @@ SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if n
 - Unindexed columns: `created_at`, `state`
 - Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
 
+#### table:schema_version
+
+- Stores the current schema GUID for version tracking
+- Single row table with `guid` column
+- Used to detect schema changes and trigger database recreation
+
 ### Database Performance
 
 Performance indexes are implemented to optimize common query patterns:
@@ -865,3 +905,7 @@ Performance indexes are implemented to optimize common query patterns:
 #### Incremental sync optimization
 
 - Index on `repositories.updated_at` optimizes `MAX(updated_at)` queries for determining last sync timestamps
+
+```
+
+```

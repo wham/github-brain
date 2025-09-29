@@ -29,6 +29,9 @@ import (
 	"golang.org/x/term"
 )
 
+// Database schema version GUID - change this on any schema modification
+const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001"
+
 // Global variables for rate limit handling and status tracking
 var (
 	rateLimitMutex        sync.Mutex
@@ -1474,6 +1477,10 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
+
+
+
+
 // Repository represents a GitHub repository
 type Repository struct {
 	Name                    string    `json:"name"`                      // Repository name without organization prefix
@@ -1572,6 +1579,278 @@ func getDBPath(dbDir, organization string) string {
 	return fmt.Sprintf("%s/%s.db", dbDir, organization)
 }
 
+
+
+
+
+// checkSchemaVersion checks if the database schema version matches current SCHEMA_GUID
+// Returns true if schema is current, false if database needs recreation
+func checkSchemaVersion(db *sql.DB, progress *Progress) (bool, error) {
+	// Check if schema_version table exists
+	var tableExists int
+	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'").Scan(&tableExists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check schema_version table existence: %w", err)
+	}
+	
+	if tableExists == 0 {
+		if progress != nil {
+			progress.Log("No schema_version table found - database recreation needed")
+		} else {
+			slog.Info("No schema_version table found - database recreation needed")
+		}
+		return false, nil
+	}
+	
+	// Read stored GUID
+	var storedGUID string
+	err = db.QueryRow("SELECT guid FROM schema_version LIMIT 1").Scan(&storedGUID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			if progress != nil {
+				progress.Log("No schema version GUID found - database recreation needed")
+			} else {
+				slog.Info("No schema version GUID found - database recreation needed")
+			}
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to read schema version: %w", err)
+	}
+	
+	// Compare GUIDs
+	if storedGUID != SCHEMA_GUID {
+		if progress != nil {
+			progress.Log("Schema version mismatch (stored: %s, current: %s) - database recreation needed", storedGUID, SCHEMA_GUID)
+		} else {
+			slog.Info("Schema version mismatch - database recreation needed", "stored", storedGUID, "current", SCHEMA_GUID)
+		}
+		return false, nil
+	}
+	
+	if progress != nil {
+		progress.Log("Schema version matches - using existing database")
+	} else {
+		slog.Info("Schema version matches - using existing database")
+	}
+	return true, nil
+}
+
+// createAllTables creates all database tables and indexes
+func createAllTables(db *sql.DB, progress *Progress) error {
+	// Create schema_version table and store current GUID
+	_, err := db.Exec(`
+		CREATE TABLE schema_version (
+			guid TEXT PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create schema_version table: %w", err)
+	}
+	
+	// Store current schema GUID
+	_, err = db.Exec("INSERT INTO schema_version (guid) VALUES (?)", SCHEMA_GUID)
+	if err != nil {
+		return fmt.Errorf("failed to store schema version: %w", err)
+	}
+
+	// Create repositories table
+	_, err = db.Exec(`
+		CREATE TABLE repositories (
+			name TEXT PRIMARY KEY,
+			has_discussions_enabled BOOLEAN DEFAULT 0,
+			has_issues_enabled BOOLEAN DEFAULT 0,
+			updated_at DATETIME
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create repositories table: %w", err)
+	}
+
+	// Create performance index for repositories table
+	_, err = db.Exec("CREATE INDEX idx_repositories_updated_at ON repositories (updated_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create updated_at index on repositories table: %w", err)
+	}
+
+	// Create discussions table
+	_, err = db.Exec(`
+		CREATE TABLE discussions (
+			url TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			repository TEXT NOT NULL,
+			author TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create discussions table: %w", err)
+	}
+
+	// Create indexes for discussions table
+	_, err = db.Exec("CREATE INDEX idx_discussions_repository ON discussions (repository)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository index on discussions table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_discussions_author ON discussions (author)")
+	if err != nil {
+		return fmt.Errorf("failed to create author index on discussions table: %w", err)
+	}
+
+	// Create performance indexes for discussions table
+	_, err = db.Exec("CREATE INDEX idx_discussions_created_at ON discussions (created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create created_at index on discussions table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_discussions_updated_at ON discussions (updated_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create updated_at index on discussions table: %w", err)
+	}
+
+	// Composite index for common query patterns: repository + created_at
+	_, err = db.Exec("CREATE INDEX idx_discussions_repo_created ON discussions (repository, created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository+created_at index on discussions table: %w", err)
+	}
+
+	// Create issues table
+	_, err = db.Exec(`
+		CREATE TABLE issues (
+			url TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			closed_at DATETIME,
+			repository TEXT NOT NULL,
+			author TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create issues table: %w", err)
+	}
+
+	// Create indexes for issues table
+	_, err = db.Exec("CREATE INDEX idx_issues_repository ON issues (repository)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository index on issues table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_issues_author ON issues (author)")
+	if err != nil {
+		return fmt.Errorf("failed to create author index on issues table: %w", err)
+	}
+
+	// Create performance indexes for issues table
+	_, err = db.Exec("CREATE INDEX idx_issues_created_at ON issues (created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create created_at index on issues table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_issues_updated_at ON issues (updated_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create updated_at index on issues table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_issues_closed_at ON issues (closed_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create closed_at index on issues table: %w", err)
+	}
+
+	// Composite index for common query patterns: repository + created_at
+	_, err = db.Exec("CREATE INDEX idx_issues_repo_created ON issues (repository, created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository+created_at index on issues table: %w", err)
+	}
+
+	// Create pull_requests table
+	_, err = db.Exec(`
+		CREATE TABLE pull_requests (
+			url TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			updated_at DATETIME NOT NULL,
+			merged_at DATETIME,
+			closed_at DATETIME,
+			repository TEXT NOT NULL,
+			author TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create pull_requests table: %w", err)
+	}
+
+	// Create indexes for pull_requests table
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_repository ON pull_requests (repository)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository index on pull_requests table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_author ON pull_requests (author)")
+	if err != nil {
+		return fmt.Errorf("failed to create author index on pull_requests table: %w", err)
+	}
+
+	// Create performance indexes for pull_requests table
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_created_at ON pull_requests (created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create created_at index on pull_requests table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_updated_at ON pull_requests (updated_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create updated_at index on pull_requests table: %w", err)
+	}
+
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_closed_at ON pull_requests (closed_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create closed_at index on pull_requests table: %w", err)
+	}
+
+	// Composite index for common query patterns: repository + created_at
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_repo_created ON pull_requests (repository, created_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create repository+created_at index on pull_requests table: %w", err)
+	}
+
+	// Create merged_at index
+	_, err = db.Exec("CREATE INDEX idx_pull_requests_merged_at ON pull_requests (merged_at)")
+	if err != nil {
+		return fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
+	}
+
+	// Create lock table
+	_, err = db.Exec(`
+		CREATE TABLE lock (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			locked INTEGER NOT NULL DEFAULT 0,
+			locked_at DATETIME
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create lock table: %w", err)
+	}
+
+	// Ensure single row exists in lock table
+	_, _ = db.Exec(`INSERT INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
+
+	// Create search table (FTS5) for full-text search
+	_, err = db.Exec(`
+		CREATE VIRTUAL TABLE search USING fts5(
+			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
+	}
+
+	return nil
+}
+
 func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 	dbPath := getDBPath(dbDir, organization)
 	
@@ -1595,6 +1874,44 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 					slog.Error("Failed to create database directory", "dir", dir, "error", err)
 				}
 				return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
+			}
+		}
+	}
+
+	// Check if database file exists and if schema version matches
+	var needsRecreation bool = true
+	if _, err := os.Stat(dbPath); err == nil {
+		// Database exists, check schema version
+		tempDB, err := sql.Open("sqlite3", dbPath)
+		if err == nil {
+			defer tempDB.Close()
+			schemaMatches, checkErr := checkSchemaVersion(tempDB, progress)
+			if checkErr != nil {
+				if progress != nil {
+					progress.Log("Error checking schema version: %v - recreating database", checkErr)
+				} else {
+					slog.Warn("Error checking schema version - recreating database", "error", checkErr)
+				}
+			} else if schemaMatches {
+				needsRecreation = false
+			}
+		}
+	}
+	
+	// Drop and recreate database if needed
+	if needsRecreation {
+		if progress != nil {
+			progress.Log("Dropping existing database and creating new one")
+		} else {
+			slog.Info("Dropping existing database and creating new one")
+		}
+		
+		// Remove existing database file
+		if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
+			if progress != nil {
+				progress.Log("Warning: Failed to remove existing database: %v", err)
+			} else {
+				slog.Warn("Failed to remove existing database", "error", err)
 			}
 		}
 	}
@@ -1636,213 +1953,14 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 		}
 	}
 
-	// Create repositories table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS repositories (
-			name TEXT PRIMARY KEY,
-			has_discussions_enabled BOOLEAN DEFAULT 0,
-			has_issues_enabled BOOLEAN DEFAULT 0,
-			updated_at DATETIME
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repositories table: %w", err)
-	}
-
-	// Create performance index for repositories table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_repositories_updated_at ON repositories (updated_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create updated_at index on repositories table: %w", err)
-	}
-
-	// Create discussions table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS discussions (
-			url TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			body TEXT NOT NULL,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			repository TEXT NOT NULL,
-			author TEXT NOT NULL
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create discussions table: %w", err)
-	}
-
-	// Create indexes for discussions table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_repository ON discussions (repository)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository index on discussions table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_author ON discussions (author)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create author index on discussions table: %w", err)
-	}
-
-	// Create performance indexes for discussions table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_created_at ON discussions (created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create created_at index on discussions table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_updated_at ON discussions (updated_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create updated_at index on discussions table: %w", err)
-	}
-
-	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_discussions_repo_created ON discussions (repository, created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository+created_at index on discussions table: %w", err)
-	}
-
-	// Create issues table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS issues (
-			url TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			body TEXT NOT NULL,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			closed_at DATETIME,
-			repository TEXT NOT NULL,
-			author TEXT NOT NULL
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create issues table: %w", err)
-	}
-
-	// Create indexes for issues table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_repository ON issues (repository)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository index on issues table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_author ON issues (author)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create author index on issues table: %w", err)
-	}
-
-	// Create performance indexes for issues table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_created_at ON issues (created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create created_at index on issues table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_updated_at ON issues (updated_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create updated_at index on issues table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_closed_at ON issues (closed_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create closed_at index on issues table: %w", err)
-	}
-
-	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_issues_repo_created ON issues (repository, created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository+created_at index on issues table: %w", err)
-	}
-
-	// Create pull_requests table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS pull_requests (
-			url TEXT PRIMARY KEY,
-			title TEXT NOT NULL,
-			body TEXT NOT NULL,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL,
-			merged_at DATETIME,
-			closed_at DATETIME,
-			repository TEXT NOT NULL,
-			author TEXT NOT NULL
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pull_requests table: %w", err)
-	}
-
-	// Create indexes for pull_requests table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_repository ON pull_requests (repository)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository index on pull_requests table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_author ON pull_requests (author)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create author index on pull_requests table: %w", err)
-	}
-
-	// Create performance indexes for pull_requests table
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_created_at ON pull_requests (created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create created_at index on pull_requests table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_updated_at ON pull_requests (updated_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create updated_at index on pull_requests table: %w", err)
-	}
-
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_closed_at ON pull_requests (closed_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create closed_at index on pull_requests table: %w", err)
-	}
-
-	// Composite index for common query patterns: repository + created_at
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_repo_created ON pull_requests (repository, created_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repository+created_at index on pull_requests table: %w", err)
-	}
-
-	// Add merged_at column to pull_requests table if it doesn't exist
-	_, err = db.Exec(`ALTER TABLE pull_requests ADD COLUMN merged_at DATETIME`)
-	if err != nil && !strings.Contains(err.Error(), "duplicate column name") {
-		return nil, fmt.Errorf("failed to add merged_at column to pull_requests table: %w", err)
-	}
-	if err == nil {
-		if progress != nil {
-			progress.Log("Added merged_at column to pull_requests table")
-		} else {
-			slog.Info("Added merged_at column to pull_requests table")
+	// Only create tables if we're creating a new database
+	if needsRecreation {
+		if err := createAllTables(db, progress); err != nil {
+			return nil, fmt.Errorf("failed to create database tables: %w", err)
 		}
 	}
 
-	// Create merged_at index after column is added
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_pull_requests_merged_at ON pull_requests (merged_at)`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create merged_at index on pull_requests table: %w", err)
-	}
 
-	// Create lock table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS lock (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			locked INTEGER NOT NULL DEFAULT 0,
-			locked_at DATETIME
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create lock table: %w", err)
-	}
-
-	// Ensure single row exists
-	_, _ = db.Exec(`INSERT OR IGNORE INTO lock (id, locked, locked_at) VALUES (1, 0, NULL)`)
-
-	// Create search table (FTS5) for full-text search (title prioritization handled in queries)
-	_, err = db.Exec(`
-		CREATE VIRTUAL TABLE IF NOT EXISTS search USING fts5(
-			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
-		)
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("FTS5 not available in SQLite - rebuild with FTS5 support: %w", err)
-	}
 
 	return &DB{db: db}, nil
 }
@@ -2408,7 +2526,18 @@ func (db *DB) GetPullRequests(repository string, createdFromDate time.Time, crea
 
 // getLastUpdatedForTable gets the most recent updated_at date for a repository from a specific table
 func (db *DB) getLastUpdatedForTable(tableName, repository string) (time.Time, error) {
-	query := fmt.Sprintf("SELECT MAX(updated_at) FROM %s WHERE repository = ?", tableName)
+	var query string
+	switch tableName {
+	case "discussions":
+		query = "SELECT MAX(updated_at) FROM discussions WHERE repository = ?"
+	case "issues":
+		query = "SELECT MAX(updated_at) FROM issues WHERE repository = ?"
+	case "pull_requests":
+		query = "SELECT MAX(updated_at) FROM pull_requests WHERE repository = ?"
+	default:
+		return time.Time{}, fmt.Errorf("unknown table name: %s", tableName)
+	}
+	
 	var lastUpdatedStr sql.NullString
 	err := db.QueryRow(query, repository).Scan(&lastUpdatedStr)
 	if err != nil {
@@ -2481,7 +2610,7 @@ func (db *DB) GetMostRecentRepositoryTimestamp(progress *Progress) (time.Time, e
 		return time.Time{}, fmt.Errorf("failed to check table schema: %w", err)
 	}
 
-	// Add updated_at column if it doesn't exist
+	// Add updated_at column if it doesn't exist (versioned table already has it)
 	_, err = db.Exec(`
 		ALTER TABLE repositories ADD COLUMN updated_at DATETIME
 	`)
@@ -2916,7 +3045,7 @@ func ClearData(db *DB, config *Config, progress *Progress) error {
 		// Clear all data
 		tables := []string{"pull_requests", "issues", "discussions", "repositories"}
 		for _, table := range tables {
-			_, err := db.Exec("DELETE FROM " + table)
+			_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table))
 			if err != nil {
 				return fmt.Errorf("failed to clear %s: %w", table, err)
 			}
@@ -5038,33 +5167,43 @@ func NewSearchEngine(db *DB) *SearchEngine {
 
 // Search performs a basic search across discussions, issues, and pull requests
 func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) {
+	slog.Debug("Search requested", "query", query, "limit", limit)
+	
 	if query == "" {
 		return []SearchResult{}, nil
 	}
 
 	// Minimum 3 characters for search
 	if len(strings.TrimSpace(query)) < 3 {
+		slog.Debug("Search query too short", "query", query, "length", len(strings.TrimSpace(query)))
 		return []SearchResult{}, nil
 	}
 
 	// Tokenize the query
 	tokens := strings.Fields(strings.ToLower(query))
 	if len(tokens) == 0 {
+		slog.Debug("Search query has no tokens", "query", query)
 		return []SearchResult{}, nil
 	}
 
+	slog.Debug("Search tokens extracted", "tokens", tokens)
+	
 	// Use UNION query to search all tables at once with database-level filtering
 	return se.searchAllTables(tokens, limit)
 }
 
 // searchAllTables performs fast full-text search using the search FTS table
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
+	slog.Debug("Performing FTS search", "tokens", tokens, "limit", limit)
+	
 	// Build FTS query - FTS5 supports phrase queries and AND operations
 	// Join tokens with AND to require all terms to match
 	ftsQuery := strings.Join(tokens, " AND ")
 	
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
+	
+	slog.Debug("Built FTS query", "fts_query", ftsQuery)
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
@@ -5075,11 +5214,14 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		ORDER BY bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
 		LIMIT ?`
 	
+	slog.Debug("Executing FTS query", "sql", query, "search_table", "search", "fts_query", ftsQuery, "limit", limit)
+	
 	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
 
 	rows, err := se.db.Query(query, args...)
 	if err != nil {
+		slog.Error("FTS search query failed", "sql", query, "search_table", "search", "fts_query", ftsQuery, "error", err)
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
 	defer rows.Close()
@@ -5103,6 +5245,7 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		results = append(results, result)
 	}
 	
+	slog.Debug("FTS search completed", "results_count", len(results), "fts_query", ftsQuery)
 	return results, nil
 }
 
@@ -5110,6 +5253,7 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 // RunUIServer starts the web UI server
 // RunUIServer starts the web UI server
 func RunUIServer(db *DB, port string) error {
+	slog.Info("Initializing search engine for UI server")
 	searchEngine := NewSearchEngine(db)
 
 	// Read the index.html file and parse it as a template
@@ -5127,7 +5271,10 @@ func RunUIServer(db *DB, port string) error {
 	// Serve the index.html file for the root route
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		tmpl.Execute(w, nil)
+		if err := tmpl.Execute(w, nil); err != nil {
+			slog.Error("Failed to execute index template", "error", err)
+			http.Error(w, "Template error", http.StatusInternalServerError)
+		}
 	})
 
 	// Serve the HTMX JavaScript file
@@ -5142,20 +5289,27 @@ func RunUIServer(db *DB, port string) error {
 		if query == "" {
 			// Return empty results for empty query
 			w.Header().Set("Content-Type", "text/html")
-			tmpl.ExecuteTemplate(w, "empty-results", nil)
+			if err := tmpl.ExecuteTemplate(w, "empty-results", nil); err != nil {
+				slog.Error("Failed to execute empty-results template", "error", err)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+			}
 			return
 		}
 
 		results, err := searchEngine.Search(query, 10)
 		if err != nil {
-			http.Error(w, "Search error", http.StatusInternalServerError)
+			slog.Error("Search query failed", "query", query, "error", err)
+			http.Error(w, fmt.Sprintf("Search error: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/html")
 		
 		if len(results) == 0 {
-			tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)})
+			if err := tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)}); err != nil {
+				slog.Error("Failed to execute no-results template", "error", err)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -5195,7 +5349,11 @@ func RunUIServer(db *DB, port string) error {
 				"Body":       html.EscapeString(body),
 			}
 
-			tmpl.ExecuteTemplate(w, "result-item", templateData)
+			if err := tmpl.ExecuteTemplate(w, "result-item", templateData); err != nil {
+				slog.Error("Failed to execute result-item template", "error", err, "result_url", result.URL)
+				http.Error(w, "Template error", http.StatusInternalServerError)
+				return
+			}
 		}
 	})
 
