@@ -755,18 +755,72 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 
 Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 50 concurrent requests.
 
-Get the content of https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api to learn how to handle rate limits. Use the
-defined headers to determine the current rate limit and remaining requests. When you reach the limit,
-pause new requests until the rate limit resets.
+### Rate Limit Handling
 
-Handle both primary and secondary rate limits.
+Implement comprehensive rate limit handling with both proactive and reactive strategies:
 
-If you encounter a 5xx server error, retry the request once after a short delay.
+**Header Tracking:**
+
+- Capture rate limit headers from all API responses: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-used`, `x-ratelimit-reset`
+- Store global rate limit state with mutex protection for thread safety
+- Initialize unknown values to -1
+
+**Primary Rate Limits:**
+
+- Detect via 429 status code with `Retry-After` header ≤ 60 seconds
+- Detect via error messages containing "rate limit" and "reset" with time parsing
+- Wait for reset time + 30 second buffer
+- Cap maximum wait time to 15 minutes
+- Update global state with `rateLimitHit` flag and `rateLimitResetTime`
+
+**Secondary Rate Limits (Abuse Detection):**
+
+- Detect via 429 status code with `Retry-After` header > 60 seconds
+- Detect via error messages containing "secondary rate limit" or "abuse detection"
+- Use exponential backoff starting at 5 seconds, doubling each time with jitter
+- Maximum backoff duration of 10 minutes
+- Update global state with `secondaryRateLimitHit` flag and `secondaryResetTime`
+
+**Proactive Rate Limit Management:**
+
+- Check global rate limit state before each request
+- Wait if currently rate limited before attempting request
+- Add adaptive delays between requests based on utilization:
+  - > 90% utilization: 1-2.5 seconds delay
+  - > 70% utilization: 0.75-1.5 seconds delay
+  - Normal: 0.5-1 seconds delay
+  - During rate limit recovery: 1.5-2.5 seconds (primary) or 2-4 seconds (secondary)
+
+**Error Handling and Retries:**
+
+- Centralize all error handling in `handleGraphQLError` function
+- Maximum 10 retries per request with exponential backoff (2s base, 10m max)
+- Handle 5xx server errors with exponential backoff retry
+- Repository not found errors: no retry, remove from database
+- Rate limit errors: wait and retry indefinitely until context cancelled
+
+**Sleep/Wake Recovery:**
+
+- Handle network connection failures during laptop sleep/wake cycles
+- Detect network errors: `EOF`, `connection reset`, `broken pipe`, `i/o timeout`, `network unreachable`
+- On network errors, wait 30-60 seconds with jitter before retry to allow network recovery
+- Clear stale rate limit states after extended network failures (>5 minutes)
+- Log network recovery attempts with appropriate user-facing messages
+- Reset HTTP client connection pool on persistent network failures
+- Continue operation seamlessly after network recovery
+
+**Concurrency Control:**
+
+- Use semaphore to limit concurrent requests to 50
+- Global rate limit state shared across all goroutines
+- Mutex protection for all rate limit state updates
+- Implement context cancellation support for all wait operations
+- Handle long waits gracefully during network outages or extended rate limiting
+- Page-level timeouts (5 minutes) to prevent indefinite hangs
+- Global operation timeout (3 minutes) for repository processing completion
 
 Avoid making special request to get page count. For the first page request,
 you don't have to display the page count since you don't know it yet. For subsequent pages, you can display the page number in the status message.
-
-Centralize error handling into a single function. Use for each GraphQL query.
 
 ## Database
 
