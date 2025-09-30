@@ -780,11 +780,11 @@ Implement comprehensive error handling with unified retry and recovery strategie
 **Unified Error Handling:**
 
 - Centralize all error handling in `handleGraphQLError` function
-- Maximum 10 retries per request with exponential backoff (2s base, 15m max wait)
+- Maximum 10 retries per request with exponential backoff (5s base, 30m max wait)
 - Handle different error types:
   - Primary rate limit: wait until `x-ratelimit-reset` + 30s buffer, retry indefinitely
   - Secondary rate limit: use `retry-after` header or wait 1+ minutes with exponential backoff
-  - Network errors (`EOF`, `connection reset`, `broken pipe`, `i/o timeout`): wait 30-60s with jitter
+  - Network errors (`EOF`, `connection reset`, `broken pipe`, `i/o timeout`): wait 60-120s with jitter
   - 5xx server errors: exponential backoff retry
   - Repository not found: no retry, remove from database
   - Timeouts (>10 seconds): GitHub terminates request, additional points deducted next hour
@@ -794,15 +794,16 @@ Implement comprehensive error handling with unified retry and recovery strategie
 **Proactive Management:**
 
 - Check global rate limit state before each request
-- Add adaptive delays between requests based on points utilization:
-  - > 90% points used: 1-2.5 seconds delay
-  - > 70% points used: 0.75-1.5 seconds delay
-  - Normal: 0.5-1 seconds delay (GitHub recommends 1+ second between mutations)
-  - During recovery: 1.5-4 seconds depending on error type
+- Add conservative delays between requests based on points utilization:
+  - > 90% points used: 3-5 seconds delay
+  - > 70% points used: 2-3 seconds delay
+  - > 50% points used: 1-2 seconds delay
+  - Normal: 1-1.5 seconds delay (GitHub recommends 1+ second between mutations)
+  - During recovery: 5-10 seconds depending on error type
 
 **Concurrency and Timeouts:**
 
-- Limit concurrent requests to 100 using semaphore (GitHub's hard limit)
+- Limit concurrent requests to 50 using semaphore (conservative limit to prevent rate limiting)
 - Global rate limit state shared across all goroutines with mutex protection
 - Context cancellation support for all wait operations
 - Request timeout: 10 seconds (GitHub's server timeout)

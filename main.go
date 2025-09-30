@@ -163,10 +163,10 @@ func addRequestDelay() {
 	var delay time.Duration
 	if inSecondaryLimit {
 		// Much longer delay when we're recovering from secondary rate limits
-		delay = time.Duration(2000+rand.Intn(2000)) * time.Millisecond // 2-4 seconds
+		delay = time.Duration(7000+rand.Intn(3000)) * time.Millisecond // 7-10 seconds
 	} else if inPrimaryLimit {
 		// Longer delay when recovering from primary rate limits
-		delay = time.Duration(1500+rand.Intn(1000)) * time.Millisecond // 1.5-2.5 seconds
+		delay = time.Duration(5000+rand.Intn(3000)) * time.Millisecond // 5-8 seconds
 	} else {
 		// Check current rate limit status for adaptive delays based on points utilization
 		rateLimitInfoMutex.RLock()
@@ -180,17 +180,20 @@ func addRequestDelay() {
 			
 			if pointsUsed > 0.9 { // Above 90% points used
 				// Very conservative delay when close to rate limit
-				delay = time.Duration(1000+rand.Intn(1500)) * time.Millisecond // 1-2.5 seconds
+				delay = time.Duration(3000+rand.Intn(2000)) * time.Millisecond // 3-5 seconds
 			} else if pointsUsed > 0.7 { // Above 70% points used
 				// More conservative delay
-				delay = time.Duration(750+rand.Intn(750)) * time.Millisecond // 0.75-1.5 seconds
+				delay = time.Duration(2000+rand.Intn(1000)) * time.Millisecond // 2-3 seconds
+			} else if pointsUsed > 0.5 { // Above 50% points used
+				// Moderate delay
+				delay = time.Duration(1000+rand.Intn(1000)) * time.Millisecond // 1-2 seconds
 			} else {
 				// Normal delay (GitHub recommends 1+ second between mutations)
-				delay = time.Duration(500+rand.Intn(500)) * time.Millisecond // 0.5-1 seconds
+				delay = time.Duration(1000+rand.Intn(500)) * time.Millisecond // 1-1.5 seconds
 			}
 		} else {
-			// Default delay when rate limit info is unknown
-			delay = time.Duration(750+rand.Intn(750)) * time.Millisecond // 0.75-1.5 seconds
+			// Default delay when rate limit info is unknown - be conservative
+			delay = time.Duration(1500+rand.Intn(1000)) * time.Millisecond // 1.5-2.5 seconds
 		}
 	}
 	
@@ -2847,8 +2850,8 @@ func isNetworkError(err error) bool {
 // Returns (success, shouldRetry, waitDuration, error)
 func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc func() error, operation string, page int, requestCount *atomic.Int64, progress *Progress) error {
 	const maxRetries = 10 // Increased from 3 to 10 for better rate limit handling
-	const baseRetryDelay = 2 * time.Second // Base delay for exponential backoff
-	const maxRetryDelay = 10 * time.Minute // Maximum delay between retries
+	const baseRetryDelay = 5 * time.Second // Base delay for exponential backoff (increased)
+	const maxRetryDelay = 30 * time.Minute // Maximum delay between retries (increased)
 	
 	for retries := 0; retries < maxRetries; retries++ {
 		// Check for context cancellation
@@ -2999,9 +3002,9 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 
 		// Handle network errors (sleep/wake scenarios)
 		if isNetworkError(err) {
-			// Network error - wait 30-60 seconds with jitter to allow recovery
-			baseWait := 30 * time.Second
-			jitter := time.Duration(rand.Intn(30)) * time.Second
+			// Network error - wait 60-120 seconds with jitter to allow recovery
+			baseWait := 60 * time.Second
+			jitter := time.Duration(rand.Intn(60)) * time.Second
 			waitTime := baseWait + jitter
 			
 			slog.Info("Network error detected, waiting for recovery", "operation", operation, "page", page, "wait", waitTime.String(), "error", err.Error())
@@ -3168,7 +3171,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 	resultChan := make(chan pageResult, 100) // Buffer for up to 100 pages
 	errChan := make(chan error, 100)
-	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent requests (GitHub's hard limit)
+	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent requests (conservative limit)
 
 	var wg sync.WaitGroup
 
@@ -3526,7 +3529,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
+	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories (conservative limit)
 	errChan := make(chan error, len(repositories))
 	var wg sync.WaitGroup
 
@@ -3761,7 +3764,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
+	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories (conservative limit)
 	errChan := make(chan error, len(repositories))
 
 	// Atomic counters for statistics
@@ -4000,7 +4003,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
+	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories (conservative limit)
 	errChan := make(chan error, len(repositories))
 
 	// Atomic counters for statistics
