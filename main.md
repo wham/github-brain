@@ -753,71 +753,61 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 
 ## GitHub
 
-Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 50 concurrent requests.
+Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 100 concurrent requests (GitHub limit).
 
-### Rate Limit Handling
+### Rate Limit and Network Handling
 
-Implement comprehensive rate limit handling with both proactive and reactive strategies:
+Implement comprehensive error handling with unified retry and recovery strategies:
 
-**Header Tracking:**
+**Primary Rate Limit (Points System):**
 
-- Capture rate limit headers from all API responses: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-used`, `x-ratelimit-reset`
-- Store global rate limit state with mutex protection for thread safety
-- Initialize unknown values to -1
+- GitHub uses a points-based system: 5,000 points per hour for personal access tokens
+- Each query consumes points based on complexity (minimum 1 point)
+- Track headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-used`, `x-ratelimit-reset`
+- When exceeded: response status `200` with error message, `x-ratelimit-remaining` = `0`
+- Wait until `x-ratelimit-reset` time before retrying
 
-**Primary Rate Limits:**
+**Secondary Rate Limits (Abuse Prevention):**
 
-- Detect via 429 status code with `Retry-After` header ≤ 60 seconds
-- Detect via error messages containing "rate limit" and "reset" with time parsing
-- Wait for reset time + 30 second buffer
-- Cap maximum wait time to 15 minutes
-- Update global state with `rateLimitHit` flag and `rateLimitResetTime`
+- No more than 100 concurrent requests (shared across REST and GraphQL)
+- No more than 2,000 points per minute for GraphQL endpoint
+- No more than 90 seconds of CPU time per 60 seconds of real time
+- When exceeded: status `200` or `403` with error message
+- If `retry-after` header present: wait that many seconds
+- If no `retry-after`: wait at least 1 minute, then exponential backoff
+- GraphQL queries without mutations = 1 point, with mutations = 5 points (for secondary limits)
 
-**Secondary Rate Limits (Abuse Detection):**
-
-- Detect via 429 status code with `Retry-After` header > 60 seconds
-- Detect via error messages containing "secondary rate limit" or "abuse detection"
-- Use exponential backoff starting at 5 seconds, doubling each time with jitter
-- Maximum backoff duration of 10 minutes
-- Update global state with `secondaryRateLimitHit` flag and `secondaryResetTime`
-
-**Proactive Rate Limit Management:**
-
-- Check global rate limit state before each request
-- Wait if currently rate limited before attempting request
-- Add adaptive delays between requests based on utilization:
-  - > 90% utilization: 1-2.5 seconds delay
-  - > 70% utilization: 0.75-1.5 seconds delay
-  - Normal: 0.5-1 seconds delay
-  - During rate limit recovery: 1.5-2.5 seconds (primary) or 2-4 seconds (secondary)
-
-**Error Handling and Retries:**
+**Unified Error Handling:**
 
 - Centralize all error handling in `handleGraphQLError` function
-- Maximum 10 retries per request with exponential backoff (2s base, 10m max)
-- Handle 5xx server errors with exponential backoff retry
-- Repository not found errors: no retry, remove from database
-- Rate limit errors: wait and retry indefinitely until context cancelled
-
-**Sleep/Wake Recovery:**
-
-- Handle network connection failures during laptop sleep/wake cycles
-- Detect network errors: `EOF`, `connection reset`, `broken pipe`, `i/o timeout`, `network unreachable`
-- On network errors, wait 30-60 seconds with jitter before retry to allow network recovery
-- Clear stale rate limit states after extended network failures (>5 minutes)
-- Log network recovery attempts with appropriate user-facing messages
+- Maximum 10 retries per request with exponential backoff (2s base, 15m max wait)
+- Handle different error types:
+  - Primary rate limit: wait until `x-ratelimit-reset` + 30s buffer, retry indefinitely
+  - Secondary rate limit: use `retry-after` header or wait 1+ minutes with exponential backoff
+  - Network errors (`EOF`, `connection reset`, `broken pipe`, `i/o timeout`): wait 30-60s with jitter
+  - 5xx server errors: exponential backoff retry
+  - Repository not found: no retry, remove from database
+  - Timeouts (>10 seconds): GitHub terminates request, additional points deducted next hour
+- Clear stale rate limit states after extended failures (>5 minutes)
 - Reset HTTP client connection pool on persistent network failures
-- Continue operation seamlessly after network recovery
 
-**Concurrency Control:**
+**Proactive Management:**
 
-- Use semaphore to limit concurrent requests to 50
-- Global rate limit state shared across all goroutines
-- Mutex protection for all rate limit state updates
-- Implement context cancellation support for all wait operations
-- Handle long waits gracefully during network outages or extended rate limiting
-- Page-level timeouts (5 minutes) to prevent indefinite hangs
-- Global operation timeout (3 minutes) for repository processing completion
+- Check global rate limit state before each request
+- Add adaptive delays between requests based on points utilization:
+  - > 90% points used: 1-2.5 seconds delay
+  - > 70% points used: 0.75-1.5 seconds delay
+  - Normal: 0.5-1 seconds delay (GitHub recommends 1+ second between mutations)
+  - During recovery: 1.5-4 seconds depending on error type
+
+**Concurrency and Timeouts:**
+
+- Limit concurrent requests to 100 using semaphore (GitHub's hard limit)
+- Global rate limit state shared across all goroutines with mutex protection
+- Context cancellation support for all wait operations
+- Request timeout: 10 seconds (GitHub's server timeout)
+- Page-level timeout: 5 minutes
+- Global operation timeout: 3 minutes for repository processing completion
 
 Avoid making special request to get page count. For the first page request,
 you don't have to display the page count since you don't know it yet. For subsequent pages, you can display the page number in the status message.
