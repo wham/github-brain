@@ -168,24 +168,24 @@ func addRequestDelay() {
 		// Longer delay when recovering from primary rate limits
 		delay = time.Duration(1500+rand.Intn(1000)) * time.Millisecond // 1.5-2.5 seconds
 	} else {
-		// Check current rate limit status for adaptive delays
+		// Check current rate limit status for adaptive delays based on points utilization
 		rateLimitInfoMutex.RLock()
 		remaining := currentRateLimit.Remaining
 		limit := currentRateLimit.Limit
 		rateLimitInfoMutex.RUnlock()
 		
 		if remaining > 0 && limit > 0 {
-			// Calculate rate limit utilization
-			utilization := float64(limit-remaining) / float64(limit)
+			// Calculate points utilization (GitHub's rate limiting is points-based)
+			pointsUsed := float64(limit-remaining) / float64(limit)
 			
-			if utilization > 0.9 { // Above 90% utilization
+			if pointsUsed > 0.9 { // Above 90% points used
 				// Very conservative delay when close to rate limit
 				delay = time.Duration(1000+rand.Intn(1500)) * time.Millisecond // 1-2.5 seconds
-			} else if utilization > 0.7 { // Above 70% utilization
+			} else if pointsUsed > 0.7 { // Above 70% points used
 				// More conservative delay
 				delay = time.Duration(750+rand.Intn(750)) * time.Millisecond // 0.75-1.5 seconds
 			} else {
-				// Normal delay to avoid secondary rate limits
+				// Normal delay (GitHub recommends 1+ second between mutations)
 				delay = time.Duration(500+rand.Intn(500)) * time.Millisecond // 0.5-1 seconds
 			}
 		} else {
@@ -2830,6 +2830,19 @@ func handleRateLimit(err error) (bool, time.Duration) {
 	return false, 0
 }
 
+// isNetworkError checks if the error is a network-related error that might be resolved by waiting
+func isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "EOF") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "i/o timeout") ||
+		strings.Contains(errStr, "network unreachable")
+}
+
 // handleGraphQLError centralizes GraphQL error handling with retries and rate limit management
 // Returns (success, shouldRetry, waitDuration, error)
 func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc func() error, operation string, page int, requestCount *atomic.Int64, progress *Progress) error {
@@ -2915,6 +2928,15 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 			return err // Return immediately without retrying
 		}
 
+		// Handle timeouts (GitHub terminates requests >10 seconds, deducts additional points)
+		if strings.Contains(err.Error(), "timeout") || strings.Contains(err.Error(), "deadline exceeded") {
+			slog.Warn("Request timeout detected - GitHub deducts additional points next hour", "operation", operation, "page", page)
+			if progress != nil {
+				progress.UpdateMessage(fmt.Sprintf("Request timeout on page %d (additional points deducted)", page))
+			}
+			// Continue with normal retry logic for timeouts
+		}
+
 		// Handle 5xx server errors with exponential backoff
 		if strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "502") || 
 		   strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "504") {
@@ -2973,6 +2995,28 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 				// Continue after wait time
 			}
 			continue // Retry after waiting
+		}
+
+		// Handle network errors (sleep/wake scenarios)
+		if isNetworkError(err) {
+			// Network error - wait 30-60 seconds with jitter to allow recovery
+			baseWait := 30 * time.Second
+			jitter := time.Duration(rand.Intn(30)) * time.Second
+			waitTime := baseWait + jitter
+			
+			slog.Info("Network error detected, waiting for recovery", "operation", operation, "page", page, "wait", waitTime.String(), "error", err.Error())
+			if progress != nil {
+				progress.UpdateMessage(fmt.Sprintf("Network error on page %d, waiting %v for recovery...", page, waitTime))
+			}
+			
+			// Wait with context cancellation support
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(waitTime):
+				// Continue to retry after network recovery wait
+			}
+			continue
 		}
 
 		// For non-rate-limit errors, apply exponential backoff
@@ -3124,7 +3168,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 	resultChan := make(chan pageResult, 100) // Buffer for up to 100 pages
 	errChan := make(chan error, 100)
-	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent requests
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent requests (GitHub's hard limit)
 
 	var wg sync.WaitGroup
 
@@ -3482,7 +3526,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
 	errChan := make(chan error, len(repositories))
 	var wg sync.WaitGroup
 
@@ -3717,7 +3761,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
 	errChan := make(chan error, len(repositories))
 
 	// Atomic counters for statistics
@@ -3956,7 +4000,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 	}()
 
 	// Channels for limiting concurrency and collecting results
-	semaphore := make(chan struct{}, 50) // Limit to 50 concurrent repositories
+	semaphore := make(chan struct{}, 100) // Limit to 100 concurrent repositories (GitHub's hard limit)
 	errChan := make(chan error, len(repositories))
 
 	// Atomic counters for statistics
