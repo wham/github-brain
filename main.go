@@ -2707,6 +2707,11 @@ func handleRateLimit(err error) (bool, time.Duration) {
 
 	// Check if the error message contains rate limit information
 	errMsg := err.Error()
+	
+	// Debug logging to help identify rate limit detection issues
+	if strings.Contains(errMsg, "rate limit") {
+		slog.Debug("Rate limit error detected", "error", errMsg)
+	}
 
 	// Check for 429 status code in error message (handled by transport already, but check for completeness)
 	if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "Too Many Requests") {
@@ -2768,9 +2773,9 @@ func handleRateLimit(err error) (bool, time.Duration) {
 		slog.Info("GitHub API secondary rate limit hit", "duration", resetDuration.String(), "until", secondaryResetTime.Format(time.RFC3339))
 
 		return true, resetDuration
-	} else if strings.Contains(errMsg, "API rate limit exceeded") ||
-		strings.Contains(errMsg, "rate limit exceeded") {
+	} else if isRateLimitError(errMsg) {
 		// Handle primary rate limit
+		slog.Info("Primary rate limit detected via error message", "error", errMsg)
 
 		// Handle primary rate limit with better reset time detection
 
@@ -2830,6 +2835,11 @@ func handleRateLimit(err error) (bool, time.Duration) {
 		return true, resetDuration
 	}
 
+	// If we get here, the error was not recognized as a rate limit
+	if strings.Contains(errMsg, "rate limit") {
+		slog.Warn("Rate limit error not properly detected", "error", errMsg)
+	}
+
 	return false, 0
 }
 
@@ -2844,6 +2854,20 @@ func isNetworkError(err error) bool {
 		strings.Contains(errStr, "broken pipe") ||
 		strings.Contains(errStr, "i/o timeout") ||
 		strings.Contains(errStr, "network unreachable")
+}
+
+// isRateLimitError checks if the error message indicates a rate limit
+func isRateLimitError(errMsg string) bool {
+	// Convert to lowercase for case-insensitive matching
+	lowerErr := strings.ToLower(errMsg)
+	
+	// Check for various GitHub rate limit error patterns
+	return strings.Contains(lowerErr, "api rate limit exceeded") ||
+		strings.Contains(lowerErr, "rate limit exceeded") ||
+		strings.Contains(lowerErr, "rate limit already exceeded") ||
+		strings.Contains(lowerErr, "you have exceeded") ||
+		strings.Contains(lowerErr, "rate limit") && strings.Contains(lowerErr, "exceeded") ||
+		strings.Contains(lowerErr, "rate limit") && strings.Contains(lowerErr, "user id")
 }
 
 // handleGraphQLError centralizes GraphQL error handling with retries and rate limit management
