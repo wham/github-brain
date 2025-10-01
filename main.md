@@ -753,20 +753,65 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 
 ## GitHub
 
-Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 50 concurrent requests.
+Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 100 concurrent requests (GitHub limit).
 
-Get the content of https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api to learn how to handle rate limits. Use the
-defined headers to determine the current rate limit and remaining requests. When you reach the limit,
-pause new requests until the rate limit resets.
+### Rate Limit and Network Handling
 
-Handle both primary and secondary rate limits.
+Implement comprehensive error handling with unified retry and recovery strategies:
 
-If you encounter a 5xx server error, retry the request once after a short delay.
+**Primary Rate Limit (Points System):**
+
+- GitHub uses a points-based system: 5,000 points per hour for personal access tokens
+- Each query consumes points based on complexity (minimum 1 point)
+- Track headers: `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-ratelimit-used`, `x-ratelimit-reset`
+- When exceeded: response status `200` with error message, `x-ratelimit-remaining` = `0`
+- Wait until `x-ratelimit-reset` time before retrying
+
+**Secondary Rate Limits (Abuse Prevention):**
+
+- No more than 100 concurrent requests (shared across REST and GraphQL)
+- No more than 2,000 points per minute for GraphQL endpoint
+- No more than 90 seconds of CPU time per 60 seconds of real time
+- When exceeded: status `200` or `403` with error message
+- If `retry-after` header present: wait that many seconds
+- If no `retry-after`: wait at least 1 minute, then exponential backoff
+- GraphQL queries without mutations = 1 point, with mutations = 5 points (for secondary limits)
+
+**Unified Error Handling:**
+
+- Centralize all error handling in `handleGraphQLError` function
+- Maximum 10 retries per request with exponential backoff (5s base, 30m max wait)
+- Handle different error types:
+  - Primary rate limit: wait until `x-ratelimit-reset` + 30s buffer, retry indefinitely
+  - Secondary rate limit: use `retry-after` header or wait 1+ minutes with exponential backoff
+  - Network errors (`EOF`, `connection reset`, `broken pipe`, `i/o timeout`): wait 60-120s with jitter
+  - 5xx server errors: exponential backoff retry
+  - Repository not found: no retry, remove from database
+  - Timeouts (>10 seconds): GitHub terminates request, additional points deducted next hour
+- Clear stale rate limit states after extended failures (>5 minutes)
+- Reset HTTP client connection pool on persistent network failures
+
+**Proactive Management:**
+
+- Check global rate limit state before each request
+- Add conservative delays between requests based on points utilization:
+  - > 90% points used: 3-5 seconds delay
+  - > 70% points used: 2-3 seconds delay
+  - > 50% points used: 1-2 seconds delay
+  - Normal: 1-1.5 seconds delay (GitHub recommends 1+ second between mutations)
+  - During recovery: 5-10 seconds depending on error type
+
+**Concurrency and Timeouts:**
+
+- Limit concurrent requests to 50 using semaphore (conservative limit to prevent rate limiting)
+- Global rate limit state shared across all goroutines with mutex protection
+- Context cancellation support for all wait operations
+- Request timeout: 10 seconds (GitHub's server timeout)
+- Page-level timeout: 5 minutes
+- Global operation timeout: 3 minutes for repository processing completion
 
 Avoid making special request to get page count. For the first page request,
 you don't have to display the page count since you don't know it yet. For subsequent pages, you can display the page number in the status message.
-
-Centralize error handling into a single function. Use for each GraphQL query.
 
 ## Database
 
