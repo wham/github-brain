@@ -26,6 +26,8 @@ As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search
 
 ![](./docs/raycast.png)
 
+GitHub Brain is [programmed in Markdown](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/).
+
 ## Prerequisites
 
 - [Go](https://go.dev/doc/install) installed
