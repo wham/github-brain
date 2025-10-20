@@ -238,22 +238,6 @@ Console when an error occurs:
 - Failed items: Red text + ❌
 - Log messages: Default white, errors in red
 
-### Current User
-
-- Fetch the current authenticated user before processing repositories
-- This step always runs, even when using `-i` to select specific items
-
-```graphql
-{
-  viewer {
-    login
-  }
-}
-```
-
-- Store the username in memory for use during search index rebuild
-- This is a single quick request that should complete immediately
-
 ### Repositories
 
 - Get most recent `updated_at` timestamp from database for repositories
@@ -464,16 +448,42 @@ Console when an error occurs:
 - Save or update by primary key `url`
 - Preserve the pull request markdown body
 
-### Finally
+### Finally - Rebuild Search Index
+
+- Fetch the current authenticated user with:
+
+```graphql
+{
+  viewer {
+    login
+  }
+}
+```
 
 - Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
 - When repopulating the search index:
   1. Use the current user's login stored in memory (from the Current User step)
   2. Query for all unique repository names where the user is the author in `discussions`, `issues`, or `pull_requests`
-  3. For each item being inserted into the search table, calculate `is_user_content` on the fly:
-     - Set to `1` (true) if the item's repository is in the user's contribution set
-     - Set to `0` (false) otherwise
-  4. Insert into search table with the calculated `is_user_content` value
+  3. For each item being inserted into the search table, calculate `boost` on the fly:
+     - Set to `2.0` if the item's repository is in the user's contribution set (2x boost)
+     - Set to `1.0` otherwise (no boost)
+  4. Insert into search table with the calculated `boost` value
+
+### Current User
+
+- Fetch the current authenticated user before processing repositories
+- This step always runs, even when using `-i` to select specific items
+
+```graphql
+{
+  viewer {
+    login
+  }
+}
+```
+
+- Store the username in memory for use during search index rebuild
+- This is a single quick request that should complete immediately
 
 ## mcp
 
@@ -947,11 +957,12 @@ const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID o
 
 - FTS5 virtual table for full-text search across discussions, issues, and pull requests
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
-- Unindexed columns: `created_at`, `state`, `is_user_content`
+- Unindexed columns: `created_at`, `state`, `boost`
+- `boost`: Numeric value (e.g., `1.0`, `2.0`) used to multiply BM25 scores for ranking
 - Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
-- When populating from source tables, copy the `is_user_content` flag from discussions, issues, and pull_requests tables
-- Search results should be ordered by: `is_user_content DESC`, then by `bm25(search)` for optimal relevance
-  - This ensures content from user's repositories appears first, then other results by relevance
+- Search results should be ordered by: `(bm25(search) * boost)` for optimal relevance
+  - Items from user's repositories get 2x boost, ensuring they appear higher in results
+  - This approach is more flexible than boolean flags and allows for future ranking adjustments
 
 #### table:schema_version
 
