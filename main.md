@@ -462,7 +462,7 @@ Console when an error occurs:
 
 - Truncate `search` FTS5 table and repopulate it from `discussions`, `issues`, and `pull_requests` tables
 - When repopulating the search index:
-  1. Use the current user's login stored in memory (from the Current User step)
+  1. Use the current authenticateduser's login stored in memory
   2. Query for all unique repository names where the user is the author in `discussions`, `issues`, or `pull_requests`
   3. For each item being inserted into the search table, calculate `boost` on the fly:
      - Set to `2.0` if the item's repository is in the user's contribution set (2x boost)

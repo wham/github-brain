@@ -30,7 +30,7 @@ import (
 )
 
 // Database schema version GUID - change this on any schema modification
-const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001"
+const SCHEMA_GUID = "b8f3c2a1-9e7d-4f6b-8c5a-3d2e1f0a9b8c"
 
 // Global variables for rate limit handling and status tracking
 var (
@@ -1844,7 +1844,7 @@ func createAllTables(db *sql.DB, progress *Progress) error {
 	// Create search table (FTS5) for full-text search
 	_, err = db.Exec(`
 		CREATE VIRTUAL TABLE search USING fts5(
-			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED
+			type, title, body, url, repository, author, created_at UNINDEXED, state UNINDEXED, boost UNINDEXED
 		)
 	`)
 	if err != nil {
@@ -1969,7 +1969,7 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 }
 
 // PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
-func (db *DB) PopulateSearchTable(progress *Progress) error {
+func (db *DB) PopulateSearchTable(currentUsername string, progress *Progress) error {
 	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 	slog.Info("Truncating and repopulating search FTS table...")
 	progress.Log("Clearing existing search index...")
@@ -1992,14 +1992,46 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 	slog.Info("Indexing content into search table", 
 		"discussions", discussionCount, "issues", issueCount, "pull_requests", prCount)
 	
-	// Insert discussions
+	// Query for all unique repository names where the user is the author
+	slog.Info("Querying repositories where user is author", "username", currentUsername)
+	progress.Log("Identifying repositories with your contributions...")
+	
+	userReposMap := make(map[string]bool)
+	
+	// Get repositories from discussions
+	rows, err := db.Query(`
+		SELECT DISTINCT repository FROM discussions WHERE author = ?
+		UNION
+		SELECT DISTINCT repository FROM issues WHERE author = ?
+		UNION
+		SELECT DISTINCT repository FROM pull_requests WHERE author = ?
+	`, currentUsername, currentUsername, currentUsername)
+	
+	if err != nil {
+		slog.Warn("Failed to query user repositories, proceeding with boost=1.0 for all", "error", err)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var repo string
+			if err := rows.Scan(&repo); err == nil {
+				userReposMap[repo] = true
+			}
+		}
+	}
+	
+	progress.Log("Found %d repositories with your contributions (will receive 2x boost)", len(userReposMap))
+	slog.Info("User contribution repositories identified", "count", len(userReposMap), "username", currentUsername)
+	
+	// Insert discussions with boost calculation
 	if discussionCount > 0 {
 		progress.Log("Indexing %d discussions into search table...", discussionCount)
 		slog.Info("Indexing discussions...")
 		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
-			SELECT 'discussion', title, body, url, repository, author, created_at, 'open' FROM discussions
-		`)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
+			SELECT 'discussion', title, body, url, repository, author, created_at, 'open',
+			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
+			FROM discussions
+		`, currentUsername)
 		if err != nil {
 			return fmt.Errorf("failed to populate discussions in search table: %w", err)
 		}
@@ -2008,16 +2040,17 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("No discussions to index")
 	}
 
-	// Insert issues
+	// Insert issues with boost calculation
 	if issueCount > 0 {
 		progress.Log("Indexing %d issues into search table...", issueCount)
 		slog.Info("Indexing issues...")
 		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
 			SELECT 'issue', title, body, url, repository, author, created_at, 
-			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
+			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
 			FROM issues
-		`)
+		`, currentUsername)
 		if err != nil {
 			return fmt.Errorf("failed to populate issues in search table: %w", err)
 		}
@@ -2026,16 +2059,17 @@ func (db *DB) PopulateSearchTable(progress *Progress) error {
 		progress.Log("No issues to index")
 	}
 
-	// Insert pull requests
+	// Insert pull requests with boost calculation
 	if prCount > 0 {
 		progress.Log("Indexing %d pull requests into search table...", prCount)
 		slog.Info("Indexing pull requests...")
 		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state)
+			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
 			SELECT 'pull_request', title, body, url, repository, author, created_at, 
-			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END 
+			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
+			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
 			FROM pull_requests
-		`)
+		`, currentUsername)
 		if err != nil {
 			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
 		}
@@ -5277,12 +5311,13 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	slog.Debug("Built FTS query", "fts_query", ftsQuery)
 	
 	// Use pure FTS5 search with bm25() column weights for title prioritization
-	// bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(2x), body, url, repository, author
+	// bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(3x), body, url, repository, author
+	// Multiply by boost to prioritize user's authored content (2x boost)
 	query := `
 		SELECT type, title, body, url, repository, author, created_at, state
 		FROM search 
 		WHERE search MATCH ?
-		ORDER BY bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)
+		ORDER BY (bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) * boost)
 		LIMIT ?`
 	
 	slog.Debug("Executing FTS query", "sql", query, "search_table", "search", "fts_query", ftsQuery, "limit", limit)
@@ -5594,6 +5629,22 @@ func main() {
 		// Initialize progress display with all items
 		progress.Log("GitHub client initialized, starting data operations")
 		
+		// Fetch current user (always runs, even when using -i)
+		progress.Log("Fetching current authenticated user...")
+		var currentUser struct {
+			Viewer struct {
+				Login string
+			}
+		}
+		if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
+			progress.Log("Error: Failed to fetch current user: %v", err)
+			progress.preserveOnExit = true
+			progress.Stop()
+			os.Exit(1)
+		}
+		currentUsername := currentUser.Viewer.Login
+		progress.Log("Authenticated as user: %s", currentUsername)
+		
 		// Clear data if Force flag is set
 		if err := ClearData(db, config, progress); err != nil {
 			progress.Log("Error: Failed to clear data: %v", err)
@@ -5684,7 +5735,7 @@ func main() {
 		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 		progress.UpdateMessage("Updating search index...")
 		progress.Log("Starting search FTS5 table rebuild...")
-		if err := db.PopulateSearchTable(progress); err != nil {
+		if err := db.PopulateSearchTable(currentUsername, progress); err != nil {
 			progress.Log("❌ Warning: Failed to populate search table: %v", err)
 			// Continue despite search table error - don't fail the entire operation
 		}
