@@ -4,17 +4,17 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Build GitHub Brain with scripts/run
+# Build GitHub Brain directly (don't use scripts/run which tries to execute)
 echo "Building GitHub Brain..."
 cd "$ROOT_DIR"
-./scripts/run
+CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -gcflags="all=-N -l" -o ./build/github-brain .
 
 # Determine full paths
 GITHUB_BRAIN_BINARY="$ROOT_DIR/build/github-brain"
-DB_DIR="$ROOT_DIR/db"
+HOME_DIR="$ROOT_DIR"
 
 echo "GitHub Brain Binary: $GITHUB_BRAIN_BINARY"
-echo "Database Directory: $DB_DIR"
+echo "Home Directory: $HOME_DIR"
 
 # Update the package.json preference default values
 cd "$ROOT_DIR/raycast"
@@ -30,9 +30,9 @@ if (pkg.preferences) {
     if (pref.name === 'githubBrainCommand') {
       pref.default = '$GITHUB_BRAIN_BINARY';
       console.log('Updated githubBrainCommand default to: $GITHUB_BRAIN_BINARY');
-    } else if (pref.name === 'dbDir') {
-      pref.default = '$DB_DIR';
-      console.log('Updated dbDir default to: $DB_DIR');
+    } else if (pref.name === 'homeDir') {
+      pref.default = '$HOME_DIR';
+      console.log('Updated homeDir default to: $HOME_DIR');
     }
   });
   fs.writeFileSync('$PACKAGE_JSON', JSON.stringify(pkg, null, 2) + '\n');

@@ -12,8 +12,8 @@ type ExtensionPreferences = {
   "organization": string,
   /** GitHub Brain executable - Absolute path to the GitHub Brain executable command or binary */
   "githubBrainCommand": string,
-  /** Database directory - Absolute path to the GitHub Brain database directory */
-  "dbDir": string
+  /** Home directory - Absolute path to the GitHub Brain home directory */
+  "homeDir": string
 }
 
 /** Preferences accessible in all the extension's commands */

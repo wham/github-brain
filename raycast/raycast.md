@@ -40,12 +40,12 @@ See https://developers.raycast.com/information/manifest#preference-properties
 - `required`: true
 - `default`: github-brain
 
-- `name`: `dbDir`
-- `title`: Database directory
-- `description`: Absolute path to the GitHub Brain database directory
+- `name`: `homeDir`
+- `title`: Home directory
+- `description`: Absolute path to the GitHub Brain home directory
 - `type`: textfield
 - `required`: true
-- `default`: /Users/wham/code/github-brain/db
+- `default`: ~/.github-brain
 
 ## Commands
 
@@ -87,7 +87,7 @@ Type/state to Raycast [icon](https://developers.raycast.com/api-reference/user-i
 - This creates `build/github-brain` binary
 - The launched determines the absolute path to the `build/github-brain` binary and
   sets is as the `default` value of the `githubBrainCommand` preference in `package.json`
-- The launcher determines the absolute path to the DB directory and sets it as the `default` value of the `dbDir` preference in `package.json`
+- The launcher determines the absolute path to the home directory and sets it as the `default` value of the `homeDir` preference in `package.json`
 - The launcher then starts the Raycast extension with `npm run dev` in the `ray
 
 ## Protocol
