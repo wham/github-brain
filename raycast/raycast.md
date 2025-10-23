@@ -27,12 +27,6 @@ See https://developers.raycast.com/information/manifest
 
 See https://developers.raycast.com/information/manifest#preference-properties
 
-- `name`: `organization`
-- `title`: GitHub organization
-- `description`: The GitHub organization to work with
-- `type`: textfield
-- `required`: true
-
 - `name`: `githubBrainCommand`
 - `title`: GitHub Brain executable
 - `description`: Absolute path to the GitHub Brain executable command or binary

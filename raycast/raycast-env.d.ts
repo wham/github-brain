@@ -8,8 +8,6 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** GitHub organization - The GitHub organization to work with */
-  "organization": string,
   /** GitHub Brain executable - Absolute path to the GitHub Brain executable command or binary */
   "githubBrainCommand": string,
   /** Home directory - Absolute path to the GitHub Brain home directory */
