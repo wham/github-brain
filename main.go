@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -28,6 +29,13 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/term"
 )
+
+// Embedded static assets
+//go:embed index.html
+var indexHTML string
+
+//go:embed htmx.min.js
+var htmxJS []byte
 
 // Database schema version GUID - change this on any schema modification
 const SCHEMA_GUID = "b8f3c2a1-9e7d-4f6b-8c5a-3d2e1f0a9b8c"
@@ -5374,14 +5382,8 @@ func RunUIServer(db *DB, port string) error {
 	slog.Info("Initializing search engine for UI server")
 	searchEngine := NewSearchEngine(db)
 
-	// Read the index.html file and parse it as a template
-	indexHTML, err := os.ReadFile("index.html")
-	if err != nil {
-		return fmt.Errorf("failed to read index.html: %v", err)
-	}
-
-	// Parse the template with all defined sub-templates
-	tmpl, err := template.New("index").Parse(string(indexHTML))
+	// Parse the embedded index.html template
+	tmpl, err := template.New("index").Parse(indexHTML)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %v", err)
 	}
@@ -5395,10 +5397,11 @@ func RunUIServer(db *DB, port string) error {
 		}
 	})
 
-	// Serve the HTMX JavaScript file
+	// Serve the embedded HTMX JavaScript file
 	http.HandleFunc("/htmx.min.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
-		http.ServeFile(w, r, "htmx.min.js")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(htmxJS)
 	})
 
 	// Search handler for HTMX requests

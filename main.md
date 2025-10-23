@@ -779,6 +779,7 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 
 - Use `net/http` package with [template/html](https://pkg.go.dev/html/template) for rendering
 - Save all HTML/JS/CSS code in `index.html`
+- Embed all static assets using `embed` package
 - Use template define blocks to re-use `index.html` for search results
 - Use https://htmx.org as the frontend framework. Vanilla JS/CSS otherwise
 - Implement Google-style layout: large search input with instant results below
