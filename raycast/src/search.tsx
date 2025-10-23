@@ -12,9 +12,8 @@ import {
 import { spawn } from "child_process";
 
 interface Preferences {
-  organization: string;
   githubBrainCommand: string;
-  dbDir: string;
+  homeDir: string;
 }
 
 interface SearchResult {
@@ -55,17 +54,16 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
 
-    // Build the command: <githubBrainCommand> mcp
+    // Build the command: <githubBrainCommand> mcp -m <homeDir>
+    // Organization will be loaded from .env file in the home directory
     const binaryPath = preferences.githubBrainCommand;
-    const args = ["mcp"];
+    const args = ["mcp", "-m", preferences.homeDir];
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
-        ORGANIZATION: preferences.organization,
-        DB_DIR: preferences.dbDir,
       },
     });
 
