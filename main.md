@@ -6,6 +6,8 @@ AI coding agent specification. Human documentation in README.md.
 
 Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull`, `mcp`, and `ui` commands.
 
+If the GitHub Brain home directory doesn't exist, create it.
+
 Concurrency control:
 
 - Prevent concurrent `pull` commands using database lock
@@ -25,7 +27,8 @@ Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not 
 - Resolve CLI arguments and environment variables into `Config` struct:
   - `Organization`: Organization name (required)
   - `GithubToken`: GitHub API token (required)
-  - `DBDir`: SQLite database path (default: `./db`)
+  - `HomeDir`: GitHub Brain home directory (default: `~/.github-brain`)
+  - `DBDir`: SQLite database path, constructed as `<HomeDir>/db`
   - `Items`: Comma-separated list to pull (default: empty - pull all)
   - `Force`: Remove all data before pulling (default: false)
   - `ExcludedRepositories`: Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests (default: empty)

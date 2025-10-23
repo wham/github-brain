@@ -18,11 +18,11 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 ![](./docs/pull.png)
 
-As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of the discussions, issues, and pull requests.
+As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of discussions, issues, and pull requests.
 
 ![](./docs/ui.png)
 
-As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search of the discussions, issues, and pull requests.
+As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search of discussions, issues, and pull requests.
 
 ![](./docs/raycast.png)
 
@@ -45,7 +45,8 @@ scripts/run <command> [<args>]
 
 Re-run `pull` anytime to update the database with new GitHub data. You can do this while `mcp` is running, but MCP requests may temporarily return errors during the update.
 
-Each command has its own arguments. Some can be set via environment variables. The app will also load variables from a `.env` file in the current directory.
+Each command has its own arguments. Some can be set via environment variables. The app will also load environment variables from a `.env` file in the GitHub Brain's home directory - `~/.github-brain` by default.
+You can change the home directory with the `-m` argument available for all commands. When executing `scripts/run`, the home directory is set to the checkout directory.
 
 <details>
     <summary>Example .env file</summary>
@@ -71,10 +72,10 @@ The first call for an organization may take a while. Subsequent calls are faster
 | :------- | :---------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                             |
 | `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                                                      |
-| `-db`    | `DB_DIR`                | Path to the SQLite database directory. Default: `db` folder in the current directory. An `<organization>.db` file will be created here.                                       |
+| `-m`     |                         | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`.                                                         |
 | `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`. Comma-separated list.                                                     |
 | `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                                                              |
-| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests. Useful for large repositories that are not relevant to the analysis. |
+| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull requests. Useful for large repositories that are not relevant to the analysis. |
 
 <details>
     <summary>Personal access token scopes</summary>
@@ -99,10 +100,10 @@ Example:
 scripts/run mcp -o my-org
 ```
 
-| Argument | Variable       | Description                                                                                                                                  |
-| :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
-| `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
+| Argument | Variable       | Description                                                                                                           |
+| :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                   |
+| `-m`     |                | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`. |
 
 ### `ui`
 
@@ -114,11 +115,11 @@ Example:
 scripts/run ui -o my-org
 ```
 
-| Argument | Variable       | Description                                                                                                                                  |
-| :------- | :------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                                          |
-| `-db`    | `DB_DIR`       | Path to the SQLite database directory. Default: `db` folder in the current directory. Loads data from `<organization>.db` in this directory. |
-| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                                                     |
+| Argument | Variable       | Description                                                                                                           |
+| :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                   |
+| `-m`     |                | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`. |
+| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                              |
 
 ## Installation
 

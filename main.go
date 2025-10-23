@@ -334,7 +334,8 @@ func init() {
 type Config struct {
 	GithubToken           string
 	Organization          string
-	DBDir                 string
+	HomeDir               string   // GitHub Brain home directory (default: ~/.github-brain)
+	DBDir                 string   // SQLite database path, constructed as <HomeDir>/db
 	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests)
 	Force                 bool     // Remove all data before pulling
 	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
@@ -343,17 +344,20 @@ type Config struct {
 // LoadConfig creates a config from command line arguments and environment variables
 // Command line arguments take precedence over environment variables
 func LoadConfig(args []string) *Config {
+	// Get default home directory with expansion
+	defaultHomeDir := os.Getenv("HOME")
+	if defaultHomeDir == "" {
+		defaultHomeDir = "."
+	}
+	defaultHomeDir = defaultHomeDir + "/.github-brain"
+	
 	config := &Config{
-		DBDir: "./db", // Default value
+		HomeDir: defaultHomeDir,
 	}
 
 	// Load from environment variables first
 	config.GithubToken = os.Getenv("GITHUB_TOKEN")
 	config.Organization = os.Getenv("ORGANIZATION")
-
-	if dbDir := os.Getenv("DB_DIR"); dbDir != "" {
-		config.DBDir = dbDir
-	}
 
 	if excludedRepos := os.Getenv("EXCLUDED_REPOSITORIES"); excludedRepos != "" {
 		config.ExcludedRepositories = splitItems(excludedRepos)
@@ -372,9 +376,17 @@ func LoadConfig(args []string) *Config {
 				config.Organization = args[i+1]
 				i++
 			}
-		case "-db":
+		case "-m":
 			if i+1 < len(args) {
-				config.DBDir = args[i+1]
+				homeDir := args[i+1]
+				// Expand ~ to home directory
+				if strings.HasPrefix(homeDir, "~/") {
+					userHomeDir := os.Getenv("HOME")
+					if userHomeDir != "" {
+						homeDir = userHomeDir + homeDir[1:]
+					}
+				}
+				config.HomeDir = homeDir
 				i++
 			}
 		case "-i":
@@ -391,6 +403,9 @@ func LoadConfig(args []string) *Config {
 			config.Force = true
 		}
 	}
+
+	// Construct DBDir from HomeDir after all arguments are parsed
+	config.DBDir = config.HomeDir + "/db"
 
 	return config
 }
@@ -1576,9 +1591,6 @@ type ListPullRequestsParams struct {
 // InitDB initializes the database
 // getDBPath returns the database path for a specific organization
 func getDBPath(dbDir, organization string) string {
-	if dbDir == "" {
-		dbDir = "./db"
-	}
 	return fmt.Sprintf("%s/%s.db", dbDir, organization)
 }
 
@@ -5470,8 +5482,32 @@ func RunUIServer(db *DB, port string) error {
 }
 
 func main() {
-	// Load environment variables
-	_ = godotenv.Load()
+	// Parse home directory early to load .env from the correct location
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir = "."
+	}
+	homeDir = homeDir + "/.github-brain"
+	
+	// Check for -m flag to override home directory
+	for i := 1; i < len(os.Args); i++ {
+		if os.Args[i] == "-m" && i+1 < len(os.Args) {
+			customHome := os.Args[i+1]
+			// Expand ~ to home directory
+			if strings.HasPrefix(customHome, "~/") {
+				userHomeDir := os.Getenv("HOME")
+				if userHomeDir != "" {
+					customHome = userHomeDir + customHome[1:]
+				}
+			}
+			homeDir = customHome
+			break
+		}
+	}
+	
+	// Load environment variables from home directory
+	envPath := homeDir + "/.env"
+	_ = godotenv.Load(envPath)
 
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		fmt.Printf("Usage: %s <command> [<args>]\n\n", os.Args[0])
@@ -5492,7 +5528,14 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: pull -t <token> -o <organization> [-db <dbpath>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
+				fmt.Println("Usage: pull -t <token> -o <organization> [-m <home_dir>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
+				fmt.Println("Options:")
+				fmt.Println("  -t    GitHub token (or set GITHUB_TOKEN)")
+				fmt.Println("  -o    GitHub organization (or set ORGANIZATION)")
+				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
+				fmt.Println("  -i    Items to pull (default: all)")
+				fmt.Println("  -e    Excluded repositories (comma-separated)")
+				fmt.Println("  -f    Force: clear data before pulling")
 				os.Exit(0)
 			}
 		}
@@ -5563,6 +5606,16 @@ func main() {
 				pullIssues = true
 			case "pull-requests":
 				pullPullRequests = true
+			}
+		}
+
+		// Create GitHub Brain home directory if it doesn't exist
+		if _, err := os.Stat(config.HomeDir); os.IsNotExist(err) {
+			progress.Log("Creating GitHub Brain home directory: %s", config.HomeDir)
+			if err := os.MkdirAll(config.HomeDir, 0755); err != nil {
+				progress.Log("Error: Failed to create home directory: %v", err)
+				time.Sleep(3 * time.Second)
+				return
 			}
 		}
 
@@ -5755,7 +5808,10 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: mcp [-db <dbpath>]")
+				fmt.Println("Usage: mcp [-m <home_dir>] [-o <organization>]")
+				fmt.Println("Options:")
+				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
+				fmt.Println("  -o    GitHub organization (or set ORGANIZATION)")
 				os.Exit(0)
 			}
 		}
@@ -5796,10 +5852,10 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: ui -o <organization> [-db <dbpath>] [-p <port>] [-s]")
+				fmt.Println("Usage: ui -o <organization> [-m <home_dir>] [-p <port>] [-s]")
 				fmt.Println("Options:")
 				fmt.Println("  -o    GitHub organization (required)")
-				fmt.Println("  -db   Database directory (default: ./db)")
+				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
 				fmt.Println("  -p    Port for UI server (default: 8080)")
 				fmt.Println("  -s    Skip creating FTS table")
 				os.Exit(0)
