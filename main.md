@@ -992,6 +992,70 @@ Performance indexes are implemented to optimize common query patterns:
 
 - Index on `repositories.updated_at` optimizes `MAX(updated_at)` queries for determining last sync timestamps
 
-```
+## Distribution
+
+### Versioning Strategy
+
+- **Commit Hash Versioning**: Use git commit hash as the version identifier
+- Format: `github-brain {short-hash} (YYYY-MM-DD)`
+- Example: `github-brain a3f42b8 - built 2025-10-24`
+- Embed version info at build time using `-ldflags`:
+  ```bash
+  go build -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%d)"
+  ```
+- Display with `--version` flag showing commit hash and build date
+- Perfect traceability: every binary maps directly to source code state
+- No version bump commits needed
+
+### Release Model
+
+- **GitHub Releases**: Primary distribution channel via GitHub Releases
+- Tag significant milestones as: `milestone/YYYY-MM-DD` or `milestone/{feature-name}`
+- Each release references specific commit SHA for full traceability
+- Release notes include commit hash and date
+
+### Binary Architectures
+
+Build cross-platform binaries for the following architectures:
+
+**macOS (Priority 1)**
+
+- `darwin-amd64` - Intel Macs
+- `darwin-arm64` - Apple Silicon (M1/M2/M3/M4)
+
+**Linux (Priority 1)**
+
+- `linux-amd64` - Standard x86_64 servers/desktops
+- `linux-arm64` - ARM servers (AWS Graviton, Oracle Ampere, Raspberry Pi)
+
+**Windows (Priority 1)**
+
+- `windows-amd64` - Standard Windows machines
+
+**Optional (Priority 2)**
+
+- `linux-arm` - 32-bit ARM (older Raspberry Pi, embedded devices)
+- `freebsd-amd64` - BSD users
+
+### Artifact Naming
 
 ```
+github-brain-{commit-hash}-darwin-amd64.tar.gz
+github-brain-{commit-hash}-darwin-arm64.tar.gz
+github-brain-{commit-hash}-linux-amd64.tar.gz
+github-brain-{commit-hash}-linux-arm64.tar.gz
+github-brain-{commit-hash}-windows-amd64.zip
+```
+
+### Build Process
+
+- Use Go's cross-compilation with `GOOS` and `GOARCH` environment variables
+- Build with CGO enabled for SQLite FTS5 support: `CGO_ENABLED=1`
+- Generate `SHA256SUMS.txt` checksum file for all binaries
+- Include SQLite compilation flags: `CGO_CFLAGS="-DSQLITE_ENABLE_FTS5"`
+
+### Security
+
+- Provide SHA256 checksums for all binaries
+- Sign macOS binaries for Gatekeeper compatibility (future enhancement)
+- All binaries built from tagged commits for auditability
