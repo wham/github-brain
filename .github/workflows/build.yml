@@ -3,7 +3,6 @@ name: Build
 on:
   push:
     branches:
-      - main
       - "wham/*"
   pull_request:
     branches:

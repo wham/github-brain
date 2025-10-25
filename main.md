@@ -1009,10 +1009,11 @@ Performance indexes are implemented to optimize common query patterns:
 
 ### Release Model
 
-- **GitHub Releases**: Primary distribution channel via GitHub Releases
-- Tag significant milestones as: `milestone/YYYY-MM-DD` or `milestone/{feature-name}`
+- **Continuous Releases**: Automatically release on every merge to `main`
+- Release tag format: `YYYY-MM-DD-{commit-hash}` (e.g., `2025-10-24-a3f42b8`)
 - Each release references specific commit SHA for full traceability
-- Release notes include commit hash and date
+- Release notes auto-generated with commit hash and build date
+- No manual tagging required - fully automated via GitHub Actions
 
 ### Binary Architectures
 

@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - "milestone/*"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -34,7 +34,7 @@ jobs:
         run: |
           echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
-          echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          echo "release_name=$(date -u +%Y-%m-%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Build binaries
         env:
@@ -99,7 +99,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ steps.build_info.outputs.tag_name }}
+          tag_name: ${{ steps.build_info.outputs.release_name }}
+          name: ${{ steps.build_info.outputs.release_name }}
           body: |
             ## github-brain ${{ steps.build_info.outputs.commit_hash }}
 
