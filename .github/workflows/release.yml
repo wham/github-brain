@@ -129,9 +129,8 @@ jobs:
         shell: pwsh
         run: |
           cd dist
-          $commitHash = "${{ steps.build_info.outputs.commit_hash }}"
-          $zipName = "github-brain-${commitHash}-windows-amd64.zip"
-          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath $zipName
+          $commitHash = '${{ steps.build_info.outputs.commit_hash }}'
+          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath "github-brain-$commitHash-windows-amd64.zip"
           Remove-Item github-brain-windows-amd64.exe
 
       - name: Upload artifacts
