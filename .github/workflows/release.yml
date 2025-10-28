@@ -151,7 +151,7 @@ jobs:
         shell: pwsh
         run: |
           cd dist
-          Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -Encoding ASCII SHA256SUMS.txt
+          Get-ChildItem -File -Exclude SHA256SUMS.txt | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -Encoding ASCII SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
