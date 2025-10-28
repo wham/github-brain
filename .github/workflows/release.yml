@@ -126,13 +126,11 @@ jobs:
 
       - name: Create Windows archive
         if: runner.os == 'Windows'
-        env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
-        shell: bash
+        shell: pwsh
         run: |
           cd dist
-          zip github-brain-${COMMIT_HASH}-windows-amd64.zip github-brain-windows-amd64.exe
-          rm github-brain-windows-amd64.exe
+          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath ('github-brain-' + '${{ steps.build_info.outputs.commit_hash }}' + '-windows-amd64.zip')
+          Remove-Item github-brain-windows-amd64.exe
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
