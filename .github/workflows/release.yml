@@ -49,80 +49,109 @@ jobs:
           echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
           echo "release_name=$(date -u +%Y-%m-%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
-      - name: Build binaries
+      - name: Build Linux binaries
+        if: runner.os == 'Linux'
         env:
           COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
           BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
         run: |
           mkdir -p dist
 
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            # Linux amd64
-            GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
-              CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-              CGO_LDFLAGS="-lm" \
-              go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
-              -o dist/github-brain-linux-amd64
+          # Linux amd64
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
+            CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            CGO_LDFLAGS="-lm" \
+            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            -o dist/github-brain-linux-amd64
 
-            # Linux arm64
-            GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
-              CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-              CGO_LDFLAGS="-lm" \
-              go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
-              -o dist/github-brain-linux-arm64
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            # macOS amd64
-            GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
-              CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-              go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
-              -o dist/github-brain-darwin-amd64
+          # Linux arm64
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
+            CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            CGO_LDFLAGS="-lm" \
+            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            -o dist/github-brain-linux-arm64
 
-            # macOS arm64
-            GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
-              CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-              go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
-              -o dist/github-brain-darwin-arm64
-          else
-            # Windows amd64
-            set CGO_ENABLED=1
-            set CGO_CFLAGS=-DSQLITE_ENABLE_FTS5
-            go build -ldflags "-X main.Version=%COMMIT_HASH% -X main.BuildDate=%BUILD_DATE%" -o dist/github-brain-windows-amd64.exe
-          fi
+      - name: Build macOS binaries
+        if: runner.os == 'macOS'
+        env:
+          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+          BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
+        run: |
+          mkdir -p dist
 
-      - name: Create archives
+          # macOS amd64
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
+            CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            -o dist/github-brain-darwin-amd64
+
+          # macOS arm64
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
+            CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            -o dist/github-brain-darwin-arm64
+
+      - name: Build Windows binaries
+        if: runner.os == 'Windows'
+        env:
+          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+          BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+
+          $env:CGO_ENABLED = "1"
+          $env:CGO_CFLAGS = "-DSQLITE_ENABLE_FTS5"
+          go build -ldflags "-X main.Version=$env:COMMIT_HASH -X main.BuildDate=$env:BUILD_DATE" -o dist/github-brain-windows-amd64.exe
+
+      - name: Create Linux archives
+        if: runner.os == 'Linux'
         env:
           COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
         run: |
           cd dist
+          tar -czf github-brain-${COMMIT_HASH}-linux-amd64.tar.gz github-brain-linux-amd64
+          tar -czf github-brain-${COMMIT_HASH}-linux-arm64.tar.gz github-brain-linux-arm64
+          rm github-brain-linux-*
 
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            # Linux archives
-            tar -czf github-brain-${COMMIT_HASH}-linux-amd64.tar.gz github-brain-linux-amd64
-            tar -czf github-brain-${COMMIT_HASH}-linux-arm64.tar.gz github-brain-linux-arm64
-
-            # Clean up binaries
-            rm github-brain-linux-*
-          elif [[ "${{ runner.os }}" == "macOS" ]]; then
-            # macOS archives
-            tar -czf github-brain-${COMMIT_HASH}-darwin-amd64.tar.gz github-brain-darwin-amd64
-            tar -czf github-brain-${COMMIT_HASH}-darwin-arm64.tar.gz github-brain-darwin-arm64
-
-            # Clean up binaries
-            rm github-brain-darwin-*
-          else
-            # Windows archive
-            Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath github-brain-%COMMIT_HASH%-windows-amd64.zip
-            del github-brain-windows-amd64.exe
-          fi
-
-      - name: Generate checksums
+      - name: Create macOS archives
+        if: runner.os == 'macOS'
+        env:
+          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
         run: |
           cd dist
-          if command -v sha256sum &> /dev/null; then
-            sha256sum * > SHA256SUMS.txt 2>/dev/null || true
-          else
-            shasum -a 256 * > SHA256SUMS.txt 2>/dev/null || Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -Encoding ASCII SHA256SUMS.txt
-          fi
+          tar -czf github-brain-${COMMIT_HASH}-darwin-amd64.tar.gz github-brain-darwin-amd64
+          tar -czf github-brain-${COMMIT_HASH}-darwin-arm64.tar.gz github-brain-darwin-arm64
+          rm github-brain-darwin-*
+
+      - name: Create Windows archive
+        if: runner.os == 'Windows'
+        env:
+          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+        shell: pwsh
+        run: |
+          cd dist
+          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath "github-brain-$env:COMMIT_HASH-windows-amd64.zip"
+          Remove-Item github-brain-windows-amd64.exe
+
+      - name: Generate checksums (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Generate checksums (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          shasum -a 256 * > SHA256SUMS.txt
+
+      - name: Generate checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd dist
+          Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -Encoding ASCII SHA256SUMS.txt
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
