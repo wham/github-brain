@@ -2007,9 +2007,9 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress *Progress) er
 	
 	// Get counts for progress reporting
 	var discussionCount, issueCount, prCount int
-	db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
-	db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
-	db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
+	_ = db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
 	
 	totalItems := discussionCount + issueCount + prCount
 	progress.Log("Indexing %d total items: %d discussions, %d issues, %d pull requests", 
@@ -5407,7 +5407,9 @@ func RunUIServer(db *DB, port string) error {
 	http.HandleFunc("/htmx.min.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/javascript")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		w.Write(htmxJS)
+		if _, err := w.Write(htmxJS); err != nil {
+			slog.Error("Failed to write HTMX JavaScript", "error", err)
+		}
 	})
 
 	// Search handler for HTMX requests
