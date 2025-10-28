@@ -56,18 +56,21 @@ jobs:
           # Linux amd64
           GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            CGO_LDFLAGS="-lm" \
             go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/github-brain-linux-amd64
 
           # Linux arm64
           GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            CGO_LDFLAGS="-lm" \
             go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/github-brain-linux-arm64
 
           # Windows amd64
           GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+            CGO_LDFLAGS="-lm" \
             go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/github-brain-windows-amd64.exe
 
