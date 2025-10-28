@@ -134,25 +134,6 @@ jobs:
           Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath "github-brain-$env:COMMIT_HASH-windows-amd64.zip"
           Remove-Item github-brain-windows-amd64.exe
 
-      - name: Generate checksums (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          cd dist
-          sha256sum * > SHA256SUMS.txt
-
-      - name: Generate checksums (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd dist
-          shasum -a 256 * > SHA256SUMS.txt
-
-      - name: Generate checksums (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cd dist
-          Get-ChildItem -File -Exclude SHA256SUMS.txt | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -Encoding ASCII SHA256SUMS.txt
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -183,6 +164,11 @@ jobs:
           path: dist
           pattern: binaries-*
           merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
 
       - name: Create Archived Release
         uses: softprops/action-gh-release@v2
