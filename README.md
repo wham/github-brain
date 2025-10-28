@@ -119,7 +119,17 @@ scripts/run ui -o my-org
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
 | `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                   |
 | `-m`     |                | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`. |
-| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                              |
+| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`. 
+
+### Additional Arguments
+
+**Version:**
+
+```sh
+github-brain --version
+```
+
+Displays the current version (commit hash and build date).
 
 ## Installation
 

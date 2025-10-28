@@ -992,6 +992,36 @@ Performance indexes are implemented to optimize common query patterns:
 
 - Index on `repositories.updated_at` optimizes `MAX(updated_at)` queries for determining last sync timestamps
 
-```
+## Distribution
 
-```
+### Release Model
+
+- **Continuous Releases**: Automatically release on every merge to `main`
+- **Two release types created per merge:**
+  1. `latest` - Rolling release, always points to most recent build (easy downloads)
+  2. `YYYY-MM-DD-{hash}` - Archived release for history and rollbacks
+- No manual tagging required - fully automated via GitHub Actions
+- Users download from stable URL: `releases/latest/download/github-brain-{hash}-{platform}.tar.gz`
+
+### Binary Versioning
+
+- Embed commit hash and build date at compile time:
+  ```bash
+  go build -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%d)"
+  ```
+- Display with `--version`: `github-brain a3f42b8 (2025-10-27)`
+- Perfect traceability: every binary maps directly to source code
+
+### Build Targets
+
+- `darwin-amd64` - Intel Macs
+- `darwin-arm64` - Apple Silicon
+- `linux-amd64` - x86_64 servers/desktops
+- `linux-arm64` - ARM servers (AWS Graviton, Raspberry Pi)
+- `windows-amd64` - Windows machines
+
+### Artifacts
+
+- Archives: `github-brain-{hash}-{platform}.tar.gz` (Unix), `.zip` (Windows)
+- Checksums: `SHA256SUMS.txt` for verification
+- Cross-compiled with `GOOS`/`GOARCH`, CGO enabled for SQLite FTS5
