@@ -44,6 +44,7 @@ jobs:
 
       - name: Get build info
         id: build_info
+        shell: bash
         run: |
           echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
