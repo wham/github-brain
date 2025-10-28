@@ -14,12 +14,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -46,9 +44,6 @@ var (
 	Version   = "dev"
 	BuildDate = "unknown"
 )
-
-// Platform-specific feature detection
-var hasTerminalResize = runtime.GOOS != "windows"
 
 // Global variables for rate limit handling and status tracking
 var (
@@ -747,33 +742,21 @@ func NewProgress(message string) *Progress {
 	return progress
 }
 
-// setupSignalHandling sets up OS signal handling with platform-specific signals
+// setupSignalHandling sets up OS signal handling for graceful shutdown
 func (p *Progress) setupSignalHandling() {
-	// On Windows, SIGWINCH doesn't exist, so we only listen for SIGINT and SIGTERM
-	// On Unix-like systems, we also listen for SIGWINCH for terminal resize events
-	if hasTerminalResize {
-		signal.Notify(p.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
-	} else {
-		signal.Notify(p.signalChan, syscall.SIGINT, syscall.SIGTERM)
-	}
+	signal.Notify(p.signalChan, os.Interrupt)
 	go p.handleSignals()
 }
 
-// handleSignals handles OS signals for graceful shutdown with preserved display and window resize
+// handleSignals handles OS signals for graceful shutdown
 func (p *Progress) handleSignals() {
 	for {
 		select {
-		case sig := <-p.signalChan:
-			switch sig {
-			case syscall.SIGINT, syscall.SIGTERM:
-				// Preserve display on signal exit
-				p.preserveOnExit = true
-				p.StopWithPreserve()
-				os.Exit(0)
-			case syscall.SIGWINCH:
-				// Handle terminal resize (Unix-like systems only)
-				p.handleTerminalResize()
-			}
+		case <-p.signalChan:
+			// Preserve display on signal exit
+			p.preserveOnExit = true
+			p.StopWithPreserve()
+			os.Exit(0)
 		case <-p.signalDone:
 			return
 		}
