@@ -1014,6 +1014,8 @@ Performance indexes are implemented to optimize common query patterns:
 
 ### Build Targets
 
+Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to understand CGO requirements for SQLite FTS5 support.
+
 - `darwin-amd64` - Intel Macs
 - `darwin-arm64` - Apple Silicon
 - `linux-amd64` - x86_64 servers/desktops
