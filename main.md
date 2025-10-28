@@ -994,69 +994,34 @@ Performance indexes are implemented to optimize common query patterns:
 
 ## Distribution
 
-### Versioning Strategy
-
-- **Commit Hash Versioning**: Use git commit hash as the version identifier
-- Format: `github-brain {short-hash} (YYYY-MM-DD)`
-- Example: `github-brain a3f42b8 - built 2025-10-24`
-- Embed version info at build time using `-ldflags`:
-  ```bash
-  go build -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%d)"
-  ```
-- Display with `--version` flag showing commit hash and build date
-- Perfect traceability: every binary maps directly to source code state
-- No version bump commits needed
-
 ### Release Model
 
 - **Continuous Releases**: Automatically release on every merge to `main`
-- Release tag format: `YYYY-MM-DD-{commit-hash}` (e.g., `2025-10-24-a3f42b8`)
-- Each release references specific commit SHA for full traceability
-- Release notes auto-generated with commit hash and build date
+- **Two release types created per merge:**
+  1. `latest` - Rolling release, always points to most recent build (easy downloads)
+  2. `YYYY-MM-DD-{hash}` - Archived release for history and rollbacks
 - No manual tagging required - fully automated via GitHub Actions
+- Users download from stable URL: `releases/latest/download/github-brain-{hash}-{platform}.tar.gz`
 
-### Binary Architectures
+### Binary Versioning
 
-Build cross-platform binaries for the following architectures:
+- Embed commit hash and build date at compile time:
+  ```bash
+  go build -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%d)"
+  ```
+- Display with `--version`: `github-brain a3f42b8 (2025-10-27)`
+- Perfect traceability: every binary maps directly to source code
 
-**macOS (Priority 1)**
+### Build Targets
 
 - `darwin-amd64` - Intel Macs
-- `darwin-arm64` - Apple Silicon (M1/M2/M3/M4)
+- `darwin-arm64` - Apple Silicon
+- `linux-amd64` - x86_64 servers/desktops
+- `linux-arm64` - ARM servers (AWS Graviton, Raspberry Pi)
+- `windows-amd64` - Windows machines
 
-**Linux (Priority 1)**
+### Artifacts
 
-- `linux-amd64` - Standard x86_64 servers/desktops
-- `linux-arm64` - ARM servers (AWS Graviton, Oracle Ampere, Raspberry Pi)
-
-**Windows (Priority 1)**
-
-- `windows-amd64` - Standard Windows machines
-
-**Optional (Priority 2)**
-
-- `linux-arm` - 32-bit ARM (older Raspberry Pi, embedded devices)
-- `freebsd-amd64` - BSD users
-
-### Artifact Naming
-
-```
-github-brain-{commit-hash}-darwin-amd64.tar.gz
-github-brain-{commit-hash}-darwin-arm64.tar.gz
-github-brain-{commit-hash}-linux-amd64.tar.gz
-github-brain-{commit-hash}-linux-arm64.tar.gz
-github-brain-{commit-hash}-windows-amd64.zip
-```
-
-### Build Process
-
-- Use Go's cross-compilation with `GOOS` and `GOARCH` environment variables
-- Build with CGO enabled for SQLite FTS5 support: `CGO_ENABLED=1`
-- Generate `SHA256SUMS.txt` checksum file for all binaries
-- Include SQLite compilation flags: `CGO_CFLAGS="-DSQLITE_ENABLE_FTS5"`
-
-### Security
-
-- Provide SHA256 checksums for all binaries
-- Sign macOS binaries for Gatekeeper compatibility (future enhancement)
-- All binaries built from tagged commits for auditability
+- Archives: `github-brain-{hash}-{platform}.tar.gz` (Unix), `.zip` (Windows)
+- Checksums: `SHA256SUMS.txt` for verification
+- Cross-compiled with `GOOS`/`GOARCH`, CGO enabled for SQLite FTS5

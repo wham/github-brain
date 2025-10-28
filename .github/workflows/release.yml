@@ -96,38 +96,49 @@ jobs:
           cd dist
           sha256sum *.tar.gz *.zip > SHA256SUMS.txt
 
-      - name: Create Release
+      - name: Create Archived Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.build_info.outputs.release_name }}
           name: ${{ steps.build_info.outputs.release_name }}
           body: |
-            ## github-brain ${{ steps.build_info.outputs.commit_hash }}
-
             Built from commit `${{ steps.build_info.outputs.commit_hash }}` on ${{ steps.build_info.outputs.build_date }}
 
-            ### Installation
+            **Download:**
+            - macOS (Intel): `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-amd64.tar.gz`
+            - macOS (Apple Silicon): `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-arm64.tar.gz`
+            - Linux (x86_64): `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-amd64.tar.gz`
+            - Linux (ARM64): `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-arm64.tar.gz`
+            - Windows: `github-brain-${{ steps.build_info.outputs.commit_hash }}-windows-amd64.zip`
 
-            Download the appropriate binary for your platform:
+            Verify with `SHA256SUMS.txt`
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          draft: false
+          prerelease: false
 
-            - **macOS (Intel)**: `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-amd64.tar.gz`
-            - **macOS (Apple Silicon)**: `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-arm64.tar.gz`
-            - **Linux (x86_64)**: `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-amd64.tar.gz`
-            - **Linux (ARM64)**: `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-arm64.tar.gz`
-            - **Windows (x86_64)**: `github-brain-${{ steps.build_info.outputs.commit_hash }}-windows-amd64.zip`
+      - name: Update Latest Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest
+          body: |
+            **Latest build:** `${{ steps.build_info.outputs.commit_hash }}` from ${{ steps.build_info.outputs.build_date }}
 
-            Verify the download with `SHA256SUMS.txt`.
+            This release always points to the most recent build. For archived releases, see [all releases](https://github.com/wham/github-brain/releases).
 
-            ### Usage
-
+            **Quick install:**
             ```bash
-            # Extract archive
-            tar -xzf github-brain-*.tar.gz  # macOS/Linux
-            # or
-            unzip github-brain-*.zip        # Windows
+            # macOS Apple Silicon
+            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-arm64.tar.gz | tar xz
 
-            # Run
-            ./github-brain --version
+            # macOS Intel
+            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-amd64.tar.gz | tar xz
+
+            # Linux x86_64
+            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-amd64.tar.gz | tar xz
             ```
           files: |
             dist/*.tar.gz
@@ -135,3 +146,4 @@ jobs:
             dist/SHA256SUMS.txt
           draft: false
           prerelease: false
+          make_latest: true

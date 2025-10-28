@@ -27,7 +27,7 @@ jobs:
 
       - name: Build
         run: |
-          CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
+          CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
           go build -o build/github-brain .
 
       - name: Verify build
