@@ -40,6 +40,12 @@ var htmxJS []byte
 // Database schema version GUID - change this on any schema modification
 const SCHEMA_GUID = "b8f3c2a1-9e7d-4f6b-8c5a-3d2e1f0a9b8c"
 
+// Version information (set via ldflags at build time)
+var (
+	Version   = "dev"
+	BuildDate = "unknown"
+)
+
 // Global variables for rate limit handling and status tracking
 var (
 	rateLimitMutex        sync.Mutex
@@ -5485,6 +5491,13 @@ func RunUIServer(db *DB, port string) error {
 }
 
 func main() {
+	// Handle --version flag before any other processing
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Printf("github-brain %s (%s)\n", Version, BuildDate)
+		os.Exit(0)
+		return
+	}
+
 	// Parse home directory early to load .env from the correct location
 	homeDir := os.Getenv("HOME")
 	if homeDir == "" {
