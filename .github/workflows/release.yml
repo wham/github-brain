@@ -131,8 +131,13 @@ jobs:
         shell: pwsh
         run: |
           cd dist
+          Write-Host "COMMIT_HASH env var: $env:COMMIT_HASH"
           $hash = $env:COMMIT_HASH
-          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath "github-brain-$hash-windows-amd64.zip"
+          Write-Host "Hash variable: $hash"
+          $filename = "github-brain-$hash-windows-amd64.zip"
+          Write-Host "Filename: $filename"
+          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath $filename
+          Write-Host "Created archive: $(Get-ChildItem *.zip | Select-Object -ExpandProperty Name)"
           Remove-Item github-brain-windows-amd64.exe
 
       - name: Upload artifacts
