@@ -1,9 +1,6 @@
 name: Build
 
 on:
-  push:
-    branches:
-      - "wham/*"
   pull_request:
     branches:
       - main
