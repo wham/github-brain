@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,9 @@ var (
 	Version   = "dev"
 	BuildDate = "unknown"
 )
+
+// Platform-specific feature detection
+var hasTerminalResize = runtime.GOOS != "windows"
 
 // Global variables for rate limit handling and status tracking
 var (
@@ -726,8 +730,7 @@ func NewProgress(message string) *Progress {
 	console.Start()
 
 	// Set up signal handling for graceful exit with preserved display and window resize
-	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
-	go progress.handleSignals()
+	progress.setupSignalHandling()
 
 	// Save current cursor position and hide cursor, then reserve space for display
 	fmt.Print("\033[s\033[?25l") // Save cursor position and hide cursor
@@ -744,6 +747,18 @@ func NewProgress(message string) *Progress {
 	return progress
 }
 
+// setupSignalHandling sets up OS signal handling with platform-specific signals
+func (p *Progress) setupSignalHandling() {
+	// On Windows, SIGWINCH doesn't exist, so we only listen for SIGINT and SIGTERM
+	// On Unix-like systems, we also listen for SIGWINCH for terminal resize events
+	if hasTerminalResize {
+		signal.Notify(p.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
+	} else {
+		signal.Notify(p.signalChan, syscall.SIGINT, syscall.SIGTERM)
+	}
+	go p.handleSignals()
+}
+
 // handleSignals handles OS signals for graceful shutdown with preserved display and window resize
 func (p *Progress) handleSignals() {
 	for {
@@ -756,7 +771,7 @@ func (p *Progress) handleSignals() {
 				p.StopWithPreserve()
 				os.Exit(0)
 			case syscall.SIGWINCH:
-				// Handle terminal resize
+				// Handle terminal resize (Unix-like systems only)
 				p.handleTerminalResize()
 			}
 		case <-p.signalDone:
