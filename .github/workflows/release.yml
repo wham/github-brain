@@ -131,11 +131,7 @@ jobs:
         run: |
           cd dist
           $hash = "${{ steps.build_info.outputs.commit_hash }}"
-          Write-Host "Hash from steps output: $hash"
-          $filename = "github-brain-$hash-windows-amd64.zip"
-          Write-Host "Filename: $filename"
-          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath $filename
-          Write-Host "Created archive: $(Get-ChildItem *.zip | Select-Object -ExpandProperty Name)"
+          Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath "github-brain-$hash-windows-amd64.zip"
           Remove-Item github-brain-windows-amd64.exe
 
       - name: Upload artifacts
