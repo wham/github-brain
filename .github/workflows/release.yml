@@ -126,14 +126,11 @@ jobs:
 
       - name: Create Windows archive
         if: runner.os == 'Windows'
-        env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
         shell: pwsh
         run: |
           cd dist
-          Write-Host "COMMIT_HASH env var: $env:COMMIT_HASH"
-          $hash = $env:COMMIT_HASH
-          Write-Host "Hash variable: $hash"
+          $hash = "${{ steps.build_info.outputs.commit_hash }}"
+          Write-Host "Hash from steps output: $hash"
           $filename = "github-brain-$hash-windows-amd64.zip"
           Write-Host "Filename: $filename"
           Compress-Archive -Path github-brain-windows-amd64.exe -DestinationPath $filename
