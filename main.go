@@ -763,25 +763,6 @@ func (p *Progress) handleSignals() {
 	}
 }
 
-// handleTerminalResize handles terminal window resize events
-func (p *Progress) handleTerminalResize() {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	
-	// Get new terminal size
-	width, height := getTerminalSize()
-	
-	// Update terminal dimensions
-	p.terminalWidth = width
-	p.terminalHeight = height
-	
-	// Update box width with same calculation as initialization
-	p.boxWidth = max(64, width-8)
-	
-	// Trigger immediate re-render
-	p.console.RequestUpdate()
-}
-
 // InitItems initializes the items to be displayed
 func (p *Progress) InitItems(config *Config) {
 	p.mutex.Lock()
