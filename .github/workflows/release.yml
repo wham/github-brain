@@ -107,22 +107,18 @@ jobs:
 
       - name: Create Linux archives
         if: runner.os == 'Linux'
-        env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
         run: |
           cd dist
-          tar -czf github-brain-${COMMIT_HASH}-linux-amd64.tar.gz -C linux-amd64 github-brain
-          tar -czf github-brain-${COMMIT_HASH}-linux-arm64.tar.gz -C linux-arm64 github-brain
+          tar -czf github-brain-linux-amd64.tar.gz -C linux-amd64 github-brain
+          tar -czf github-brain-linux-arm64.tar.gz -C linux-arm64 github-brain
           rm -rf linux-amd64 linux-arm64
 
       - name: Create macOS archives
         if: runner.os == 'macOS'
-        env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
         run: |
           cd dist
-          tar -czf github-brain-${COMMIT_HASH}-darwin-amd64.tar.gz -C darwin-amd64 github-brain
-          tar -czf github-brain-${COMMIT_HASH}-darwin-arm64.tar.gz -C darwin-arm64 github-brain
+          tar -czf github-brain-darwin-amd64.tar.gz -C darwin-amd64 github-brain
+          tar -czf github-brain-darwin-arm64.tar.gz -C darwin-arm64 github-brain
           rm -rf darwin-amd64 darwin-arm64
 
       - name: Create Windows archive
@@ -130,8 +126,7 @@ jobs:
         shell: pwsh
         run: |
           cd dist
-          $hash = "${{ steps.build_info.outputs.commit_hash }}"
-          Compress-Archive -Path windows-amd64/github-brain.exe -DestinationPath "github-brain-$hash-windows-amd64.zip"
+          Compress-Archive -Path windows-amd64/github-brain.exe -DestinationPath "github-brain-windows-amd64.zip"
           Remove-Item -Recurse -Force windows-amd64
 
       - name: Upload artifacts
@@ -180,11 +175,11 @@ jobs:
             Built from commit `${{ steps.build_info.outputs.commit_hash }}` on ${{ steps.build_info.outputs.build_date }}
 
             **Download:**
-            - macOS (Intel): `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-amd64.tar.gz`
-            - macOS (Apple Silicon): `github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-arm64.tar.gz`
-            - Linux (x86_64): `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-amd64.tar.gz`
-            - Linux (ARM64): `github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-arm64.tar.gz`
-            - Windows: `github-brain-${{ steps.build_info.outputs.commit_hash }}-windows-amd64.zip`
+            - macOS (Intel): `github-brain-darwin-amd64.tar.gz`
+            - macOS (Apple Silicon): `github-brain-darwin-arm64.tar.gz`
+            - Linux (x86_64): `github-brain-linux-amd64.tar.gz`
+            - Linux (ARM64): `github-brain-linux-arm64.tar.gz`
+            - Windows: `github-brain-windows-amd64.zip`
 
             Verify with `SHA256SUMS.txt`
           files: |
@@ -211,20 +206,17 @@ jobs:
 
             This release always points to the most recent build. For archived releases, see [all releases](https://github.com/wham/github-brain/releases).
 
-            **Quick install:**
+            **Quick install (recommended):**
             ```bash
-            # macOS Apple Silicon
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-arm64.tar.gz | tar xz
-
-            # macOS Intel
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-darwin-amd64.tar.gz | tar xz
-
-            # Linux x86_64
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-linux-amd64.tar.gz | tar xz
-
-            # Windows (in PowerShell)
-            Invoke-WebRequest https://github.com/wham/github-brain/releases/latest/download/github-brain-${{ steps.build_info.outputs.commit_hash }}-windows-amd64.zip -OutFile github-brain.zip
+            curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
             ```
+
+            **Manual download:**
+            - macOS (Intel): `github-brain-darwin-amd64.tar.gz`
+            - macOS (Apple Silicon): `github-brain-darwin-arm64.tar.gz`
+            - Linux (x86_64): `github-brain-linux-amd64.tar.gz`
+            - Linux (ARM64): `github-brain-linux-arm64.tar.gz`
+            - Windows: `github-brain-windows-amd64.zip`
           files: |
             dist/*.tar.gz
             dist/*.zip
