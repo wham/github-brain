@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -726,8 +725,7 @@ func NewProgress(message string) *Progress {
 	console.Start()
 
 	// Set up signal handling for graceful exit with preserved display and window resize
-	signal.Notify(progress.signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGWINCH)
-	go progress.handleSignals()
+	progress.setupSignalHandling()
 
 	// Save current cursor position and hide cursor, then reserve space for display
 	fmt.Print("\033[s\033[?25l") // Save cursor position and hide cursor
@@ -744,44 +742,25 @@ func NewProgress(message string) *Progress {
 	return progress
 }
 
-// handleSignals handles OS signals for graceful shutdown with preserved display and window resize
+// setupSignalHandling sets up OS signal handling for graceful shutdown
+func (p *Progress) setupSignalHandling() {
+	signal.Notify(p.signalChan, os.Interrupt)
+	go p.handleSignals()
+}
+
+// handleSignals handles OS signals for graceful shutdown
 func (p *Progress) handleSignals() {
 	for {
 		select {
-		case sig := <-p.signalChan:
-			switch sig {
-			case syscall.SIGINT, syscall.SIGTERM:
-				// Preserve display on signal exit
-				p.preserveOnExit = true
-				p.StopWithPreserve()
-				os.Exit(0)
-			case syscall.SIGWINCH:
-				// Handle terminal resize
-				p.handleTerminalResize()
-			}
+		case <-p.signalChan:
+			// Preserve display on signal exit
+			p.preserveOnExit = true
+			p.StopWithPreserve()
+			os.Exit(0)
 		case <-p.signalDone:
 			return
 		}
 	}
-}
-
-// handleTerminalResize handles terminal window resize events
-func (p *Progress) handleTerminalResize() {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	
-	// Get new terminal size
-	width, height := getTerminalSize()
-	
-	// Update terminal dimensions
-	p.terminalWidth = width
-	p.terminalHeight = height
-	
-	// Update box width with same calculation as initialization
-	p.boxWidth = max(64, width-8)
-	
-	// Trigger immediate re-render
-	p.console.RequestUpdate()
 }
 
 // InitItems initializes the items to be displayed
