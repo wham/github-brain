@@ -206,20 +206,17 @@ jobs:
 
             This release always points to the most recent build. For archived releases, see [all releases](https://github.com/wham/github-brain/releases).
 
-            **Quick install:**
+            **Quick install (recommended):**
             ```bash
-            # macOS Apple Silicon
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-darwin-arm64.tar.gz | tar xz
-
-            # macOS Intel
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-darwin-amd64.tar.gz | tar xz
-
-            # Linux x86_64
-            curl -L https://github.com/wham/github-brain/releases/latest/download/github-brain-linux-amd64.tar.gz | tar xz
-
-            # Windows (in PowerShell)
-            Invoke-WebRequest https://github.com/wham/github-brain/releases/latest/download/github-brain-windows-amd64.zip -OutFile github-brain.zip
+            curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
             ```
+
+            **Manual download:**
+            - macOS (Intel): `github-brain-darwin-amd64.tar.gz`
+            - macOS (Apple Silicon): `github-brain-darwin-arm64.tar.gz`
+            - Linux (x86_64): `github-brain-linux-amd64.tar.gz`
+            - Linux (ARM64): `github-brain-linux-arm64.tar.gz`
+            - Windows: `github-brain-windows-amd64.zip`
           files: |
             dist/*.tar.gz
             dist/*.zip
