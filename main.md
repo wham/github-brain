@@ -999,16 +999,17 @@ Performance indexes are implemented to optimize common query patterns:
 **Quick install (recommended):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
+npm install -g @wham/github-brain
 ```
 
-The installer script automatically:
+NPM handles:
 
-- Detects your OS (Linux, macOS, Windows via Git Bash) and architecture (amd64, arm64)
-- Downloads the appropriate binary from the latest release
-- Installs to `~/.local/bin` or `/usr/local/bin` (with sudo if needed)
-- Makes the binary executable
-- Verifies installation with `--version`
+- Platform detection (macOS, Linux, Windows)
+- Architecture detection (x64, arm64)
+- Automatic binary download via `optionalDependencies`
+- PATH configuration
+- Easy updates: `npm update -g @wham/github-brain`
+- Easy uninstall: `npm uninstall -g @wham/github-brain`
 
 **Manual installation:**
 Download the appropriate archive for your platform from [releases](https://github.com/wham/github-brain/releases/latest):

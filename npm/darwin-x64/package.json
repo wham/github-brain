@@ -1,0 +1,19 @@
+{
+  "name": "@wham/github-brain-darwin-x64",
+  "version": "0.0.0",
+  "description": "github-brain binary for macOS x64",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wham/github-brain.git"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "license": "MIT",
+  "files": [
+    "github-brain"
+  ]
+}

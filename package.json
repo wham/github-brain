@@ -1,0 +1,36 @@
+{
+  "name": "@wham/github-brain",
+  "version": "0.0.0",
+  "description": "MCP server for searching GitHub discussions, issues, and pull requests",
+  "bin": {
+    "github-brain": "bin/github-brain.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wham/github-brain.git"
+  },
+  "keywords": [
+    "github",
+    "mcp",
+    "search",
+    "discussions",
+    "issues",
+    "pull-requests"
+  ],
+  "author": "wham",
+  "license": "MIT",
+  "optionalDependencies": {
+    "@wham/github-brain-darwin-arm64": "0.0.0",
+    "@wham/github-brain-darwin-x64": "0.0.0",
+    "@wham/github-brain-linux-arm64": "0.0.0",
+    "@wham/github-brain-linux-x64": "0.0.0",
+    "@wham/github-brain-win32-x64": "0.0.0"
+  },
+  "files": [
+    "bin",
+    "install.js"
+  ]
+}

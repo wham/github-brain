@@ -1,0 +1,19 @@
+{
+  "name": "@wham/github-brain-linux-x64",
+  "version": "0.0.0",
+  "description": "github-brain binary for Linux x64",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wham/github-brain.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "license": "MIT",
+  "files": [
+    "github-brain"
+  ]
+}

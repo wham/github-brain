@@ -206,9 +206,9 @@ jobs:
 
             This release always points to the most recent build. For archived releases, see [all releases](https://github.com/wham/github-brain/releases).
 
-            **Quick install (recommended):**
+            **Install via NPM (recommended):**
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
+            npm install -g @wham/github-brain
             ```
 
             **Manual download:**
@@ -224,3 +224,88 @@ jobs:
           draft: false
           prerelease: false
           make_latest: true
+
+  publish-npm:
+    name: Publish to NPM
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Get version from git
+        id: version
+        run: |
+          VERSION="0.0.0-$(git rev-parse --short HEAD)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: binaries-*
+
+      - name: Prepare platform packages
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Extract binaries from archives and place in npm packages
+          cd artifacts
+
+          # macOS ARM64
+          tar -xzf binaries-macOS/github-brain-darwin-arm64.tar.gz
+          mkdir -p ../npm/darwin-arm64
+          mv github-brain ../npm/darwin-arm64/
+
+          # macOS x64
+          tar -xzf binaries-macOS/github-brain-darwin-amd64.tar.gz
+          mkdir -p ../npm/darwin-x64
+          mv github-brain ../npm/darwin-x64/
+
+          # Linux ARM64
+          tar -xzf binaries-Linux/github-brain-linux-arm64.tar.gz
+          mkdir -p ../npm/linux-arm64
+          mv github-brain ../npm/linux-arm64/
+
+          # Linux x64
+          tar -xzf binaries-Linux/github-brain-linux-amd64.tar.gz
+          mkdir -p ../npm/linux-x64
+          mv github-brain ../npm/linux-x64/
+
+          # Windows x64
+          unzip binaries-Windows/github-brain-windows-amd64.zip
+          mkdir -p ../npm/win32-x64
+          mv github-brain.exe ../npm/win32-x64/
+
+          cd ..
+
+          # Update version in all package.json files
+          for pkg in package.json npm/*/package.json; do
+            sed -i "s/\"version\": \"0.0.0\"/\"version\": \"$VERSION\"/" "$pkg"
+          done
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64 npm/win32-x64; do
+            cd "$dir"
+            npm publish --provenance --access public
+            cd ../..
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public
