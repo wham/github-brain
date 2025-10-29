@@ -994,6 +994,33 @@ Performance indexes are implemented to optimize common query patterns:
 
 ## Distribution
 
+### Installation
+
+**Quick install (recommended):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
+```
+
+The installer script automatically:
+
+- Detects your OS (Linux, macOS, Windows via Git Bash) and architecture (amd64, arm64)
+- Downloads the appropriate binary from the latest release
+- Installs to `~/.local/bin` or `/usr/local/bin` (with sudo if needed)
+- Makes the binary executable
+- Verifies installation with `--version`
+
+**Manual installation:**
+Download the appropriate archive for your platform from [releases](https://github.com/wham/github-brain/releases/latest):
+
+```bash
+# Latest release (stable URL, no hash needed)
+curl -L https://github.com/{owner}/{repo}/releases/latest/download/github-brain-darwin-arm64.tar.gz | tar xz
+
+# Specific archived release (hash in tag name, not filename)
+curl -L https://github.com/{owner}/{repo}/releases/download/2025-10-28-a3f42b8/github-brain-darwin-arm64.tar.gz | tar xz
+```
+
 ### Release Model
 
 - **Continuous Releases**: Automatically release on every merge to `main`
@@ -1001,15 +1028,6 @@ Performance indexes are implemented to optimize common query patterns:
   1. `latest` - Rolling release, always points to most recent build (easy downloads)
   2. `YYYY-MM-DD-{hash}` - Archived release for history and rollbacks
 - No manual tagging required - fully automated via GitHub Actions
-- Download examples:
-
-  ```bash
-  # Latest release (stable URL, no hash needed)
-  curl -L https://github.com/{owner}/{repo}/releases/latest/download/github-brain-darwin-arm64.tar.gz | tar xz
-
-  # Specific archived release (hash in tag name, not filename)
-  curl -L https://github.com/{owner}/{repo}/releases/download/2025-10-28-a3f42b8/github-brain-darwin-arm64.tar.gz | tar xz
-  ```
 
 ### Binary Versioning
 
