@@ -1001,7 +1001,15 @@ Performance indexes are implemented to optimize common query patterns:
   1. `latest` - Rolling release, always points to most recent build (easy downloads)
   2. `YYYY-MM-DD-{hash}` - Archived release for history and rollbacks
 - No manual tagging required - fully automated via GitHub Actions
-- Users download from stable URL: `releases/latest/download/github-brain-{hash}-{platform}.tar.gz`
+- Download examples:
+
+  ```bash
+  # Latest release (stable URL, no hash needed)
+  curl -L https://github.com/{owner}/{repo}/releases/latest/download/github-brain-darwin-arm64.tar.gz | tar xz
+
+  # Specific archived release (hash in tag name, not filename)
+  curl -L https://github.com/{owner}/{repo}/releases/download/2025-10-28-a3f42b8/github-brain-darwin-arm64.tar.gz | tar xz
+  ```
 
 ### Binary Versioning
 
@@ -1024,8 +1032,9 @@ Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to underst
 
 ### Artifacts
 
-- Archives: `github-brain-{hash}-{platform}.tar.gz` (Unix), `.zip` (Windows)
+- Archives: `github-brain-{platform}.tar.gz` (Unix), `.zip` (Windows) - no hash in filename
 - Executables inside archives: `github-brain` (Unix), `github-brain.exe` (Windows) - no platform suffix for simplicity
+- Version traceability via binary `--version` flag and git tags
 - Checksums: `SHA256SUMS.txt` for verification
 - Built natively on platform-specific GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
 - Linux ARM64 cross-compiled using `gcc-aarch64-linux-gnu`
