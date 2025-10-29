@@ -1025,5 +1025,8 @@ Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to underst
 ### Artifacts
 
 - Archives: `github-brain-{hash}-{platform}.tar.gz` (Unix), `.zip` (Windows)
+- Executables inside archives: `github-brain` (Unix), `github-brain.exe` (Windows) - no platform suffix for simplicity
 - Checksums: `SHA256SUMS.txt` for verification
-- Cross-compiled with `GOOS`/`GOARCH`, CGO enabled for SQLite FTS5
+- Built natively on platform-specific GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
+- Linux ARM64 cross-compiled using `gcc-aarch64-linux-gnu`
+- CGO build flags: `CGO_CFLAGS="-DSQLITE_ENABLE_FTS5"`, `CGO_LDFLAGS="-lm"` (Linux only)
