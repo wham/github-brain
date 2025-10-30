@@ -88,60 +88,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get PR labels
-        id: pr_labels
-        run: |
-          # Skip for manual triggers
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual trigger - skipping PR label lookup"
-            exit 0
-          fi
-
-          # Get the PR number from the merge commit
-          PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
-
-          if [ -z "$PR_NUMBER" ]; then
-            echo "Error: Could not find PR for commit ${{ github.sha }}"
-            echo "This might be a direct push to main. PRs are required for releases."
-            exit 1
-          fi
-
-          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
-
-          # Get PR labels
-          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | tr '\n' ' ')
-          echo "labels=$LABELS" >> $GITHUB_OUTPUT
-          echo "PR #$PR_NUMBER labels: $LABELS"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Determine bump type
-        id: bump_type
-        run: |
-          # If manually triggered, use the check-pr-label output
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "bump=${{ needs.check-pr-label.outputs.bump_type }}" >> $GITHUB_OUTPUT
-            echo "Bump type (manual): ${{ needs.check-pr-label.outputs.bump_type }}"
-            exit 0
-          fi
-
-          LABELS="${{ steps.pr_labels.outputs.labels }}"
-
-          if echo "$LABELS" | grep -qw "major"; then
-            echo "bump=major" >> $GITHUB_OUTPUT
-            echo "Bump type: major"
-          elif echo "$LABELS" | grep -qw "minor"; then
-            echo "bump=minor" >> $GITHUB_OUTPUT
-            echo "Bump type: minor"
-          elif echo "$LABELS" | grep -qw "patch"; then
-            echo "bump=patch" >> $GITHUB_OUTPUT
-            echo "Bump type: patch"
-          else
-            echo "Error: PR must have one of these labels: major, minor, patch"
-            echo "PR #${{ steps.pr_labels.outputs.pr_number }} labels: $LABELS"
-            exit 1
-          fi
-
       - name: Get last version from GitHub releases
         id: last_version
         run: |
@@ -165,7 +111,7 @@ jobs:
         id: bump
         run: |
           LAST_VERSION="${{ steps.last_version.outputs.last_version }}"
-          BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
+          BUMP_TYPE="${{ needs.check-pr-label.outputs.bump_type }}"
 
           # Parse version
           IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
@@ -316,7 +262,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: version
+    needs: [version, build]
     runs-on: ubuntu-latest
 
     steps:
@@ -364,7 +310,7 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: version
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -395,35 +341,30 @@ jobs:
           cd artifacts
 
           # macOS ARM64
-          tar -xzf binaries-macOS/github-brain-darwin-arm64.tar.gz
           mkdir -p ../npm/darwin-arm64
-          mv github-brain ../npm/darwin-arm64/
+          tar -xzf binaries-macOS/github-brain-darwin-arm64.tar.gz -C ../npm/darwin-arm64/
 
           # macOS x64
-          tar -xzf binaries-macOS/github-brain-darwin-amd64.tar.gz
           mkdir -p ../npm/darwin-x64
-          mv github-brain ../npm/darwin-x64/
+          tar -xzf binaries-macOS/github-brain-darwin-amd64.tar.gz -C ../npm/darwin-x64/
 
           # Linux ARM64
-          tar -xzf binaries-Linux/github-brain-linux-arm64.tar.gz
           mkdir -p ../npm/linux-arm64
-          mv github-brain ../npm/linux-arm64/
+          tar -xzf binaries-Linux/github-brain-linux-arm64.tar.gz -C ../npm/linux-arm64/
 
           # Linux x64
-          tar -xzf binaries-Linux/github-brain-linux-amd64.tar.gz
           mkdir -p ../npm/linux-x64
-          mv github-brain ../npm/linux-x64/
+          tar -xzf binaries-Linux/github-brain-linux-amd64.tar.gz -C ../npm/linux-x64/
 
           # Windows x64
-          unzip binaries-Windows/github-brain-windows-amd64.zip
           mkdir -p ../npm/win32-x64
-          mv github-brain.exe ../npm/win32-x64/
+          unzip -j binaries-Windows/github-brain-windows-amd64.zip -d ../npm/win32-x64/
 
           cd ..
 
-          # Update version in all package.json files
+          # Update version in all package.json files (using perl for cross-platform compatibility)
           for pkg in package.json npm/*/package.json; do
-            sed -i "s/\"version\": \"0.0.0\"/\"version\": \"$VERSION\"/" "$pkg"
+            perl -pi -e "s/\"version\": \"0\.0\.0\"/\"version\": \"$VERSION\"/" "$pkg"
           done
 
       - name: Publish platform packages
