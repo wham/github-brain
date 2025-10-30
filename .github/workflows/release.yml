@@ -74,9 +74,130 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
+  version:
+    name: Determine Version
+    needs: check-pr-label
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      build_date: ${{ steps.info.outputs.build_date }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR labels
+        id: pr_labels
+        run: |
+          # Skip for manual triggers
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger - skipping PR label lookup"
+            exit 0
+          fi
+          
+          # Get the PR number from the merge commit
+          PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Error: Could not find PR for commit ${{ github.sha }}"
+            echo "This might be a direct push to main. PRs are required for releases."
+            exit 1
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Get PR labels
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | tr '\n' ' ')
+          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+          echo "PR #$PR_NUMBER labels: $LABELS"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Determine bump type
+        id: bump_type
+        run: |
+          # If manually triggered, use the check-pr-label output
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "bump=${{ needs.check-pr-label.outputs.bump_type }}" >> $GITHUB_OUTPUT
+            echo "Bump type (manual): ${{ needs.check-pr-label.outputs.bump_type }}"
+            exit 0
+          fi
+          
+          LABELS="${{ steps.pr_labels.outputs.labels }}"
+
+          if echo "$LABELS" | grep -qw "major"; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+            echo "Bump type: major"
+          elif echo "$LABELS" | grep -qw "minor"; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+            echo "Bump type: minor"
+          elif echo "$LABELS" | grep -qw "patch"; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+            echo "Bump type: patch"
+          else
+            echo "Error: PR must have one of these labels: major, minor, patch"
+            echo "PR #${{ steps.pr_labels.outputs.pr_number }} labels: $LABELS"
+            exit 1
+          fi
+
+      - name: Get last version from GitHub releases
+        id: last_version
+        run: |
+          # Try to get the latest release tag from GitHub
+          LAST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            # No releases yet, start at 0.0.0
+            LAST_VERSION="0.0.0"
+          else
+            # Remove 'v' prefix from tag
+            LAST_VERSION="${LAST_TAG#v}"
+          fi
+
+          echo "last_version=$LAST_VERSION" >> $GITHUB_OUTPUT
+          echo "Last published version: $LAST_VERSION"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Bump version
+        id: bump
+        run: |
+          LAST_VERSION="${{ steps.last_version.outputs.last_version }}"
+          BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
+
+          # Parse version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+
+          # Bump based on type
+          case "$BUMP_TYPE" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (bumped $BUMP_TYPE from $LAST_VERSION)"
+
+      - name: Get build info
+        id: info
+        run: |
+          echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
   build:
     name: Build Binaries
-    needs: check-pr-label
+    needs: version
     # Use matrix to build on native runners for each platform because SQLite requires CGO,
     # which needs platform-specific C compilers. Native builds are simpler than cross-compiling.
     strategy:
@@ -107,19 +228,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Get build info
-        id: build_info
-        shell: bash
-        run: |
-          echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
-          # Placeholder version - will be replaced with actual version later
-          echo "version=dev" >> $GITHUB_OUTPUT
-
       - name: Build Linux binaries
         if: runner.os == 'Linux'
         env:
-          VERSION: ${{ steps.build_info.outputs.version }}
-          BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.version.outputs.build_date }}
         run: |
           mkdir -p dist/linux-amd64 dist/linux-arm64
 
@@ -140,8 +253,8 @@ jobs:
       - name: Build macOS binaries
         if: runner.os == 'macOS'
         env:
-          VERSION: ${{ steps.build_info.outputs.version }}
-          BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.version.outputs.build_date }}
         run: |
           mkdir -p dist/darwin-amd64 dist/darwin-arm64
 
@@ -160,8 +273,8 @@ jobs:
       - name: Build Windows binaries
         if: runner.os == 'Windows'
         env:
-          VERSION: ${{ steps.build_info.outputs.version }}
-          BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.version.outputs.build_date }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist/windows-amd64
@@ -438,7 +551,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64 npm/win32-x64; do
+          # Temporarily skip Windows package
+          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64; do
             cd "$dir"
             npm publish --provenance --access public
             cd ../..
