@@ -208,7 +208,7 @@ jobs:
 
             **Install via NPM (recommended):**
             ```bash
-            npm install -g @wham/github-brain
+            npm install -g github-brain
             ```
 
             **Manual download:**

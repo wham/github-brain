@@ -999,7 +999,7 @@ Performance indexes are implemented to optimize common query patterns:
 **Quick install (recommended):**
 
 ```bash
-npm install -g @wham/github-brain
+npm install -g github-brain
 ```
 
 NPM handles:
@@ -1008,8 +1008,8 @@ NPM handles:
 - Architecture detection (x64, arm64)
 - Automatic binary download via `optionalDependencies`
 - PATH configuration
-- Easy updates: `npm update -g @wham/github-brain`
-- Easy uninstall: `npm uninstall -g @wham/github-brain`
+- Easy updates: `npm update -g github-brain`
+- Easy uninstall: `npm uninstall -g github-brain`
 
 **Manual installation:**
 Download the appropriate archive for your platform from [releases](https://github.com/wham/github-brain/releases/latest):

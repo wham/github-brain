@@ -6,11 +6,11 @@ const fs = require("fs");
 
 // Platform-specific package mapping
 const PLATFORMS = {
-  "darwin-arm64": "@wham/github-brain-darwin-arm64",
-  "darwin-x64": "@wham/github-brain-darwin-x64",
-  "linux-arm64": "@wham/github-brain-linux-arm64",
-  "linux-x64": "@wham/github-brain-linux-x64",
-  "win32-x64": "@wham/github-brain-win32-x64",
+  "darwin-arm64": "github-brain-darwin-arm64",
+  "darwin-x64": "github-brain-darwin-x64",
+  "linux-arm64": "github-brain-linux-arm64",
+  "linux-x64": "github-brain-linux-x64",
+  "win32-x64": "github-brain-win32-x64",
 };
 
 function getPlatformPackage() {

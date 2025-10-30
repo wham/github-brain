@@ -1,5 +1,5 @@
 {
-  "name": "@wham/github-brain-win32-x64",
+  "name": "github-brain-win32-x64",
   "version": "0.0.0",
   "description": "github-brain binary for Windows x64",
   "repository": {

@@ -1,5 +1,5 @@
 {
-  "name": "@wham/github-brain-darwin-x64",
+  "name": "github-brain-darwin-x64",
   "version": "0.0.0",
   "description": "github-brain binary for macOS x64",
   "repository": {

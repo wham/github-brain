@@ -1,5 +1,5 @@
 {
-  "name": "@wham/github-brain",
+  "name": "github-brain",
   "version": "0.0.0",
   "description": "MCP server for searching GitHub discussions, issues, and pull requests",
   "bin": {
@@ -23,11 +23,11 @@
   "author": "wham",
   "license": "MIT",
   "optionalDependencies": {
-    "@wham/github-brain-darwin-arm64": "0.0.0",
-    "@wham/github-brain-darwin-x64": "0.0.0",
-    "@wham/github-brain-linux-arm64": "0.0.0",
-    "@wham/github-brain-linux-x64": "0.0.0",
-    "@wham/github-brain-win32-x64": "0.0.0"
+    "github-brain-darwin-arm64": "0.0.0",
+    "github-brain-darwin-x64": "0.0.0",
+    "github-brain-linux-arm64": "0.0.0",
+    "github-brain-linux-x64": "0.0.0",
+    "github-brain-win32-x64": "0.0.0"
   },
   "files": [
     "bin",

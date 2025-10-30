@@ -1,5 +1,5 @@
 {
-  "name": "@wham/github-brain-linux-arm64",
+  "name": "github-brain-linux-arm64",
   "version": "0.0.0",
   "description": "github-brain binary for Linux ARM64",
   "repository": {
