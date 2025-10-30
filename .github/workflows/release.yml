@@ -10,8 +10,48 @@ permissions:
   contents: write
 
 jobs:
+  check-pr-label:
+    name: Check PR Label
+    runs-on: ubuntu-latest
+    outputs:
+      has_label: ${{ steps.check.outputs.has_label }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for version label
+        id: check
+        run: |
+          # Get the PR number from the merge commit
+          PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Error: Could not find PR for commit ${{ github.sha }}"
+            echo "Direct pushes to main are not allowed. All changes must go through a PR with a version label (major, minor, or patch)."
+            exit 1
+          fi
+
+          # Get PR labels
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | tr '\n' ' ')
+          echo "PR #$PR_NUMBER labels: $LABELS"
+
+          # Check if PR has a version label
+          if echo "$LABELS" | grep -qwE "major|minor|patch"; then
+            echo "has_label=true" >> $GITHUB_OUTPUT
+          else
+            echo "Error: PR #$PR_NUMBER must have one of these labels: major, minor, patch"
+            echo "Current labels: $LABELS"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   build:
     name: Build Binaries
+    needs: check-pr-label
     # Use matrix to build on native runners for each platform because SQLite requires CGO,
     # which needs platform-specific C compilers. Native builds are simpler than cross-compiling.
     strategy:
@@ -46,14 +86,14 @@ jobs:
         id: build_info
         shell: bash
         run: |
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
-          echo "release_name=$(date -u +%Y-%m-%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          # Placeholder version - will be replaced with actual version later
+          echo "version=dev" >> $GITHUB_OUTPUT
 
       - name: Build Linux binaries
         if: runner.os == 'Linux'
         env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+          VERSION: ${{ steps.build_info.outputs.version }}
           BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
         run: |
           mkdir -p dist/linux-amd64 dist/linux-arm64
@@ -62,20 +102,20 @@ jobs:
           GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
             CGO_LDFLAGS="-lm" \
-            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/linux-amd64/github-brain
 
           # Linux arm64
           GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
             CGO_LDFLAGS="-lm" \
-            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/linux-arm64/github-brain
 
       - name: Build macOS binaries
         if: runner.os == 'macOS'
         env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+          VERSION: ${{ steps.build_info.outputs.version }}
           BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
         run: |
           mkdir -p dist/darwin-amd64 dist/darwin-arm64
@@ -83,19 +123,19 @@ jobs:
           # macOS amd64
           GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/darwin-amd64/github-brain
 
           # macOS arm64
           GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
-            go build -ldflags "-X main.Version=${COMMIT_HASH} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
             -o dist/darwin-arm64/github-brain
 
       - name: Build Windows binaries
         if: runner.os == 'Windows'
         env:
-          COMMIT_HASH: ${{ steps.build_info.outputs.commit_hash }}
+          VERSION: ${{ steps.build_info.outputs.version }}
           BUILD_DATE: ${{ steps.build_info.outputs.build_date }}
         shell: pwsh
         run: |
@@ -103,7 +143,7 @@ jobs:
 
           $env:CGO_ENABLED = "1"
           $env:CGO_CFLAGS = "-DSQLITE_ENABLE_FTS5"
-          go build -ldflags "-X main.Version=$env:COMMIT_HASH -X main.BuildDate=$env:BUILD_DATE" -o dist/windows-amd64/github-brain.exe
+          go build -ldflags "-X main.Version=$env:VERSION -X main.BuildDate=$env:BUILD_DATE" -o dist/windows-amd64/github-brain.exe
 
       - name: Create Linux archives
         if: runner.os == 'Linux'
@@ -136,10 +176,13 @@ jobs:
           path: dist/*
           retention-days: 1
 
-  release:
-    name: Create Releases
+  version:
+    name: Determine Version
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      build_date: ${{ steps.info.outputs.build_date }}
 
     steps:
       - name: Checkout code
@@ -147,13 +190,106 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get build info
-        id: build_info
+      - name: Get PR labels
+        id: pr_labels
         run: |
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-          echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
-          echo "release_name=$(date -u +%Y-%m-%d)-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          # Get the PR number from the merge commit
+          PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
 
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Error: Could not find PR for commit ${{ github.sha }}"
+            echo "This might be a direct push to main. PRs are required for releases."
+            exit 1
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Get PR labels
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | tr '\n' ' ')
+          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+          echo "PR #$PR_NUMBER labels: $LABELS"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Determine bump type
+        id: bump_type
+        run: |
+          LABELS="${{ steps.pr_labels.outputs.labels }}"
+
+          if echo "$LABELS" | grep -qw "major"; then
+            echo "bump=major" >> $GITHUB_OUTPUT
+            echo "Bump type: major"
+          elif echo "$LABELS" | grep -qw "minor"; then
+            echo "bump=minor" >> $GITHUB_OUTPUT
+            echo "Bump type: minor"
+          elif echo "$LABELS" | grep -qw "patch"; then
+            echo "bump=patch" >> $GITHUB_OUTPUT
+            echo "Bump type: patch"
+          else
+            echo "Error: PR must have one of these labels: major, minor, patch"
+            echo "PR #${{ steps.pr_labels.outputs.pr_number }} labels: $LABELS"
+            exit 1
+          fi
+
+      - name: Get last version from GitHub releases
+        id: last_version
+        run: |
+          # Try to get the latest release tag from GitHub
+          LAST_TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+
+          if [ -z "$LAST_TAG" ]; then
+            # No releases yet, start at 0.0.0
+            LAST_VERSION="0.0.0"
+          else
+            # Remove 'v' prefix from tag
+            LAST_VERSION="${LAST_TAG#v}"
+          fi
+
+          echo "last_version=$LAST_VERSION" >> $GITHUB_OUTPUT
+          echo "Last published version: $LAST_VERSION"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Bump version
+        id: bump
+        run: |
+          LAST_VERSION="${{ steps.last_version.outputs.last_version }}"
+          BUMP_TYPE="${{ steps.bump_type.outputs.bump }}"
+
+          # Parse version
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+
+          # Bump based on type
+          case "$BUMP_TYPE" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION (bumped $BUMP_TYPE from $LAST_VERSION)"
+
+      - name: Get build info
+        id: info
+        run: |
+          echo "build_date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+  release:
+    name: Create GitHub Release
+    needs: version
+    runs-on: ubuntu-latest
+
+    steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -166,15 +302,21 @@ jobs:
           cd dist
           sha256sum * > SHA256SUMS.txt
 
-      - name: Create Archived Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.build_info.outputs.release_name }}
-          name: ${{ steps.build_info.outputs.release_name }}
+          tag_name: v${{ needs.version.outputs.version }}
+          name: v${{ needs.version.outputs.version }}
           body: |
-            Built from commit `${{ steps.build_info.outputs.commit_hash }}` on ${{ steps.build_info.outputs.build_date }}
+            **Version:** ${{ needs.version.outputs.version }}
+            **Built:** ${{ needs.version.outputs.build_date }}
 
-            **Download:**
+            **Install via NPM:**
+            ```bash
+            npm install -g github-brain
+            ```
+
+            **Manual download:**
             - macOS (Intel): `github-brain-darwin-amd64.tar.gz`
             - macOS (Apple Silicon): `github-brain-darwin-arm64.tar.gz`
             - Linux (x86_64): `github-brain-linux-amd64.tar.gz`
@@ -188,46 +330,11 @@ jobs:
             dist/SHA256SUMS.txt
           draft: false
           prerelease: false
-
-      - name: Delete old latest release
-        continue-on-error: true
-        run: |
-          gh release delete latest --yes --cleanup-tag || true
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Update Latest Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Latest
-          body: |
-            **Latest build:** `${{ steps.build_info.outputs.commit_hash }}` from ${{ steps.build_info.outputs.build_date }}
-
-            This release always points to the most recent build. For archived releases, see [all releases](https://github.com/wham/github-brain/releases).
-
-            **Install via NPM (recommended):**
-            ```bash
-            npm install -g github-brain
-            ```
-
-            **Manual download:**
-            - macOS (Intel): `github-brain-darwin-amd64.tar.gz`
-            - macOS (Apple Silicon): `github-brain-darwin-arm64.tar.gz`
-            - Linux (x86_64): `github-brain-linux-amd64.tar.gz`
-            - Linux (ARM64): `github-brain-linux-arm64.tar.gz`
-            - Windows: `github-brain-windows-amd64.zip`
-          files: |
-            dist/*.tar.gz
-            dist/*.zip
-            dist/SHA256SUMS.txt
-          draft: false
-          prerelease: false
           make_latest: true
 
   publish-npm:
     name: Publish to NPM
-    needs: build
+    needs: version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -243,13 +350,6 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Get version from git
-        id: version
-        run: |
-          VERSION="0.0.0-$(git rev-parse --short HEAD)"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -258,7 +358,8 @@ jobs:
 
       - name: Prepare platform packages
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
+          echo "Preparing packages with version $VERSION"
 
           # Extract binaries from archives and place in npm packages
           cd artifacts
