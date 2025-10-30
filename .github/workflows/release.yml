@@ -5,6 +5,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
@@ -15,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_label: ${{ steps.check.outputs.has_label }}
+      bump_type: ${{ steps.check.outputs.bump_type }}
 
     steps:
       - name: Checkout code
@@ -25,6 +35,14 @@ jobs:
       - name: Check for version label
         id: check
         run: |
+          # If manually triggered, use the input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "bump_type=${{ inputs.version_bump }}" >> $GITHUB_OUTPUT
+            echo "has_label=true" >> $GITHUB_OUTPUT
+            echo "Manual trigger: using bump type ${{ inputs.version_bump }}"
+            exit 0
+          fi
+
           # Get the PR number from the merge commit
           PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
 
@@ -38,8 +56,15 @@ jobs:
           LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' | tr '\n' ' ')
           echo "PR #$PR_NUMBER labels: $LABELS"
 
-          # Check if PR has a version label
-          if echo "$LABELS" | grep -qwE "major|minor|patch"; then
+          # Check if PR has a version label and set bump_type
+          if echo "$LABELS" | grep -qw "major"; then
+            echo "bump_type=major" >> $GITHUB_OUTPUT
+            echo "has_label=true" >> $GITHUB_OUTPUT
+          elif echo "$LABELS" | grep -qw "minor"; then
+            echo "bump_type=minor" >> $GITHUB_OUTPUT
+            echo "has_label=true" >> $GITHUB_OUTPUT
+          elif echo "$LABELS" | grep -qw "patch"; then
+            echo "bump_type=patch" >> $GITHUB_OUTPUT
             echo "has_label=true" >> $GITHUB_OUTPUT
           else
             echo "Error: PR #$PR_NUMBER must have one of these labels: major, minor, patch"
@@ -193,6 +218,12 @@ jobs:
       - name: Get PR labels
         id: pr_labels
         run: |
+          # Skip for manual triggers
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger - skipping PR label lookup"
+            exit 0
+          fi
+
           # Get the PR number from the merge commit
           PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
 
@@ -214,6 +245,13 @@ jobs:
       - name: Determine bump type
         id: bump_type
         run: |
+          # If manually triggered, use the check-pr-label output
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "bump=${{ needs.check-pr-label.outputs.bump_type }}" >> $GITHUB_OUTPUT
+            echo "Bump type (manual): ${{ needs.check-pr-label.outputs.bump_type }}"
+            exit 0
+          fi
+
           LABELS="${{ steps.pr_labels.outputs.labels }}"
 
           if echo "$LABELS" | grep -qw "major"; then
