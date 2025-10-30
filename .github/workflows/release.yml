@@ -310,7 +310,7 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: [version, build]
+    needs: [version, build, release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
