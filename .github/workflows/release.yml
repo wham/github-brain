@@ -367,6 +367,9 @@ jobs:
             perl -pi -e "s/\"version\": \"0\.0\.0\"/\"version\": \"$VERSION\"/" "$pkg"
           done
 
+          # Update optionalDependencies versions in main package.json
+          perl -pi -e "s/\"github-brain-(darwin-arm64|darwin-x64|linux-arm64|linux-x64|win32-x64)\": \"0\.0\.0\"/\"github-brain-\$1\": \"$VERSION\"/g" package.json
+
       - name: Publish platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
