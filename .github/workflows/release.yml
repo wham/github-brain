@@ -379,7 +379,7 @@ jobs:
             npm publish --provenance --access public
             cd ../..
             # Wait for NPM to process the package before publishing the next one
-            sleep 5
+            sleep 30
           done
 
       - name: Publish main package
