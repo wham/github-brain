@@ -133,24 +133,6 @@ Displays the current version (commit hash and build date).
 
 ## Installation
 
-### NPM (Recommended)
-
-Install globally:
-
-```sh
-npm install -g github-brain
-```
-
-Then run commands directly:
-
-```sh
-github-brain pull -o my-org
-github-brain mcp -o my-org
-github-brain ui -o my-org
-```
-
-### From Source
-
 `scripts/run` is a convenience script that runs the MCP server. It builds the Go code and runs the `mcp` command with the checkout directory as the working directory. As a result, the SQLite database will be created in the `db` folder of the checkout directory.
 
 ### Claude
