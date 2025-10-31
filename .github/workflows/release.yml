@@ -374,8 +374,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          # Temporarily skip Windows package
-          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64; do
+          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64 npm/win32-x64; do
             cd "$dir"
             npm publish --provenance --access public
             cd ../..
