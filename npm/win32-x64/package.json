@@ -1,0 +1,20 @@
+{
+  "name": "github-brain-windows",
+  "version": "0.0.0",
+  "description": "github-brain binary for Windows x64",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wham/github-brain.git"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "license": "MIT",
+  "files": [
+    "github-brain.exe",
+    "README.md"
+  ]
+}

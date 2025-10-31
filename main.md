@@ -999,44 +999,47 @@ Performance indexes are implemented to optimize common query patterns:
 **Quick install (recommended):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wham/github-brain/main/install.sh | sh
+npm install -g github-brain
 ```
 
-The installer script automatically:
+NPM handles:
 
-- Detects your OS (Linux, macOS, Windows via Git Bash) and architecture (amd64, arm64)
-- Downloads the appropriate binary from the latest release
-- Installs to `~/.local/bin` or `/usr/local/bin` (with sudo if needed)
-- Makes the binary executable
-- Verifies installation with `--version`
+- Platform detection (macOS, Linux, Windows)
+- Architecture detection (x64, arm64)
+- Automatic binary download via `optionalDependencies`
+- PATH configuration
+- Easy updates: `npm update -g github-brain`
+- Easy uninstall: `npm uninstall -g github-brain`
 
 **Manual installation:**
-Download the appropriate archive for your platform from [releases](https://github.com/wham/github-brain/releases/latest):
+Download the appropriate archive for your platform from [releases](https://github.com/wham/github-brain/releases):
 
 ```bash
-# Latest release (stable URL, no hash needed)
-curl -L https://github.com/{owner}/{repo}/releases/latest/download/github-brain-darwin-arm64.tar.gz | tar xz
-
-# Specific archived release (hash in tag name, not filename)
-curl -L https://github.com/{owner}/{repo}/releases/download/2025-10-28-a3f42b8/github-brain-darwin-arm64.tar.gz | tar xz
+# Specific version
+curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz | tar xz
 ```
 
 ### Release Model
 
-- **Continuous Releases**: Automatically release on every merge to `main`
-- **Two release types created per merge:**
-  1. `latest` - Rolling release, always points to most recent build (easy downloads)
-  2. `YYYY-MM-DD-{hash}` - Archived release for history and rollbacks
-- No manual tagging required - fully automated via GitHub Actions
+- **Semantic Versioning**: Automatically bump version on every merge to `main` based on PR labels
+- **PR Label Requirements** (build fails without one of these):
+  - `major` - Breaking changes, incompatible API changes (e.g., 1.0.0 → 2.0.0)
+  - `minor` - New features, backward compatible (e.g., 1.0.0 → 1.1.0)
+  - `patch` - Bug fixes, backward compatible (e.g., 1.0.0 → 1.0.1)
+- **Starting version**: 1.0.0
+- **Version storage**: GitHub releases (reads latest release tag, increments based on PR label)
+- **Release artifacts**: GitHub release created with tag `v{version}` (e.g., v1.2.3)
+- **NPM packages**: Main package and platform packages all published with same version
+- **NPM handles "latest"**: No need for GitHub "latest" release - npm automatically serves latest version
 
 ### Binary Versioning
 
-- Embed commit hash and build date at compile time:
+- Embed version and build date at compile time:
   ```bash
-  go build -ldflags "-X main.Version=$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%d)"
+  go build -ldflags "-X main.Version={semver} -X main.BuildDate=$(date -u +%Y-%m-%d)"
   ```
-- Display with `--version`: `github-brain a3f42b8 (2025-10-27)`
-- Perfect traceability: every binary maps directly to source code
+- Display with `--version`: `github-brain 1.2.3 (2025-10-29)`
+- NPM package version always matches binary version
 
 ### Build Targets
 
@@ -1050,10 +1053,26 @@ Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to underst
 
 ### Artifacts
 
-- Archives: `github-brain-{platform}.tar.gz` (Unix), `.zip` (Windows) - no hash in filename
-- Executables inside archives: `github-brain` (Unix), `github-brain.exe` (Windows) - no platform suffix for simplicity
-- Version traceability via binary `--version` flag and git tags
+**GitHub Releases:**
+
+- Archives: `github-brain-{platform}.tar.gz` (Unix), `.zip` (Windows)
+- Executables inside archives: `github-brain` (Unix), `github-brain.exe` (Windows)
 - Checksums: `SHA256SUMS.txt` for verification
+- Tagged with version: `v1.2.3`
+
+**NPM Packages:**
+
+- Main package: `github-brain` - contains Node.js shim and installation logic
+- Platform packages: `github-brain-{platform}-{arch}` - contain platform-specific binaries
+  - `github-brain-darwin-arm64`
+  - `github-brain-darwin-x64`
+  - `github-brain-linux-arm64`
+  - `github-brain-linux-x64`
+  - `github-brain-windows`
+- All packages published with same version number
+
+**Build System:**
+
 - Built natively on platform-specific GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
 - Linux ARM64 cross-compiled using `gcc-aarch64-linux-gnu`
 - CGO build flags: `CGO_CFLAGS="-DSQLITE_ENABLE_FTS5"`, `CGO_LDFLAGS="-lm"` (Linux only)
