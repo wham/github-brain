@@ -4,7 +4,7 @@
   "description": "github-brain binary for macOS x64",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wham/github-brain.git"
+    "url": "git+https://github.com/wham/github-brain.git"
   },
   "os": [
     "darwin"
