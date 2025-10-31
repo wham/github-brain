@@ -10,7 +10,7 @@ const PLATFORMS = {
   "darwin-x64": "github-brain-darwin-x64",
   "linux-arm64": "github-brain-linux-arm64",
   "linux-x64": "github-brain-linux-x64",
-  "win32-x64": "github-brain-win32-x64",
+  "win32-x64": "github-brain-windows",
 };
 
 function getPlatformPackage() {

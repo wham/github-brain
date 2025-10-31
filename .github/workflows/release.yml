@@ -357,8 +357,8 @@ jobs:
           tar -xzf binaries-Linux/github-brain-linux-amd64.tar.gz -C ../npm/linux-x64/
 
           # Windows x64
-          mkdir -p ../npm/win32-x64
-          unzip -j binaries-Windows/github-brain-windows-amd64.zip -d ../npm/win32-x64/
+          mkdir -p ../npm/windows
+          unzip -j binaries-Windows/github-brain-windows-amd64.zip -d ../npm/windows/
 
           cd ..
 
@@ -368,13 +368,13 @@ jobs:
           done
 
           # Update optionalDependencies versions in main package.json
-          perl -pi -e "s/\"github-brain-(darwin-arm64|darwin-x64|linux-arm64|linux-x64|win32-x64)\": \"0\.0\.0\"/\"github-brain-\$1\": \"$VERSION\"/g" package.json
+          perl -pi -e "s/\"github-brain-(darwin-arm64|darwin-x64|linux-arm64|linux-x64|windows)\": \"0\.0\.0\"/\"github-brain-\$1\": \"$VERSION\"/g" package.json
 
       - name: Publish platform packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64 npm/win32-x64; do
+          for dir in npm/darwin-arm64 npm/darwin-x64 npm/linux-arm64 npm/linux-x64 npm/windows; do
             cd "$dir"
             npm publish --provenance --access public
             cd ../..
