@@ -5,6 +5,9 @@ const path = require("path");
 const fs = require("fs");
 
 // Platform-specific package mapping
+// Note: Windows package uses simplified name "github-brain-windows" instead of
+// "github-brain-win32-x64" to avoid NPM's spam detection which flags packages
+// with platform-specific suffixes like win32-x64.
 const PLATFORMS = {
   "darwin-arm64": "github-brain-darwin-arm64",
   "darwin-x64": "github-brain-darwin-x64",

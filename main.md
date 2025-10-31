@@ -1068,7 +1068,7 @@ Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to underst
   - `github-brain-darwin-x64`
   - `github-brain-linux-arm64`
   - `github-brain-linux-x64`
-  - `github-brain-win32-x64`
+  - `github-brain-windows`
 - All packages published with same version number
 
 **Build System:**

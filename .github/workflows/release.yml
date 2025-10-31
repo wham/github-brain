@@ -378,8 +378,6 @@ jobs:
             cd "$dir"
             npm publish --provenance --access public
             cd ../..
-            # Wait for NPM to process the package before publishing the next one
-            sleep 30
           done
 
       - name: Publish main package

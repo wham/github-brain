@@ -22,4 +22,4 @@ This package is part of a platform-specific binary distribution system that incl
 - `github-brain-darwin-x64` (macOS Intel)
 - `github-brain-linux-arm64` (Linux ARM64)
 - `github-brain-linux-x64` (Linux x64)
-- `github-brain-win32-x64` (Windows x64)
+- `github-brain-windows` (Windows x64)
