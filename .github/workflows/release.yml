@@ -14,6 +14,7 @@ on:
           - patch
           - minor
           - major
+          - dry-run
 
 permissions:
   contents: write
@@ -25,6 +26,7 @@ jobs:
     outputs:
       has_label: ${{ steps.check.outputs.has_label }}
       bump_type: ${{ steps.check.outputs.bump_type }}
+      is_dry_run: ${{ steps.check.outputs.is_dry_run }}
 
     steps:
       - name: Checkout code
@@ -40,8 +42,18 @@ jobs:
             echo "bump_type=${{ inputs.version_bump }}" >> $GITHUB_OUTPUT
             echo "has_label=true" >> $GITHUB_OUTPUT
             echo "Manual trigger: using bump type ${{ inputs.version_bump }}"
+            
+            # Set dry_run flag
+            if [ "${{ inputs.version_bump }}" = "dry-run" ]; then
+              echo "is_dry_run=true" >> $GITHUB_OUTPUT
+            else
+              echo "is_dry_run=false" >> $GITHUB_OUTPUT
+            fi
             exit 0
           fi
+
+          # For PR merges, not a dry run
+          echo "is_dry_run=false" >> $GITHUB_OUTPUT
 
           # Get the PR number from the merge commit
           PR_NUMBER=$(gh pr list --state merged --json number,mergeCommit --jq ".[] | select(.mergeCommit.oid == \"${{ github.sha }}\") | .number" | head -n 1)
@@ -77,6 +89,7 @@ jobs:
   version:
     name: Determine Version
     needs: check-pr-label
+    if: needs.check-pr-label.outputs.is_dry_run != 'true'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
@@ -143,7 +156,8 @@ jobs:
 
   build:
     name: Build Binaries
-    needs: version
+    needs: [check-pr-label, version]
+    if: always() && needs.check-pr-label.result == 'success'
     # Use matrix to build on native runners for each platform because SQLite requires CGO,
     # which needs platform-specific C compilers. Native builds are simpler than cross-compiling.
     strategy:
@@ -177,30 +191,30 @@ jobs:
       - name: Build Linux binaries
         if: runner.os == 'Linux'
         env:
-          VERSION: ${{ needs.version.outputs.version }}
-          BUILD_DATE: ${{ needs.version.outputs.build_date }}
+          VERSION: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && 'dry-run' || needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && '2000-01-01' || needs.version.outputs.build_date }}
         run: |
           mkdir -p dist/linux-amd64 dist/linux-arm64
 
-          # Linux amd64
+          # Linux amd64 (static build for compatibility with any libc)
           GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
             CGO_LDFLAGS="-lm" \
-            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -linkmode external -extldflags '-static'" \
             -o dist/linux-amd64/github-brain
 
-          # Linux arm64
+          # Linux arm64 (static build for compatibility with any libc)
           GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
             CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" \
             CGO_LDFLAGS="-lm" \
-            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE}" \
+            go build -ldflags "-X main.Version=${VERSION} -X main.BuildDate=${BUILD_DATE} -linkmode external -extldflags '-static'" \
             -o dist/linux-arm64/github-brain
 
       - name: Build macOS binaries
         if: runner.os == 'macOS'
         env:
-          VERSION: ${{ needs.version.outputs.version }}
-          BUILD_DATE: ${{ needs.version.outputs.build_date }}
+          VERSION: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && 'dry-run' || needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && '2000-01-01' || needs.version.outputs.build_date }}
         run: |
           mkdir -p dist/darwin-amd64 dist/darwin-arm64
 
@@ -219,8 +233,8 @@ jobs:
       - name: Build Windows binaries
         if: runner.os == 'Windows'
         env:
-          VERSION: ${{ needs.version.outputs.version }}
-          BUILD_DATE: ${{ needs.version.outputs.build_date }}
+          VERSION: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && 'dry-run' || needs.version.outputs.version }}
+          BUILD_DATE: ${{ needs.check-pr-label.outputs.is_dry_run == 'true' && '2000-01-01' || needs.version.outputs.build_date }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist/windows-amd64
@@ -262,7 +276,8 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [version, build]
+    needs: [check-pr-label, version, build]
+    if: needs.check-pr-label.outputs.is_dry_run != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -310,7 +325,8 @@ jobs:
 
   publish-npm:
     name: Publish to NPM
-    needs: [version, build, release]
+    needs: [check-pr-label, version, build, release]
+    if: needs.check-pr-label.outputs.is_dry_run != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

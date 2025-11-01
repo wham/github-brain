@@ -1021,6 +1021,8 @@ curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-bra
 
 ### Release Model
 
+Coded in `.github/workflow/release.yml` and `.github/workflow/build.yml`.
+
 - **Semantic Versioning**: Automatically bump version on every merge to `main` based on PR labels
 - **PR Label Requirements** (build fails without one of these):
   - `major` - Breaking changes, incompatible API changes (e.g., 1.0.0 → 2.0.0)
