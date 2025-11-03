@@ -20,6 +20,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/joho/godotenv"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -1593,7 +1596,7 @@ func getDBPath(dbDir, organization string) string {
 
 // checkSchemaVersion checks if the database schema version matches current SCHEMA_GUID
 // Returns true if schema is current, false if database needs recreation
-func checkSchemaVersion(db *sql.DB, progress *Progress) (bool, error) {
+func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
 	// Check if schema_version table exists
 	var tableExists int
 	err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_version'").Scan(&tableExists)
@@ -1644,7 +1647,7 @@ func checkSchemaVersion(db *sql.DB, progress *Progress) (bool, error) {
 }
 
 // createAllTables creates all database tables and indexes
-func createAllTables(db *sql.DB, progress *Progress) error {
+func createAllTables(db *sql.DB, progress ProgressInterface) error {
 	// Create schema_version table and store current GUID
 	_, err := db.Exec(`
 		CREATE TABLE schema_version (
@@ -1859,7 +1862,7 @@ func createAllTables(db *sql.DB, progress *Progress) error {
 	return nil
 }
 
-func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
+func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error) {
 	dbPath := getDBPath(dbDir, organization)
 	
 	// Log the full database file path being opened
@@ -1974,7 +1977,7 @@ func InitDB(dbDir, organization string, progress *Progress) (*DB, error) {
 }
 
 // PopulateSearchTable populates the search FTS table with data from all tables as specified in main.md
-func (db *DB) PopulateSearchTable(currentUsername string, progress *Progress) error {
+func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInterface) error {
 	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 	slog.Info("Truncating and repopulating search FTS table...")
 	progress.Log("Clearing existing search index...")
@@ -2614,7 +2617,7 @@ func (db *DB) GetPullRequestLastUpdated(repository string) (time.Time, error) {
 }
 
 // removeRepositoryAndAssociatedData removes a repository and all its associated data from the database
-func (db *DB) removeRepositoryAndAssociatedData(repositoryName string, progress *Progress) {
+func (db *DB) removeRepositoryAndAssociatedData(repositoryName string, progress ProgressInterface) {
 	progress.Log("Repository %s does not exist, removing repository and all associated data from database", repositoryName)
 	
 	// Remove the repository
@@ -2643,7 +2646,7 @@ func (db *DB) removeRepositoryAndAssociatedData(repositoryName string, progress 
 }
 
 // GetMostRecentRepositoryTimestamp gets the most recent updated_at timestamp from repositories
-func (db *DB) GetMostRecentRepositoryTimestamp(progress *Progress) (time.Time, error) {
+func (db *DB) GetMostRecentRepositoryTimestamp(progress ProgressInterface) (time.Time, error) {
 	// Create the updated_at column if it doesn't exist
 	_, err := db.Exec(`
 		PRAGMA table_info(repositories)
@@ -2911,7 +2914,7 @@ func isRateLimitError(errMsg string) bool {
 
 // handleGraphQLError centralizes GraphQL error handling with retries and rate limit management
 // Returns (success, shouldRetry, waitDuration, error)
-func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc func() error, operation string, page int, requestCount *atomic.Int64, progress *Progress) error {
+func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc func() error, operation string, page int, requestCount *atomic.Int64, progress ProgressInterface) error {
 	const maxRetries = 10 // Increased from 3 to 10 for better rate limit handling
 	const baseRetryDelay = 5 * time.Second // Base delay for exponential backoff (increased)
 	const maxRetryDelay = 30 * time.Minute // Maximum delay between retries (increased)
@@ -3115,7 +3118,7 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 }
 
 // ClearData removes data from database based on config Force flag and Items
-func ClearData(db *DB, config *Config, progress *Progress) error {
+func ClearData(db *DB, config *Config, progress ProgressInterface) error {
 	if !config.Force {
 		return nil
 	}
@@ -3166,7 +3169,7 @@ func ClearData(db *DB, config *Config, progress *Progress) error {
 }
 
 // PullRepositories pulls repositories from GitHub using GraphQL API
-func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress *Progress) error {
+func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress ProgressInterface) error {
 	if config.Organization == "" {
 		return fmt.Errorf("organization is not set")
 	}
@@ -3547,7 +3550,7 @@ type GraphQLDiscussion struct {
 }
 
 // PullDiscussions pulls discussions from GitHub using GraphQL with optimal caching and concurrency
-func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress *Progress) error {
+func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress ProgressInterface) error {
 	allRepositories, err := db.GetRepositories()
 	if err != nil {
 		return fmt.Errorf("failed to get repositories: %w", err)
@@ -3783,7 +3786,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 }
 
 // PullIssues pulls issues from GitHub using GraphQL with optimal caching and concurrency
-func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress *Progress) error {
+func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress ProgressInterface) error {
 	// Get all repositories in the organization
 	allRepositories, err := db.GetRepositories()
 	if err != nil {
@@ -4011,7 +4014,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 }
 
 // PullPullRequests pulls pull requests from GitHub using GraphQL with optimal caching and concurrency
-func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress *Progress) error {
+func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress ProgressInterface) error {
 	progress.Log("Starting PullPullRequests function")
 	
 	// Get all repositories in the organization
@@ -5540,7 +5543,7 @@ func main() {
 		config := LoadConfig(args)
 		
 		// Initialize progress display FIRST - before any other operations  
-		progress := NewProgress("Initializing GitHub offline MCP server...")
+		progress := NewBubbleTeaProgress("Initializing GitHub offline MCP server...")
 		progress.Start()
 		defer progress.Stop()
 		
@@ -5901,4 +5904,589 @@ func main() {
 		fmt.Printf("Use %s -h for help\n", os.Args[0])
 		os.Exit(1)
 	}
+}
+
+// ============================================================================
+// Bubble Tea UI Implementation
+// ============================================================================
+
+// ProgressInterface defines the common interface for progress indicators
+type ProgressInterface interface {
+	Start()
+	Stop()
+	StopWithPreserve()
+	InitItems(config *Config)
+	UpdateItemCount(item string, count int)
+	MarkItemCompleted(item string, count int)
+	MarkItemFailed(item string, message string)
+	SetCurrentItem(item string)
+	Log(format string, args ...interface{})
+	UpdateMessage(message string)
+	HasAnyFailed() bool
+	UpdateAPIStatus(success, warning, errors int)
+	UpdateRateLimit(used, limit int, resetTime time.Time)
+	UpdateRequestRate(requestsPerSecond int)
+}
+
+// BubbleTeaProgress is a wrapper that provides the Progress API using Bubble Tea
+type BubbleTeaProgress struct {
+	program        *tea.Program
+	console        *Console
+	preserveOnExit bool
+}
+
+// NewBubbleTeaProgress creates a new Bubble Tea-based progress indicator
+func NewBubbleTeaProgress(message string) *BubbleTeaProgress {
+	console := NewConsole(200) // Maintain compatibility with existing console
+	
+	return &BubbleTeaProgress{
+		program: nil, // Will be initialized in Start()
+		console: console,
+	}
+}
+
+// Start initializes and starts the Bubble Tea program
+func (p *BubbleTeaProgress) Start() {
+	// Program will be started in InitItems after we know which items are enabled
+}
+
+// InitItems initializes the items to display based on config
+func (p *BubbleTeaProgress) InitItems(config *Config) {
+	enabledItems := make(map[string]bool)
+	for _, item := range config.Items {
+		enabledItems[item] = true
+	}
+	
+	m := newModel(enabledItems)
+	p.program = tea.NewProgram(m)
+	
+	// Start the program in a goroutine
+	go func() {
+		if _, err := p.program.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error running Bubble Tea program: %v\n", err)
+		}
+	}()
+	
+	// Give the program time to initialize
+	time.Sleep(100 * time.Millisecond)
+}
+
+// Stop stops the Bubble Tea program
+func (p *BubbleTeaProgress) Stop() {
+	if p.program != nil {
+		p.program.Quit()
+	}
+	if p.console != nil {
+		p.console.Stop()
+	}
+}
+
+// StopWithPreserve stops the program while preserving display
+func (p *BubbleTeaProgress) StopWithPreserve() {
+	p.Stop()
+}
+
+// UpdateItemCount updates the count for an item
+func (p *BubbleTeaProgress) UpdateItemCount(item string, count int) {
+	if p.program != nil {
+		p.program.Send(itemUpdateMsg{item: item, count: count})
+	}
+}
+
+// MarkItemCompleted marks an item as completed
+func (p *BubbleTeaProgress) MarkItemCompleted(item string, count int) {
+	if p.program != nil {
+		p.program.Send(itemCompleteMsg{item: item, count: count})
+	}
+}
+
+// MarkItemFailed marks an item as failed
+func (p *BubbleTeaProgress) MarkItemFailed(item string, message string) {
+	if p.program != nil {
+		p.program.Send(itemFailedMsg{item: item, message: message})
+	}
+}
+
+// SetCurrentItem sets the currently processing item
+func (p *BubbleTeaProgress) SetCurrentItem(item string) {
+	if p.program != nil {
+		p.program.Send(setCurrentItemMsg(item))
+	}
+}
+
+// Log adds a log message
+func (p *BubbleTeaProgress) Log(format string, args ...interface{}) {
+	message := fmt.Sprintf(format, args...)
+	if p.program != nil {
+		p.program.Send(logMsg(message))
+	}
+	// Also log to console for backward compatibility
+	if p.console != nil {
+		p.console.Log("%s", message)
+	}
+}
+
+// UpdateMessage updates the main message (maps to log)
+func (p *BubbleTeaProgress) UpdateMessage(message string) {
+	p.Log("%s", message)
+}
+
+// HasAnyFailed checks if any item has failed
+func (p *BubbleTeaProgress) HasAnyFailed() bool {
+	// This would need to query the model state, but for simplicity
+	// we'll rely on the caller tracking failures
+	return false
+}
+
+// UpdateAPIStatus updates API call statistics
+func (p *BubbleTeaProgress) UpdateAPIStatus(success, warning, errors int) {
+	if p.program != nil {
+		p.program.Send(apiStatusMsg{success: success, warning: warning, errors: errors})
+	}
+}
+
+// UpdateRateLimit updates rate limit information
+func (p *BubbleTeaProgress) UpdateRateLimit(used, limit int, resetTime time.Time) {
+	if p.program != nil {
+		p.program.Send(rateLimitMsg{used: used, limit: limit, resetTime: resetTime})
+	}
+}
+
+// UpdateRequestRate updates the requests per second rate (not directly shown in Bubble Tea UI)
+func (p *BubbleTeaProgress) UpdateRequestRate(requestsPerSecond int) {
+	// This could be added to the model if desired, but for now we just ignore it
+}
+
+// Message types for Bubble Tea updates
+type (
+	tickMsg          time.Time
+	itemUpdateMsg    struct {
+		item  string
+		count int
+	}
+	itemCompleteMsg struct {
+		item  string
+		count int
+	}
+	itemFailedMsg struct {
+		item    string
+		message string
+	}
+	setCurrentItemMsg string
+	logMsg            string
+	apiStatusMsg      struct {
+		success int
+		warning int
+		errors  int
+	}
+	rateLimitMsg struct {
+		used      int
+		limit     int
+		resetTime time.Time
+	}
+	windowSizeMsg tea.WindowSizeMsg
+)
+
+// itemState represents the state of a pull item
+type itemState struct {
+	name      string
+	enabled   bool
+	active    bool
+	completed bool
+	failed    bool
+	count     int
+}
+
+// model is the Bubble Tea model for the pull command UI
+type model struct {
+	items          map[string]itemState
+	itemOrder      []string
+	spinner        spinner.Model
+	logs           []logEntry
+	apiSuccess     int
+	apiWarning     int
+	apiErrors      int
+	rateLimitUsed  int
+	rateLimitMax   int
+	rateLimitReset time.Time
+	width          int
+	height         int
+	borderColors   []lipgloss.AdaptiveColor
+	colorIndex     int
+}
+
+// logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
+type logEntry struct {
+	time    time.Time
+	message string
+}
+
+// loadingMessages is a pool of fun loading messages
+var loadingMessages = []string{
+	"Wrangling repositories...",
+	"Herding discussions...",
+	"Catching issues...",
+	"Corralling pull requests...",
+	"Summoning data from the cloud...",
+	"Asking GitHub nicely...",
+	"Negotiating with the API...",
+	"Convincing servers to cooperate...",
+}
+
+// newModel creates a new Bubble Tea model
+func newModel(enabledItems map[string]bool) model {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Bright blue
+
+	// Define gradient colors for border animation (purple → blue → cyan)
+	gradientColors := []lipgloss.AdaptiveColor{
+		{Light: "#874BFD", Dark: "#7D56F4"}, // Purple
+		{Light: "#7D56F4", Dark: "#6B4FD8"}, // Purple-blue
+		{Light: "#5B4FE0", Dark: "#5948C8"}, // Blue-purple
+		{Light: "#4F7BD8", Dark: "#4B6FD0"}, // Blue
+		{Light: "#48A8D8", Dark: "#45A0D0"}, // Cyan-blue
+		{Light: "#48D8D0", Dark: "#45D0C8"}, // Cyan
+	}
+
+	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
+	items := make(map[string]itemState)
+	for _, name := range itemOrder {
+		items[name] = itemState{
+			name:      name,
+			enabled:   enabledItems[name],
+			active:    false,
+			completed: false,
+			failed:    false,
+			count:     0,
+		}
+	}
+
+	return model{
+		items:        items,
+		itemOrder:    itemOrder,
+		spinner:      s,
+		logs:         make([]logEntry, 0, 5),
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+	}
+}
+
+// Init initializes the Bubble Tea model
+func (m model) Init() tea.Cmd {
+	return tea.Batch(
+		m.spinner.Tick,
+		tickCmd(),
+	)
+}
+
+// tickCmd returns a command that ticks every second for border animation
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+// Update handles messages and updates the model
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case tickMsg:
+		// Rotate border color
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, tickCmd()
+
+	case itemUpdateMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.count = msg.count
+			state.active = true
+			m.items[msg.item] = state
+		}
+		return m, nil
+
+	case setCurrentItemMsg:
+		// Clear active state from all items
+		for name, state := range m.items {
+			state.active = false
+			m.items[name] = state
+		}
+		// Set active state on current item
+		if state, exists := m.items[string(msg)]; exists {
+			state.active = true
+			m.items[string(msg)] = state
+		}
+		return m, nil
+
+	case itemCompleteMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.completed = true
+			state.active = false
+			state.count = msg.count
+			m.items[msg.item] = state
+		}
+		// Add celebration log for milestones
+		if msg.count >= 10000 {
+			m.addLog(fmt.Sprintf("🚀✨🎉 %s completed (%s synced)! 🎉✨🚀", capitalize(msg.item), formatNumber(msg.count)))
+		} else if msg.count >= 5000 {
+			m.addLog(fmt.Sprintf("🎉 %s completed (%s synced)!", capitalize(msg.item), formatNumber(msg.count)))
+		} else if msg.count >= 1000 {
+			m.addLog(fmt.Sprintf("✨ %s completed (%s synced)", capitalize(msg.item), formatNumber(msg.count)))
+		}
+		return m, nil
+
+	case itemFailedMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.failed = true
+			state.active = false
+			m.items[msg.item] = state
+		}
+		m.addLog(fmt.Sprintf("❌ %s failed: %s", capitalize(msg.item), msg.message))
+		return m, nil
+
+	case logMsg:
+		m.addLog(string(msg))
+		return m, nil
+
+	case apiStatusMsg:
+		m.apiSuccess = msg.success
+		m.apiWarning = msg.warning
+		m.apiErrors = msg.errors
+		return m, nil
+
+	case rateLimitMsg:
+		m.rateLimitUsed = msg.used
+		m.rateLimitMax = msg.limit
+		m.rateLimitReset = msg.resetTime
+		return m, nil
+
+	case spinner.TickMsg:
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+// addLog adds a log entry to the model
+func (m *model) addLog(message string) {
+	entry := logEntry{
+		time:    time.Now(),
+		message: message,
+	}
+	m.logs = append(m.logs, entry)
+	if len(m.logs) > 5 {
+		m.logs = m.logs[1:]
+	}
+}
+
+// View renders the UI
+func (m model) View() string {
+	// Calculate box width
+	boxWidth := max(64, m.width-4)
+
+	// Define colors
+	borderColor := m.borderColors[m.colorIndex]
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))  // Bright blue
+	completeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // Bright green
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))     // Bright red
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(borderColor)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7")) // White
+
+	var b strings.Builder
+	b.Grow(4096)
+
+	// Top border with title
+	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╭─ "))
+	b.WriteString(titleStyle.Render("GitHub 🧠 pull"))
+	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", boxWidth-20) + "╮\n"))
+
+	// Empty line
+	b.WriteString(renderEmptyLine(boxWidth, borderColor))
+
+	// Items section
+	for _, name := range m.itemOrder {
+		state := m.items[name]
+		b.WriteString(renderItem(state, m.spinner.View(), boxWidth, borderColor, dimStyle, activeStyle, completeStyle, errorStyle))
+	}
+
+	// Empty line
+	b.WriteString(renderEmptyLine(boxWidth, borderColor))
+
+	// API Status line
+	b.WriteString(renderAPIStatus(m.apiSuccess, m.apiWarning, m.apiErrors, boxWidth, borderColor, headerStyle, completeStyle, errorStyle))
+
+	// Rate Limit line
+	b.WriteString(renderRateLimit(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, boxWidth, borderColor, headerStyle))
+
+	// Empty line
+	b.WriteString(renderEmptyLine(boxWidth, borderColor))
+
+	// Activity section (header + 5 log lines)
+	b.WriteString(renderActivityHeader(boxWidth, borderColor, headerStyle))
+	for i := 0; i < 5; i++ {
+		if i < len(m.logs) {
+			b.WriteString(renderLogLine(m.logs[i], boxWidth, borderColor, errorStyle))
+		} else {
+			b.WriteString(renderEmptyActivityLine(boxWidth, borderColor))
+		}
+	}
+
+	// Bottom border
+	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╰" + strings.Repeat("─", boxWidth-2) + "╯\n"))
+
+	return b.String()
+}
+
+// Helper rendering functions
+
+func renderEmptyLine(width int, borderColor lipgloss.AdaptiveColor) string {
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│") +
+		strings.Repeat(" ", width-2) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderItem(state itemState, spinnerView string, width int, borderColor lipgloss.AdaptiveColor, dimStyle, activeStyle, completeStyle, errorStyle lipgloss.Style) string {
+	var icon string
+	var style lipgloss.Style
+	var text string
+
+	displayName := capitalize(state.name)
+
+	if !state.enabled {
+		icon = "🔕"
+		style = dimStyle
+		text = displayName
+	} else if state.failed {
+		icon = "❌"
+		style = errorStyle
+		if state.count > 0 {
+			text = fmt.Sprintf("%s: %s (errors)", displayName, formatNumber(state.count))
+		} else {
+			text = displayName
+		}
+	} else if state.completed {
+		icon = "✅"
+		style = completeStyle
+		text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+	} else if state.active {
+		icon = spinnerView
+		style = activeStyle
+		if state.count > 0 {
+			text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+		} else {
+			text = displayName
+		}
+	} else {
+		icon = "⋯"
+		style = lipgloss.NewStyle()
+		text = displayName
+	}
+
+	content := style.Render(icon + " " + text)
+	contentLen := visibleLength(content)
+	padding := width - contentLen - 5 // 5 = "│  " + " │"
+
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
+		content +
+		strings.Repeat(" ", padding) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.AdaptiveColor, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
+	content := headerStyle.Render("📊 API Status    ") +
+		completeStyle.Render("✅ "+formatNumber(success)) + "   " +
+		"⚠️ " + formatNumber(warning) + "   " +
+		errorStyle.Render("❌ "+formatNumber(errors))
+
+	contentLen := visibleLength(content)
+	padding := width - contentLen - 5
+
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
+		content +
+		strings.Repeat(" ", padding) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
+	var rateLimitText string
+	if limit > 0 {
+		resetStr := formatTimeRemaining(resetTime)
+		rateLimitText = fmt.Sprintf("%s / %s used, resets in %s",
+			formatNumber(used), formatNumber(limit), resetStr)
+	} else {
+		rateLimitText = "? / ? used, resets ?"
+	}
+
+	content := headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
+	contentLen := visibleLength(content)
+	padding := width - contentLen - 5
+
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
+		content +
+		strings.Repeat(" ", padding) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderActivityHeader(width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
+	content := headerStyle.Render("💬 Activity")
+	contentLen := visibleLength(content)
+	padding := width - contentLen - 5
+
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
+		content +
+		strings.Repeat(" ", padding) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderLogLine(entry logEntry, width int, borderColor lipgloss.AdaptiveColor, errorStyle lipgloss.Style) string {
+	timestamp := entry.time.Format("15:04:05")
+	message := entry.message
+
+	// Truncate message if too long
+	availableSpace := width - len(timestamp) - 8 // 8 = "│     " + " " + "│"
+	if len(message) > availableSpace {
+		if availableSpace > 3 {
+			message = message[:availableSpace-3] + "..."
+		} else {
+			message = message[:availableSpace]
+		}
+	}
+
+	// Color error messages
+	var styledMessage string
+	if strings.Contains(entry.message, "❌") || strings.Contains(entry.message, "Error:") {
+		styledMessage = errorStyle.Render(message)
+	} else {
+		styledMessage = message
+	}
+
+	content := timestamp + " " + styledMessage
+	contentLen := visibleLength(content)
+	padding := width - contentLen - 7 // 7 = "│     " + "│"
+
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│     ") +
+		content +
+		strings.Repeat(" ", padding) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+}
+
+func renderEmptyActivityLine(width int, borderColor lipgloss.AdaptiveColor) string {
+	return lipgloss.NewStyle().Foreground(borderColor).Render("│     ") +
+		strings.Repeat(" ", width-7) +
+		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
 }
