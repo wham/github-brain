@@ -11,7 +11,7 @@ type ExtensionPreferences = {
   /** GitHub Brain executable - Absolute path to the GitHub Brain executable command or binary */
   "githubBrainCommand": string,
   /** Home directory - Absolute path to the GitHub Brain home directory */
-  "homeDir": string
+  "homeDir"?: string
 }
 
 /** Preferences accessible in all the extension's commands */

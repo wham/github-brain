@@ -14,6 +14,8 @@ TypeScript files.
 
 Minimize the overall number of files and dependencies to the absolute minimum.
 
+Don't try to lint the code.
+
 ## Manifest
 
 See https://developers.raycast.com/information/manifest
@@ -38,8 +40,7 @@ See https://developers.raycast.com/information/manifest#preference-properties
 - `title`: Home directory
 - `description`: Absolute path to the GitHub Brain home directory
 - `type`: textfield
-- `required`: true
-- `default`: ~/.github-brain
+- `required`: false
 
 ## Commands
 
@@ -77,12 +78,7 @@ Type/state to Raycast [icon](https://developers.raycast.com/api-reference/user-i
 ## Launcher
 
 - The extension is launched with `scripts/raycast`
-- The script first builds GitHub Brain with `scripts/run`
-- This creates `build/github-brain` binary
-- The launched determines the absolute path to the `build/github-brain` binary and
-  sets is as the `default` value of the `githubBrainCommand` preference in `package.json`
-- The launcher determines the absolute path to the home directory and sets it as the `default` value of the `homeDir` preference in `package.json`
-- The launcher then starts the Raycast extension with `npm run dev` in the `ray
+- The launcher starts the Raycast extension with `npm run dev`
 
 ## Protocol
 

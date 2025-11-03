@@ -48,23 +48,39 @@ function getIconAndColor(
   }
 }
 
+function expandPath(path: string): string {
+  if (path.startsWith("~/")) {
+    return path.replace("~", process.env.HOME || "~");
+  }
+  return path;
+}
+
 async function callMCPSearch(query: string): Promise<SearchResult[]> {
   if (!query.trim()) return [];
 
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
 
-    // Build the command: <githubBrainCommand> mcp -m <homeDir>
+    // Build the command: <githubBrainCommand> mcp [-m <homeDir>]
     // Organization will be loaded from .env file in the home directory
-    const binaryPath = preferences.githubBrainCommand;
-    const args = ["mcp", "-m", preferences.homeDir];
+    const binaryPath = expandPath(preferences.githubBrainCommand);
+    const args = ["mcp"];
+    if (preferences.homeDir) {
+      const expandedHomeDir = expandPath(preferences.homeDir);
+      args.push("-m", expandedHomeDir);
+      console.log(`Using home directory: ${expandedHomeDir}`);
+    }
+    console.log(`Spawning MCP server: ${binaryPath} ${args.join(" ")}`);
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,
+        PATH:
+          process.env.PATH || "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin",
       },
+      shell: false,
     });
 
     let responseData = "";
@@ -118,7 +134,15 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
 
     mcpProcess.on("error", (error) => {
       console.error("MCP process error:", error);
-      reject(new Error(`Failed to start MCP server: ${error.message}`));
+      if (error.code === "ENOENT") {
+        reject(
+          new Error(
+            `GitHub Brain executable not found: "${binaryPath}". Please check the executable path in preferences.`
+          )
+        );
+      } else {
+        reject(new Error(`Failed to start MCP server: ${error.message}`));
+      }
     });
 
     // Send the search request via JSON-RPC
@@ -161,7 +185,13 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       // Only handle close event if we haven't already processed a response
       if (!hasReceivedResponse) {
         if (code !== 0) {
-          const errorMessage = `MCP server exited with code ${code}: ${errorData}`;
+          let errorMessage = `MCP server exited with code ${code}: ${errorData}`;
+          if (preferences.homeDir) {
+            errorMessage += `\n\nHome directory: ${expandPath(preferences.homeDir)}`;
+          } else {
+            errorMessage += `\n\nNo home directory specified. Using default: ~/.github-brain`;
+          }
+          errorMessage += `\nExecutable: ${binaryPath}`;
           console.error("MCP Error:", errorMessage);
           reject(new Error(errorMessage));
           return;
