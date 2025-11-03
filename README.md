@@ -3,50 +3,56 @@
   <h1>GitHub Brain MCP Server</h1>
 </div>
 
-**GitHub Brain** is an experimental MCP server for summarizing GitHub discussions, issues, and pull requests. It helps answer questions like:
+**GitHub Brain** is an experimental MCP server for summarizing GitHub discussions, issues, and pull requests. Answer questions like:
 
 - _What are the contributions of user X in the last month?_
 - _Summarize this month's discussions._
 
 https://github.com/user-attachments/assets/80910025-9d58-4367-af00-bf4c51e6ce86
 
-GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It uses a local database to store data pulled from GitHub, enabling:
+GitHub Brain complements (but does not replace) the [official GitHub MCP server](https://github.com/github/github-mcp-server). It stores GitHub data in a local database for:
 
 - Fast responses
-- More results than the standard 100-item API limit
-- Markdown output for token efficiency
+- More than the standard 100-item API limit
+- Token-efficient Markdown output
 
 ![](./docs/pull.png)
 
-As a bonus, GitHub Brain also includes a simple web-based UI for ultra-fast search of discussions, issues, and pull requests.
+GitHub Brain also includes a web-based UI for ultra-fast search:
 
 ![](./docs/ui.png)
 
-As a bonus, GitHub Brain also includes a Raycast extension for ultra-fast search of discussions, issues, and pull requests.
+And a Raycast extension:
+
+
 
 ![](./docs/raycast.png)
 
 GitHub Brain is [programmed in Markdown](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/).
 
-## Prerequisites
+## Installation
 
-- [Go](https://go.dev/doc/install) installed
+```sh
+npm i -g github-brain
+```
+
+Or use `npx github-brain` to run without installing globally.
 
 ## Usage
 
 ```sh
-scripts/run <command> [<args>]
+github-brain <command> [<args>]
 ```
 
 **Workflow:**
 
-1. Populate the local database with the `pull` command.
-2. Start the MCP server with the `mcp` command.
+1. Use `pull` to populate the local database
+2. Use `mcp` to start the MCP server
 
-Re-run `pull` anytime to update the database with new GitHub data. You can do this while `mcp` is running, but MCP requests may temporarily return errors during the update.
+Re-run `pull` anytime to update the database with new GitHub data.
 
 Each command has its own arguments. Some can be set via environment variables. The app will also load environment variables from a `.env` file in the GitHub Brain's home directory - `~/.github-brain` by default.
-You can change the home directory with the `-m` argument available for all commands. When executing `scripts/run`, the home directory is set to the checkout directory.
+You can change the home directory with the `-m` argument available for all commands.
 
 <details>
     <summary>Example .env file</summary>
@@ -63,30 +69,28 @@ Populate the local database with GitHub data.
 Example:
 
 ```sh
-scripts/run pull -o my-org
+github-brain pull -o my-org
 ```
 
-The first call for an organization may take a while. Subsequent calls are faster, updating only with new data.
+The first run may take a while. Subsequent runs are faster, fetching only new data.
 
 | Argument | Variable                | Description                                                                                                                                                                   |
 | :------- | :---------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `-t`     | `GITHUB_TOKEN`          | Your GitHub [personal token](https://github.com/settings/personal-access-tokens) to access the API. **Required.**                                                             |
 | `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                                                                      |
-| `-m`     |                         | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`.                                                         |
-| `-i`     |                         | Only pull selected entities. Choose from: `repositories`, `discussions`, `issues`, `pull-requests`. Comma-separated list.                                                     |
-| `-f`     |                         | Remove all data before pulling. If combined with `-i`, only the specified items will be removed.                                                                              |
-| `-e`     | `EXCLUDED_REPOSITORIES` | Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull requests. Useful for large repositories that are not relevant to the analysis. |
+| `-m`     |                         | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`).                                                         |
+| `-i`     |                         | Pull only selected entities: `repositories`, `discussions`, `issues`, `pull-requests` (comma-separated).                                                     |
+| `-f`     |                         | Remove all data before pulling. With `-i`, removes only specified items.                                                                              |
+| `-e`     | `EXCLUDED_REPOSITORIES` | Repositories to exclude (comma-separated). Useful for large repos not relevant to your analysis. |
 
 <details>
     <summary>Personal access token scopes</summary>
 
-    Use the [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens).
+    Use [fine-grained personal access tokens](https://github.com/settings/personal-access-tokens).
 
-    For private organizations, the token must have the following configuration:
+    **Private organizations:** Token needs read access to discussions, issues, metadata, and pull requests. [Generate token](https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read).
 
-    - Repository permissions: Read access to discussions, issues, metadata, and pull requests. Click [here](https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read) to generate.
-
-    For public organizations, an empty token is sufficient, as the data is publicly accessible.
+    **Public organizations:** Any token works (data is publicly accessible).
 
 </details>
 
@@ -97,29 +101,27 @@ Start the MCP server using the local database.
 Example:
 
 ```sh
-scripts/run mcp -o my-org
+github-brain mcp -o my-org
 ```
 
 | Argument | Variable       | Description                                                                                                           |
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                   |
-| `-m`     |                | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`. |
+| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                                   |
+| `-m`     |                | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`). |
 
 ### `ui`
 
-Start the UI server, which provides a web-based interface for interacting with the GitHub data. Alternative to MCP for quick lookups.
-
-Example:
+Start the web UI for quick searches (alternative to MCP).
 
 ```sh
-scripts/run ui -o my-org
+github-brain ui -o my-org
 ```
 
 | Argument | Variable       | Description                                                                                                           |
 | :------- | :------------- | :-------------------------------------------------------------------------------------------------------------------- |
-| `-o`     | `ORGANIZATION` | The GitHub organization to work with. **Required.**                                                                   |
-| `-m`     |                | GitHub Brain home directory. Default: `~/.github-brain` or the repo checkout directory if executed via `scripts/run`. |
-| `-p`     | `UI_PORT`      | Port for the UI server. Default: `8080`.                                                                              |
+| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                                   |
+| `-m`     |                | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`). |
+| `-p`     | `UI_PORT`      | Port. Default: `8080`.                                                                              |
 
 ### Additional Arguments
 
@@ -131,9 +133,7 @@ github-brain --version
 
 Displays the current version (commit hash and build date).
 
-## Installation
-
-`scripts/run` is a convenience script that runs the MCP server. It builds the Go code and runs the `mcp` command with the checkout directory as the working directory. As a result, the SQLite database will be created in the `db` folder of the checkout directory.
+## MCP Configuration
 
 ### Claude
 
@@ -144,13 +144,13 @@ Add to the Claude MCP configuration file:
   "mcpServers": {
     "github-brain": {
       "type": "stdio",
-      "command": "<path-to-the-checkout-directory>/scripts/run",
+      "command": "github-brain",
       "args": ["mcp"]
     }
 }
 ```
 
-Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `mcpServers` already exists.
+Merge with existing `mcpServers` if present.
 
 ### VS Code
 
@@ -161,7 +161,7 @@ Add to the VS Code MCP configuration file:
   "servers": {
     "github-brain": {
       "type": "stdio",
-      "command": "<path-to-the-checkout-directory>/scripts/run",
+      "command": "github-brain",
       "args": ["mcp"],
       "version": "0.0.1"
     }
@@ -169,7 +169,7 @@ Add to the VS Code MCP configuration file:
 }
 ```
 
-Where `<path-to-the-checkout-directory>` is the path to the GitHub Brain repository on your local machine. Merge if `servers` already exists.
+Merge with existing `servers` if present.
 
 ## Raycast Extension
 
@@ -180,3 +180,7 @@ scripts/raycast
 ```
 
 The extension uses the MCP server to search GitHub data.
+
+## Development
+
+`scripts/run` builds and runs `github-brain` with the checkout directory as home (database in `db/`, config in `.env`).
