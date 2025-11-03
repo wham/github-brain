@@ -54,10 +54,13 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
   return new Promise((resolve, reject) => {
     const preferences = getPreferenceValues<Preferences>();
 
-    // Build the command: <githubBrainCommand> mcp -m <homeDir>
+    // Build the command: <githubBrainCommand> mcp [-m <homeDir>]
     // Organization will be loaded from .env file in the home directory
     const binaryPath = preferences.githubBrainCommand;
-    const args = ["mcp", "-m", preferences.homeDir];
+    const args = ["mcp"];
+    if (preferences.homeDir) {
+      args.push("-m", preferences.homeDir);
+    }
 
     // Start the MCP server process
     const mcpProcess = spawn(binaryPath, args, {
