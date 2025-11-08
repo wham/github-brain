@@ -5319,8 +5319,11 @@ func (m *model) addLog(message string) {
 
 // View renders the UI
 func (m model) View() string {
-	// Calculate box width
-	boxWidth := max(64, m.width-4)
+	// Use a fixed box width that doesn't change (minimum 80, or slightly less than terminal width)
+	boxWidth := 80
+	if m.width > 84 {
+		boxWidth = m.width - 4
+	}
 
 	// Define colors
 	borderColor := m.borderColors[m.colorIndex]
@@ -5334,10 +5337,15 @@ func (m model) View() string {
 	var b strings.Builder
 	b.Grow(4096)
 
-	// Top border with title
+	// Top border with title (ensure consistent width calculation)
+	titleText := "GitHub 🧠 pull"
+	titleLen := visibleLength(titleText)
+	titleRendered := titleStyle.Render(titleText)
+	remainingWidth := boxWidth - titleLen - 4 // 4 = "╭─ " + " ╮"
+	
 	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╭─ "))
-	b.WriteString(titleStyle.Render("GitHub 🧠 pull"))
-	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", boxWidth-20) + "╮\n"))
+	b.WriteString(titleRendered)
+	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", remainingWidth) + "╮\n"))
 
 	// Empty line
 	b.WriteString(renderEmptyLine(boxWidth, borderColor))
