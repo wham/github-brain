@@ -5490,10 +5490,7 @@ func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.A
 		errorStyle.Render("❌ "+formatNumber(errors))
 
 	// Use lipgloss to handle width and padding automatically
-	contentStyle := lipgloss.NewStyle().
-		Width(width - 4). // Account for "│  " (3) + "│" (1)
-		Inline(true)
-	
+	contentStyle := lipgloss.NewStyle().Width(width - 4)
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 	
 	return borderStyle.Render("│  ") +
@@ -5511,42 +5508,29 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 		rateLimitText = "? / ? used, resets ?"
 	}
 
-	// Measure plain text before styling
-	headerText := "🚀 Rate Limit    "
-	headerLen := visibleLength(headerText)
-	rateLimitLen := visibleLength(rateLimitText)
-	contentLen := headerLen + rateLimitLen
-	
-	// Render with styles
-	content := headerStyle.Render(headerText) + rateLimitText
-	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
-	
-	// Ensure padding is never negative
-	if padding < 0 {
-		padding = 0
-	}
+	// Build content with styles
+	content := headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
 
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
-		content +
-		strings.Repeat(" ", padding) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().Width(width - 4)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	return borderStyle.Render("│  ") +
+		contentStyle.Render(content) +
+		borderStyle.Render("│\n")
 }
 
 func renderActivityHeader(width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
-	headerText := "💬 Activity"
-	contentLen := visibleLength(headerText) // Measure plain text
-	content := headerStyle.Render(headerText)
-	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
-	
-	// Ensure padding is never negative
-	if padding < 0 {
-		padding = 0
-	}
+	// Build content with styles
+	content := headerStyle.Render("💬 Activity")
 
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
-		content +
-		strings.Repeat(" ", padding) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().Width(width - 4)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	return borderStyle.Render("│  ") +
+		contentStyle.Render(content) +
+		borderStyle.Render("│\n")
 }
 
 func renderLogLine(entry logEntry, width int, borderColor lipgloss.AdaptiveColor, errorStyle lipgloss.Style) string {
@@ -5571,18 +5555,24 @@ func renderLogLine(entry logEntry, width int, borderColor lipgloss.AdaptiveColor
 		styledMessage = message
 	}
 
+	// Build content with styles
 	content := timestamp + " " + styledMessage
-	contentLen := visibleLength(content)
-	padding := width - contentLen - 7 // 7 = "│     " + "│"
 
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│     ") +
-		content +
-		strings.Repeat(" ", padding) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().Width(width - 7) // 7 = "│     " (6) + "│" (1)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	return borderStyle.Render("│     ") +
+		contentStyle.Render(content) +
+		borderStyle.Render("│\n")
 }
 
 func renderEmptyActivityLine(width int, borderColor lipgloss.AdaptiveColor) string {
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│     ") +
-		strings.Repeat(" ", width-7) + // 7 = "│" (1) + "     " (5) + "│" (1)
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().Width(width - 7) // 7 = "│     " (6) + "│" (1)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	return borderStyle.Render("│     ") +
+		contentStyle.Render("") +
+		borderStyle.Render("│\n")
 }
