@@ -484,17 +484,26 @@ func capitalize(s string) string {
 }
 
 // visibleLength calculates the visible length of a string, ignoring ANSI escape codes
+// This handles all CSI (Control Sequence Introducer) escape sequences
 func visibleLength(s string) int {
 	length := 0
-	inEscape := false
+	i := 0
+	runes := []rune(s)
 	
-	for _, r := range s {
-		if r == '\033' { // Start of ANSI escape sequence
-			inEscape = true
-		} else if inEscape && r == 'm' { // End of ANSI escape sequence
-			inEscape = false
-		} else if !inEscape {
+	for i < len(runes) {
+		if runes[i] == '\033' && i+1 < len(runes) && runes[i+1] == '[' {
+			// Skip CSI sequence: ESC [ ... (terminated by a letter)
+			i += 2
+			for i < len(runes) && !((runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= 'a' && runes[i] <= 'z')) {
+				i++
+			}
+			i++ // Skip the terminating letter
+		} else if runes[i] == '\033' {
+			// Skip other escape sequences (ESC followed by one char)
+			i += 2
+		} else {
 			length++
+			i++
 		}
 	}
 	
