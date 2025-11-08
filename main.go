@@ -5465,21 +5465,16 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 		text = displayName
 	}
 
-	// Measure plain text before styling
-	plainContent := icon + " " + text
-	contentLen := visibleLength(plainContent)
-	content := style.Render(plainContent)
-	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
-	
-	// Ensure padding is never negative
-	if padding < 0 {
-		padding = 0
-	}
+	// Build content with styles
+	content := style.Render(icon + " " + text)
 
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
-		content +
-		strings.Repeat(" ", padding) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().Width(width - 4)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+
+	return borderStyle.Render("│  ") +
+		contentStyle.Render(content) +
+		borderStyle.Render("│\n")
 }
 
 func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.AdaptiveColor, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
