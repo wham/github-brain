@@ -5362,17 +5362,21 @@ func (m model) View() string {
 	b.Grow(4096)
 
 	// Top border with title
+	// DEBUG: Force a specific known width for testing
 	// Total width budget: boxWidth
 	// "╭─ " = 3 chars, " " before dashes = 1 char, "╮" = 1 char
 	// So: 3 + titleWidth + 1 + dashCount + 1 = boxWidth
 	// Therefore: dashCount = boxWidth - titleWidth - 5
 	titleText := "GitHub 🧠 pull"
+	titleWidth := visibleLength(titleText) // Measure plain text before styling
 	titleRendered := titleStyle.Render(titleText)
-	titleWidth := visibleLength(titleRendered)
 	dashCount := boxWidth - titleWidth - 5
 	if dashCount < 0 {
 		dashCount = 0
 	}
+	
+	// DEBUG: Verify our calculation
+	_ = titleWidth // Width should be 14 (G=1 i=1 t=1 H=1 u=1 b=1 space=1 brain=2 space=1 p=1 u=1 l=1 l=1)
 	
 	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╭─ "))
 	b.WriteString(titleRendered)
@@ -5461,8 +5465,10 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 		text = displayName
 	}
 
-	content := style.Render(icon + " " + text)
-	contentLen := visibleLength(content)
+	// Measure plain text before styling
+	plainContent := icon + " " + text
+	contentLen := visibleLength(plainContent)
+	content := style.Render(plainContent)
 	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
@@ -5477,12 +5483,25 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 }
 
 func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.AdaptiveColor, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
-	content := headerStyle.Render("📊 API Status    ") +
-		completeStyle.Render("✅ "+formatNumber(success)) + "   " +
-		"⚠️ " + formatNumber(warning) + "   " +
-		errorStyle.Render("❌ "+formatNumber(errors))
+	// Build plain text content first
+	headerText := "📊 API Status    "
+	successText := "✅ " + formatNumber(success)
+	warningText := "⚠️ " + formatNumber(warning)
+	errorText := "❌ " + formatNumber(errors)
+	
+	// Measure plain text
+	headerLen := visibleLength(headerText)
+	successLen := visibleLength(successText)
+	warningLen := visibleLength(warningText)
+	errorLen := visibleLength(errorText)
+	contentLen := headerLen + successLen + 3 + warningLen + 3 + errorLen // 3 spaces between each
+	
+	// Render with styles
+	content := headerStyle.Render(headerText) +
+		completeStyle.Render(successText) + "   " +
+		warningText + "   " +
+		errorStyle.Render(errorText)
 
-	contentLen := visibleLength(content)
 	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
@@ -5506,8 +5525,14 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 		rateLimitText = "? / ? used, resets ?"
 	}
 
-	content := headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
-	contentLen := visibleLength(content)
+	// Measure plain text before styling
+	headerText := "🚀 Rate Limit    "
+	headerLen := visibleLength(headerText)
+	rateLimitLen := visibleLength(rateLimitText)
+	contentLen := headerLen + rateLimitLen
+	
+	// Render with styles
+	content := headerStyle.Render(headerText) + rateLimitText
 	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
@@ -5522,8 +5547,9 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 }
 
 func renderActivityHeader(width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
-	content := headerStyle.Render("💬 Activity")
-	contentLen := visibleLength(content)
+	headerText := "💬 Activity"
+	contentLen := visibleLength(headerText) // Measure plain text
+	content := headerStyle.Render(headerText)
 	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
