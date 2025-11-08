@@ -67,6 +67,56 @@ var (
 
 // Removed ConsoleHandler - not needed with Bubble Tea
 
+// BubbleTeaHandler is a custom slog handler that routes logs to Bubble Tea UI
+type BubbleTeaHandler struct {
+	program *tea.Program
+}
+
+// NewBubbleTeaHandler creates a new slog handler that sends logs to Bubble Tea
+func NewBubbleTeaHandler(program *tea.Program) *BubbleTeaHandler {
+	return &BubbleTeaHandler{program: program}
+}
+
+func (h *BubbleTeaHandler) Enabled(_ context.Context, _ slog.Level) bool {
+	return true
+}
+
+func (h *BubbleTeaHandler) Handle(_ context.Context, r slog.Record) error {
+	// Build message with attributes
+	var b strings.Builder
+	b.WriteString(r.Message)
+	
+	// Add structured attributes as key=value pairs
+	if r.NumAttrs() > 0 {
+		first := true
+		r.Attrs(func(a slog.Attr) bool {
+			if first {
+				b.WriteString(" ")
+				first = false
+			} else {
+				b.WriteString(", ")
+			}
+			b.WriteString(fmt.Sprintf("%s=%v", a.Key, a.Value))
+			return true
+		})
+	}
+	
+	// Send to Bubble Tea
+	if h.program != nil {
+		h.program.Send(logMsg(b.String()))
+	}
+	
+	return nil
+}
+
+func (h *BubbleTeaHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return h // Simplified - we don't need to accumulate attrs
+}
+
+func (h *BubbleTeaHandler) WithGroup(name string) slog.Handler {
+	return h // Simplified - we don't need group support
+}
+
 // RateLimitInfo holds rate limit information from GitHub API headers
 type RateLimitInfo struct {
 	Limit     int       // x-ratelimit-limit (default -1 for unknown)
@@ -4538,7 +4588,10 @@ func main() {
 		// Initialize the items display now that we have config
 		progress.InitItems(config)
 		
-		progress.Log("Configuration loaded successfully")
+		// Set up slog to route to Bubble Tea UI
+		slog.SetDefault(slog.New(NewBubbleTeaHandler(progress.program)))
+		
+		slog.Info("Configuration loaded successfully")
 		
 		// Continue with the original logic
 		
