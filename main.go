@@ -5483,36 +5483,22 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 }
 
 func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.AdaptiveColor, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
-	// Build plain text content first
-	headerText := "📊 API Status    "
-	successText := "✅ " + formatNumber(success)
-	warningText := "⚠️ " + formatNumber(warning)
-	errorText := "❌ " + formatNumber(errors)
-	
-	// Measure plain text
-	headerLen := visibleLength(headerText)
-	successLen := visibleLength(successText)
-	warningLen := visibleLength(warningText)
-	errorLen := visibleLength(errorText)
-	contentLen := headerLen + successLen + 3 + warningLen + 3 + errorLen // 3 spaces between each
-	
-	// Render with styles
-	content := headerStyle.Render(headerText) +
-		completeStyle.Render(successText) + "   " +
-		warningText + "   " +
-		errorStyle.Render(errorText)
+	// Build content with styles
+	content := headerStyle.Render("📊 API Status    ") +
+		completeStyle.Render("✅ "+formatNumber(success)) + "   " +
+		"⚠️ " + formatNumber(warning) + "   " +
+		errorStyle.Render("❌ "+formatNumber(errors))
 
-	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
+	// Use lipgloss to handle width and padding automatically
+	contentStyle := lipgloss.NewStyle().
+		Width(width - 4). // Account for "│  " (3) + "│" (1)
+		Inline(true)
 	
-	// Ensure padding is never negative
-	if padding < 0 {
-		padding = 0
-	}
-
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
-		content +
-		strings.Repeat(" ", padding) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	return borderStyle.Render("│  ") +
+		contentStyle.Render(content) +
+		borderStyle.Render("│\n")
 }
 
 func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
