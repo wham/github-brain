@@ -4939,7 +4939,8 @@ func (p *UIProgress) InitItems(config *Config) {
 	}
 	
 	m := newModel(enabledItems)
-	p.program = tea.NewProgram(m)
+	// Use WithAltScreen to run in alternate screen mode (prevents multiple boxes)
+	p.program = tea.NewProgram(m, tea.WithAltScreen())
 	
 	// Start the program in a goroutine
 	go func() {
