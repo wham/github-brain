@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,7 +28,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
-	"golang.org/x/term"
 )
 
 // Embedded static assets
@@ -65,93 +63,9 @@ var (
 	// Status code counters
 	statusCounters StatusCounters
 	statusMutex    sync.Mutex
-
-	// Global console reference for logging
-	globalLogger *slog.Logger
 )
 
-// ConsoleHandler is a custom slog handler that writes to the Console
-type ConsoleHandler struct {
-	console *Console
-	attrs   []slog.Attr
-	groups  []string
-	mutex   sync.Mutex
-}
-
-// NewConsoleHandler creates a new ConsoleHandler
-func NewConsoleHandler(console *Console) *ConsoleHandler {
-	return &ConsoleHandler{
-		console: console,
-	}
-}
-
-// Enabled returns true if the handler handles records at the given level
-func (h *ConsoleHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return true // Handle all levels
-}
-
-// Handle processes a log record
-func (h *ConsoleHandler) Handle(ctx context.Context, record slog.Record) error {
-	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	if h.console == nil {
-		return nil // No console available
-	}
-
-	// Build the message with attributes
-	message := record.Message
-	record.Attrs(func(a slog.Attr) bool {
-		if a.Key != "" && a.Value.String() != "" {
-			message += fmt.Sprintf(" %s=%s", a.Key, a.Value.String())
-		}
-		return true
-	})
-
-	// Add any handler-level attributes
-	for _, attr := range h.attrs {
-		if attr.Key != "" && attr.Value.String() != "" {
-			message += fmt.Sprintf(" %s=%s", attr.Key, attr.Value.String())
-		}
-	}
-
-	// Log to console (which handles formatting with timestamp)
-	h.console.Log("%s", message)
-	return nil
-}
-
-// WithAttrs returns a new handler with the given attributes added
-func (h *ConsoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newAttrs := make([]slog.Attr, len(h.attrs)+len(attrs))
-	copy(newAttrs, h.attrs)
-	copy(newAttrs[len(h.attrs):], attrs)
-	
-	return &ConsoleHandler{
-		console: h.console,
-		attrs:   newAttrs,
-		groups:  h.groups,
-	}
-}
-
-// WithGroup returns a new handler with the given group name added
-func (h *ConsoleHandler) WithGroup(name string) slog.Handler {
-	newGroups := make([]string, len(h.groups)+1)
-	copy(newGroups, h.groups)
-	newGroups[len(h.groups)] = name
-	
-	return &ConsoleHandler{
-		console: h.console,
-		attrs:   h.attrs,
-		groups:  newGroups,
-	}
-}
-
-// SetupGlobalLogger sets up the global logger with console handler
-func SetupGlobalLogger(console *Console) {
-	handler := NewConsoleHandler(console)
-	globalLogger = slog.New(handler)
-	slog.SetDefault(globalLogger)
-}
+// Removed ConsoleHandler - not needed with Bubble Tea
 
 // RateLimitInfo holds rate limit information from GitHub API headers
 type RateLimitInfo struct {
@@ -449,159 +363,7 @@ func splitItems(items string) []string {
 	return itemNames
 }
 
-// LogEntry represents a timestamped log message
-type LogEntry struct {
-	timestamp time.Time
-	message   string
-}
-
-// Console represents a synchronized console output manager
-type Console struct {
-	mutex       sync.Mutex
-	updateChan  chan struct{}
-	stopChan    chan struct{}
-	throttleMs  int
-	progressRef *Progress // Reference to the Progress instance
-	logEntries  []LogEntry // Last 5 log messages
-	maxLogEntries int      // Maximum number of log entries to keep
-}
-
-// NewConsole creates a new console manager with throttled updates
-func NewConsole(throttleMs int) *Console {
-	if throttleMs <= 0 {
-		throttleMs = 150 // Reduced default throttle for faster refresh rate
-	}
-
-	console := &Console{
-		updateChan: make(chan struct{}, 3), // Reduced buffer size to prevent excessive queuing
-		stopChan:   make(chan struct{}),
-		throttleMs: throttleMs,
-		maxLogEntries: 5, // Keep last 5 log messages
-	}
-
-	return console
-}
-
-// SetProgressRef sets the reference to the Progress instance
-func (c *Console) SetProgressRef(p *Progress) {
-	c.progressRef = p
-}
-
-// Start begins the console update loop
-func (c *Console) Start() {
-	go func() {
-		throttle := time.NewTicker(time.Duration(c.throttleMs) * time.Millisecond)
-		defer throttle.Stop()
-
-		var pendingUpdate bool
-		var lastRender time.Time
-
-		for {
-			select {
-			case <-c.stopChan:
-				return
-			case <-c.updateChan:
-				// Only mark as pending if enough time has passed since last render
-				if time.Since(lastRender) > time.Duration(c.throttleMs/2)*time.Millisecond {
-					pendingUpdate = true
-				}
-			case <-throttle.C:
-				if pendingUpdate && c.progressRef != nil {
-					pendingUpdate = false
-					lastRender = time.Now()
-					// Actual rendering happens here
-					c.progressRef.renderStatus()
-				}
-			}
-		}
-	}()
-}
-
-// RequestUpdate signals that the console should be updated
-func (c *Console) RequestUpdate() {
-	select {
-	case c.updateChan <- struct{}{}:
-		// Update requested
-	default:
-		// Channel buffer is full, update will happen soon anyway
-	}
-}
-
-// Stop stops the console manager
-func (c *Console) Stop() {
-	close(c.stopChan)
-}
-
-// Log adds a log message with timestamp to the console with batching
-func (c *Console) Log(format string, args ...interface{}) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	
-	message := fmt.Sprintf(format, args...)
-	entry := LogEntry{
-		timestamp: time.Now(),
-		message:   message,
-	}
-	
-	// Add new entry
-	c.logEntries = append(c.logEntries, entry)
-	
-	// Keep only the last maxLogEntries
-	if len(c.logEntries) > c.maxLogEntries {
-		c.logEntries = c.logEntries[1:]
-	}
-	
-	// Only request console update for important messages or errors to reduce spam
-	isImportant := strings.Contains(message, "Error:") || 
-		         strings.Contains(message, "Failed") || 
-		         strings.Contains(message, "rate limit") ||
-		         strings.Contains(message, "429")
-	
-	if isImportant {
-		c.RequestUpdate()
-	}
-	// For non-important messages, let the regular ticker handle updates
-}
-
-// GetLogEntries returns a copy of the current log entries
-func (c *Console) GetLogEntries() []LogEntry {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	
-	// Ensure we never return more than maxLogEntries, even if the slice temporarily exceeds it
-	maxEntries := c.maxLogEntries
-	if len(c.logEntries) > maxEntries {
-		// Trim to maxEntries and update the slice
-		c.logEntries = c.logEntries[len(c.logEntries)-maxEntries:]
-	}
-	
-	// Return a copy to avoid race conditions
-	entries := make([]LogEntry, len(c.logEntries))
-	copy(entries, c.logEntries)
-	return entries
-}
-
-// ClearScreen clears the console screen efficiently
-func (c *Console) ClearScreen() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	// Use minimal escape sequence - just return to beginning of line
-	fmt.Print("\r")
-}
-
-// getTerminalSize detects terminal size for bounds checking
-func getTerminalSize() (width, height int) {
-	// Try to get terminal size
-	if term.IsTerminal(int(os.Stdout.Fd())) {
-		width, height, err := term.GetSize(int(os.Stdout.Fd()))
-		if err == nil && width > 0 && height > 0 {
-			return width, height
-		}
-	}
-	
-	// Default fallback values if detection fails
-	return 80, 24
-}
+// Removed Console struct - Bubble Tea handles all rendering
 
 // formatNumber formats numbers with comma separators for better readability
 func formatNumber(n int) string {
@@ -657,228 +419,6 @@ func max(a, b int) int {
 	return b
 }
 
-// Progress represents a progress indicator
-type Progress struct {
-	message           string
-	spinChars         []string              // Modern emoji spinners
-	current           int
-	stopChan          chan struct{}
-	ticker            *time.Ticker
-	requestRatePerSec int // Requests per second
-	rateUpdateChan    chan int
-	minInterval       time.Duration         // Minimum interval for the spinner (fastest speed)
-	maxInterval       time.Duration         // Maximum interval for the spinner (slowest speed)
-	items             map[string]itemStatus // Status of each item (repositories, discussions, issues, pull-requests)
-	currentItem       string                // Currently processing item
-	console           *Console              // Console manager for synchronized output
-	mutex             sync.Mutex            // Mutex to protect updates to Progress fields
-	rendering         bool                  // Flag to prevent overlapping renders
-	lastRenderTime    time.Time             // For debounced updates
-	terminalWidth     int                   // Terminal width for bounds checking
-	terminalHeight    int                   // Terminal height for bounds checking
-	savedCursorPos    bool                  // Whether cursor position has been saved
-	preserveOnExit    bool                  // Whether to preserve display on signal exit
-	signalChan        chan os.Signal        // Channel for signal handling
-	signalDone        chan struct{}         // Channel to signal the signal handler to exit
-	boxWidth          int                   // Calculated box width for current terminal
-	startTime         time.Time             // Track when the process started
-}
-
-// itemStatus represents the status of an item being pulled
-type itemStatus struct {
-	enabled      bool   // Whether the item is enabled for pulling
-	completed    bool   // Whether the item has been completed
-	failed       bool   // Whether the item has failed
-	errorMessage string // Error message if failed
-	count        int    // Count of items processed
-}
-
-// NewProgress creates a new progress indicator
-func NewProgress(message string) *Progress {
-	console := NewConsole(200) // Set to 200ms minimum interval for debounced updates
-
-	// Detect terminal size
-	width, height := getTerminalSize()
-
-	progress := &Progress{
-		message:           message,
-		spinChars:         []string{"🔄", "🔃", "⚡", "🔁"}, // Modern emoji spinners
-		stopChan:          make(chan struct{}),
-		ticker:            time.NewTicker(750 * time.Millisecond), // Faster refresh rate for better responsiveness
-		requestRatePerSec: 0,
-		rateUpdateChan:    make(chan int, 5),           // Reduced buffer size
-		minInterval:       200 * time.Millisecond,      // Slower minimum interval
-		maxInterval:       750 * time.Millisecond,      // Faster maximum interval for better responsiveness
-		items:             make(map[string]itemStatus),
-		currentItem:       "",
-		console:           console,
-		lastRenderTime:    time.Time{},                 // Initialize to zero time
-		terminalWidth:     width,
-		terminalHeight:    height,
-		savedCursorPos:    false,
-		preserveOnExit:    true,                        // Default to preserving display on exit
-		signalChan:        make(chan os.Signal, 1),     // Channel for signal handling
-		signalDone:        make(chan struct{}),         // Channel to signal the signal handler to exit
-		boxWidth:          max(64, width-8),            // Minimum 64 chars, scale with terminal, more margin for safety
-		startTime:         time.Now(),                  // Track start time
-	}
-
-	// Set the reference to the Progress in the Console
-	console.SetProgressRef(progress)
-	console.Start()
-
-	// Set up signal handling for graceful exit with preserved display and window resize
-	progress.setupSignalHandling()
-
-	// Save current cursor position and hide cursor, then reserve space for display
-	fmt.Print("\033[s\033[?25l") // Save cursor position and hide cursor
-	
-	// Reserve 17 lines for our modern boxed display (with 5 log lines)
-	for i := 0; i < 17; i++ {
-		fmt.Println()
-	}
-	
-	// Move back to the start of our reserved area
-	fmt.Print("\033[17A")
-	progress.savedCursorPos = true
-
-	return progress
-}
-
-// setupSignalHandling sets up OS signal handling for graceful shutdown
-func (p *Progress) setupSignalHandling() {
-	signal.Notify(p.signalChan, os.Interrupt)
-	go p.handleSignals()
-}
-
-// handleSignals handles OS signals for graceful shutdown
-func (p *Progress) handleSignals() {
-	for {
-		select {
-		case <-p.signalChan:
-			// Preserve display on signal exit
-			p.preserveOnExit = true
-			p.StopWithPreserve()
-			os.Exit(0)
-		case <-p.signalDone:
-			return
-		}
-	}
-}
-
-// InitItems initializes the items to be displayed
-func (p *Progress) InitItems(config *Config) {
-	p.mutex.Lock()
-
-	// Check if specific items are requested
-	enabledItems := make(map[string]bool)
-
-	// If no specific items provided, enable all
-	if len(config.Items) == 0 {
-		enabledItems["repositories"] = true
-		enabledItems["discussions"] = true
-		enabledItems["issues"] = true
-		enabledItems["pull-requests"] = true
-	} else {
-		// Otherwise, only enable the requested items
-		for _, item := range config.Items {
-			enabledItems[item] = true
-		}
-	}
-
-	// Initialize item statuses
-	p.items["repositories"] = itemStatus{enabled: enabledItems["repositories"], completed: false, failed: false, errorMessage: "", count: 0}
-	p.items["discussions"] = itemStatus{enabled: enabledItems["discussions"], completed: false, failed: false, errorMessage: "", count: 0}
-	p.items["issues"] = itemStatus{enabled: enabledItems["issues"], completed: false, failed: false, errorMessage: "", count: 0}
-	p.items["pull-requests"] = itemStatus{enabled: enabledItems["pull-requests"], completed: false, failed: false, errorMessage: "", count: 0}
-
-	p.mutex.Unlock()
-
-	// Display initial status immediately to establish stable layout
-	p.renderStatus()
-	
-	// Then request throttled updates for future changes
-	p.console.RequestUpdate()
-}
-
-// SetCurrentItem sets the currently processing item
-func (p *Progress) SetCurrentItem(item string) {
-	p.mutex.Lock()
-	p.currentItem = item
-	p.mutex.Unlock()
-
-	p.console.RequestUpdate()
-}
-
-// MarkItemCompleted marks an item as completed with final count
-func (p *Progress) MarkItemCompleted(item string, count int) {
-	p.mutex.Lock()
-	if status, exists := p.items[item]; exists {
-		status.completed = true
-		status.failed = false
-		status.errorMessage = ""
-		status.count = count
-		p.items[item] = status
-	}
-	// Only clear currentItem if this item was the current one
-	if p.currentItem == item {
-		p.currentItem = ""
-	}
-	p.mutex.Unlock()
-
-	p.console.RequestUpdate()
-}
-
-// UpdateItemCount updates the count for the current item with reduced update frequency
-func (p *Progress) UpdateItemCount(item string, count int) {
-	p.mutex.Lock()
-	if status, exists := p.items[item]; exists {
-		// Only update if count has changed significantly to reduce console spam
-		if count != status.count && (count%10 == 0 || count < 10 || count-status.count > 5) {
-			status.count = count
-			p.items[item] = status
-			p.mutex.Unlock()
-			// Use throttled console update instead of immediate render to prevent duplicated output
-			p.console.RequestUpdate()
-		} else {
-			// Just update the count without triggering render
-			status.count = count
-			p.items[item] = status
-			p.mutex.Unlock()
-		}
-	} else {
-		p.mutex.Unlock()
-	}
-}
-
-// MarkItemFailed marks an item as failed with an error message
-func (p *Progress) MarkItemFailed(item string, errorMessage string) {
-	p.mutex.Lock()
-	if status, exists := p.items[item]; exists {
-		status.completed = false
-		status.failed = true
-		status.errorMessage = errorMessage
-		p.items[item] = status
-	}
-	p.currentItem = ""
-	p.mutex.Unlock()
-
-	p.console.RequestUpdate()
-}
-
-// HasAnyFailed returns true if any item has failed
-func (p *Progress) HasAnyFailed() bool {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	
-	for _, status := range p.items {
-		if status.failed {
-			return true
-		}
-	}
-	return false
-}
-
 // capitalize first letter of a string
 func capitalize(s string) string {
 	if s == "" {
@@ -891,126 +431,6 @@ func capitalize(s string) string {
 	default:
 		return strings.ToUpper(s[:1]) + s[1:]
 	}
-}
-
-// renderStatus renders the modern boxed console interface
-func (p *Progress) renderStatus() {
-	// Implement debounced updates with minimum 200ms interval
-	now := time.Now()
-	if !p.lastRenderTime.IsZero() && now.Sub(p.lastRenderTime) < 200*time.Millisecond {
-		return // Skip update, too soon since last render
-	}
-
-	// Ensure thread-safe access to Progress fields and prevent overlapping renders
-	p.mutex.Lock()
-	if p.rendering {
-		p.mutex.Unlock()
-		return // Skip if already rendering
-	}
-	p.rendering = true
-	defer func() {
-		p.rendering = false
-		p.lastRenderTime = now
-		p.mutex.Unlock()
-	}()
-
-	// Initialize box width if not set
-	if p.boxWidth == 0 {
-		width, height := getTerminalSize()
-		p.terminalWidth = width
-		p.terminalHeight = height
-		p.boxWidth = max(64, width-8) // Minimum 64 chars, scale with terminal, more margin for safety
-	}
-	
-	// Ensure we have enough terminal height for our display
-	if p.terminalHeight < 17 {
-		return // Terminal too small, skip rendering
-	}
-
-	// Don't move cursor - we should already be positioned at the start of our area
-	
-	// Build complete output in memory for atomic rendering
-	var output strings.Builder
-	output.Grow(4096) // Pre-allocate larger buffer for box drawing
-
-	// Modern color scheme
-	const (
-		boxColor      = "\033[96m"  // Bright cyan for borders
-		headerColor   = "\033[1;97m" // Bold white for headers  
-		greenColor    = "\033[32m"   // Green for completed
-		blueColor     = "\033[34m"   // Blue for active
-		redColor      = "\033[31m"   // Red for errors
-		grayColor     = "\033[90m"   // Gray for skipped
-		resetColor    = "\033[0m"    // Reset colors
-	)
-
-	// Always render the complete 17-line box structure  
-	// Line 1: Top border
-	p.renderBoxTop(&output, boxColor, resetColor)
-	// Line 2: Empty line
-	p.renderEmptyLine(&output, boxColor, resetColor)
-	// Lines 3-7: Items section (5 lines)
-	p.renderItemsSection(&output, boxColor, resetColor, greenColor, blueColor, redColor, grayColor)
-	// Line 8: Empty line
-	p.renderEmptyLine(&output, boxColor, resetColor)
-	// Line 9: API Status
-	p.renderAPIStatusSection(&output, boxColor, headerColor, resetColor, greenColor, redColor)
-	// Line 10: Rate Limit
-	p.renderRateLimitSection(&output, boxColor, headerColor, resetColor)
-	// Line 11: Empty line
-	p.renderEmptyLine(&output, boxColor, resetColor)
-	// Lines 12-17: Activity section (1 header + 5 log lines = 6 lines)
-	p.renderActivitySection(&output, boxColor, headerColor, resetColor, redColor)
-	// Line 17: Bottom border
-	p.renderBoxBottom(&output, boxColor, resetColor)
-	
-	// Atomic rendering: write complete output in single operation
-	fmt.Print(output.String())
-	
-	// Move cursor back to start of display area for next update
-	fmt.Print("\033[17A")
-}
-
-// renderBoxTop renders the top border with title
-func (p *Progress) renderBoxTop(output *strings.Builder, boxColor, resetColor string) {
-	output.WriteString(boxColor)
-	output.WriteString("┌─ GitHub 🧠 pull ")
-	
-	// Fill remaining space with dashes
-	titleLen := 17 // "GitHub 🧠 pull " length (emoji counts as 1 but displays as 2)
-	remainingDashes := p.boxWidth - titleLen - 2 // -2 for ┌ and ┐
-	for i := 0; i < remainingDashes; i++ {
-		output.WriteString("─")
-	}
-	output.WriteString("┐")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
-}
-
-// renderBoxBottom renders the bottom border
-func (p *Progress) renderBoxBottom(output *strings.Builder, boxColor, resetColor string) {
-	output.WriteString(boxColor)
-	output.WriteString("└")
-	for i := 0; i < p.boxWidth-2; i++ {
-		output.WriteString("─")
-	}
-	output.WriteString("┘")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
-}
-
-// renderEmptyLine renders an empty line with borders
-func (p *Progress) renderEmptyLine(output *strings.Builder, boxColor, resetColor string) {
-	output.WriteString(boxColor)
-	output.WriteString("│")
-	output.WriteString(resetColor)
-	for i := 0; i < p.boxWidth-2; i++ {
-		output.WriteString(" ")
-	}
-	output.WriteString(boxColor)
-	output.WriteString("│")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
 }
 
 // visibleLength calculates the visible length of a string, ignoring ANSI escape codes
@@ -1031,440 +451,8 @@ func visibleLength(s string) int {
 	return length
 }
 
-// renderItemsSection renders the items status section
-func (p *Progress) renderItemsSection(output *strings.Builder, boxColor, resetColor, greenColor, blueColor, redColor, grayColor string) {
-	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
-	
-	for _, item := range itemOrder {
-		// Build the line content first
-		var lineContent strings.Builder
-		
-		status, exists := p.items[item]
-		
-		if !exists || !status.enabled {
-			// Skipped items
-			lineContent.WriteString(grayColor)
-			lineContent.WriteString("🔕 ")
-			lineContent.WriteString(capitalize(item))
-			lineContent.WriteString(resetColor)
-		} else if status.failed {
-			// Failed items
-			lineContent.WriteString(redColor)
-			lineContent.WriteString("❌ ")
-			lineContent.WriteString(capitalize(item))
-			if status.count > 0 {
-				lineContent.WriteString(": ")
-				lineContent.WriteString(formatNumber(status.count))
-				// Add error indicator if there are errors
-				lineContent.WriteString(" (errors)")
-			}
-			lineContent.WriteString(resetColor)
-		} else if status.completed {
-			// Completed items
-			lineContent.WriteString(greenColor)
-			lineContent.WriteString("✅ ")
-			lineContent.WriteString(capitalize(item))
-			lineContent.WriteString(": ")
-			lineContent.WriteString(formatNumber(status.count))
-			lineContent.WriteString(resetColor)
-		} else if p.currentItem == item {
-			// Active item with animated spinner
-			lineContent.WriteString(blueColor)
-			spinner := p.spinChars[p.current%len(p.spinChars)]
-			lineContent.WriteString(spinner)
-			lineContent.WriteString(" ")
-			lineContent.WriteString(capitalize(item))
-			if status.count > 0 {
-				lineContent.WriteString(": ")
-				lineContent.WriteString(formatNumber(status.count))
-			}
-			lineContent.WriteString(resetColor)
-		} else {
-			// Pending items
-			lineContent.WriteString("⚪ ")
-			lineContent.WriteString(capitalize(item))
-		}
-		
-		// Calculate padding based on actual visible length
-		lineContentStr := lineContent.String()
-		contentLength := visibleLength(lineContentStr)
-		// Account for: "│  " (3) + content + " │" (2)
-		usedLength := 3 + contentLength + 2
-		padding := p.boxWidth - usedLength
-		if padding < 0 {
-			padding = 0
-		}
-		
-		// Write the complete line
-		output.WriteString(boxColor)
-		output.WriteString("│  ")
-		output.WriteString(resetColor)
-		output.WriteString(lineContentStr)
-		
-		for i := 0; i < padding; i++ {
-			output.WriteString(" ")
-		}
-		
-		output.WriteString(boxColor)
-		output.WriteString("│")
-		output.WriteString(resetColor)
-		output.WriteString("\033[K\n")
-	}
-}
-
-// renderAPIStatusSection renders the API status section
-func (p *Progress) renderAPIStatusSection(output *strings.Builder, boxColor, headerColor, resetColor, greenColor, redColor string) {
-	// Build the line content first (same as other sections)
-	var lineContent strings.Builder
-	
-	lineContent.WriteString(headerColor)
-	lineContent.WriteString("📊 API Status    ")
-	lineContent.WriteString(resetColor)
-	
-	statusCounters := getStatusCounters()
-	
-	// Success status
-	lineContent.WriteString(greenColor)
-	lineContent.WriteString("✅ ")
-	lineContent.WriteString(formatNumber(statusCounters.Success2XX))
-	lineContent.WriteString(resetColor)
-	lineContent.WriteString("   ")
-	
-	// Warning status  
-	lineContent.WriteString("⚠️ ")
-	lineContent.WriteString(formatNumber(statusCounters.Error4XX))
-	lineContent.WriteString("   ")
-	
-	// Error status
-	lineContent.WriteString(redColor)
-	lineContent.WriteString("❌ ")
-	lineContent.WriteString(formatNumber(statusCounters.Error5XX))
-	lineContent.WriteString(resetColor)
-	
-	// Calculate padding based on actual visible length (same as other sections)
-	lineContentStr := lineContent.String()
-	contentLength := visibleLength(lineContentStr)
-	// Account for: "│  " (3) + content + " │" (2)
-	usedLength := 3 + contentLength + 2
-	padding := p.boxWidth - usedLength - 1 // Subtract 1 to fix alignment
-	if padding < 0 {
-		padding = 0
-	}
-	
-	// Write the complete line
-	output.WriteString(boxColor)
-	output.WriteString("│  ")
-	output.WriteString(resetColor)
-	output.WriteString(lineContentStr)
-	
-	for i := 0; i < padding; i++ {
-		output.WriteString(" ")
-	}
-	
-	output.WriteString(boxColor)
-	output.WriteString("│")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
-}
-
-// renderRateLimitSection renders the rate limit section
-func (p *Progress) renderRateLimitSection(output *strings.Builder, boxColor, headerColor, resetColor string) {
-	// Build the line content first
-	var lineContent strings.Builder
-	
-	lineContent.WriteString(headerColor)
-	lineContent.WriteString("🚀 Rate Limit    ")
-	lineContent.WriteString(resetColor)
-	
-	rateLimitInfo := getRateLimitInfo()
-	
-	var rateLimitText string
-	if rateLimitInfo.Used >= 0 && rateLimitInfo.Limit > 0 {
-		rateLimitText = fmt.Sprintf("%s/%s used, resets in %s",
-			formatNumber(rateLimitInfo.Used),
-			formatNumber(rateLimitInfo.Limit),
-			formatTimeRemaining(rateLimitInfo.Reset))
-	} else {
-		rateLimitText = "? / ? used, resets ?"
-	}
-	
-	lineContent.WriteString(rateLimitText)
-	
-	// Calculate padding based on actual visible length
-	lineContentStr := lineContent.String()
-	contentLength := visibleLength(lineContentStr)
-	// Account for: "│  " (3) + content + " │" (2)
-	usedLength := 3 + contentLength + 2
-	padding := p.boxWidth - usedLength
-	if padding < 0 {
-		padding = 0
-	}
-	
-	// Write the complete line
-	output.WriteString(boxColor)
-	output.WriteString("│  ")
-	output.WriteString(resetColor)
-	output.WriteString(lineContentStr)
-	
-	for i := 0; i < padding; i++ {
-		output.WriteString(" ")
-	}
-	
-	output.WriteString(boxColor)
-	output.WriteString("│")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
-}
-
-// renderActivitySection renders the activity log section (6 lines total: 1 header + 5 logs)
-func (p *Progress) renderActivitySection(output *strings.Builder, boxColor, headerColor, resetColor, redColor string) {
-	// Line 1: Activity header
-	var headerContent strings.Builder
-	headerContent.WriteString(headerColor)
-	headerContent.WriteString("💬 Activity")
-	headerContent.WriteString(resetColor)
-	
-	// Calculate padding based on actual visible length
-	headerContentStr := headerContent.String()
-	headerLength := visibleLength(headerContentStr)
-	// Account for: "│  " (3) + content + " │" (2)
-	usedLength := 3 + headerLength + 2
-	padding := p.boxWidth - usedLength
-	if padding < 0 {
-		padding = 0
-	}
-	
-	// Write the complete header line
-	output.WriteString(boxColor)
-	output.WriteString("│  ")
-	output.WriteString(resetColor)
-	output.WriteString(headerContentStr)
-	
-	for i := 0; i < padding; i++ {
-		output.WriteString(" ")
-	}
-	
-	output.WriteString(boxColor)
-	output.WriteString("│")
-	output.WriteString(resetColor)
-	output.WriteString("\033[K\n")
-	
-	// Lines 2-6: Log entries (exactly 5 lines)
-	logEntries := p.console.GetLogEntries()
-	const maxLogLines = 5
-	
-	for i := 0; i < maxLogLines; i++ {
-		// Build the log line content first
-		var logContent strings.Builder
-		
-		if i < len(logEntries) {
-			entry := logEntries[i]
-			
-			// Format timestamp as HH:MM:SS
-			timestamp := entry.timestamp.Format("15:04:05")
-			logContent.WriteString(timestamp)
-			logContent.WriteString(" ")
-			
-			// Calculate available space for message (account for "│     " + timestamp + " " + " │")
-			usedSpace := 5 + len(timestamp) + 1 + 2 // prefix + timestamp + space + border
-			availableSpace := p.boxWidth - usedSpace
-			
-			// Truncate message to fit
-			message := entry.message
-			if len(message) > availableSpace {
-				if availableSpace > 3 {
-					message = message[:availableSpace-3] + "..."
-				} else {
-					message = message[:availableSpace]
-				}
-			}
-			
-			// Color error messages red
-			if strings.Contains(entry.message, "Error:") || strings.Contains(entry.message, "❌") {
-				logContent.WriteString(redColor)
-				logContent.WriteString(message)
-				logContent.WriteString(resetColor)
-			} else {
-				logContent.WriteString(message)
-			}
-		}
-		
-		// Calculate padding based on actual visible length
-		logContentStr := logContent.String()
-		contentLength := visibleLength(logContentStr)
-		// Account for: "│     " (5) + content + " │" (2)
-		usedLength := 5 + contentLength + 2
-		padding := p.boxWidth - usedLength
-		if padding < 0 {
-			padding = 0
-		}
-		
-		// Write the complete log line
-		output.WriteString(boxColor)
-		output.WriteString("│     ")
-		output.WriteString(resetColor)
-		output.WriteString(logContentStr)
-		
-		for j := 0; j < padding; j++ {
-			output.WriteString(" ")
-		}
-		
-		output.WriteString(boxColor)
-		output.WriteString("│")
-		output.WriteString(resetColor)
-		output.WriteString("\033[K\n")
-	}
-}
-
-// Start starts the progress indicator
-func (p *Progress) Start() {
-	go func() {
-		for {
-			select {
-			case <-p.stopChan:
-				return
-			case rate := <-p.rateUpdateChan:
-				p.mutex.Lock()
-				p.requestRatePerSec = rate
-				// Adjust ticker speed based on rate with more conservative intervals:
-				// 0 req/s -> maxInterval (very slow)
-				// 20+ req/s -> minInterval (moderate speed)
-				var interval time.Duration
-				if rate >= 20 {
-					interval = p.minInterval
-				} else if rate <= 0 {
-					interval = p.maxInterval
-				} else {
-					// Linear mapping between min and max intervals
-					intervalRange := float64(p.maxInterval - p.minInterval)
-					ratio := float64(20-rate) / 20.0 // 0 for rate=20, 1 for rate=0
-					interval = p.minInterval + time.Duration(ratio*intervalRange)
-				}
-
-				// Update ticker with new interval
-				p.ticker.Stop()
-				p.ticker = time.NewTicker(interval)
-				p.mutex.Unlock()
-
-				// Update display with new rate - but throttled
-				p.console.RequestUpdate()
-			case <-p.ticker.C:
-				p.mutex.Lock()
-				p.current = (p.current + 1) % len(p.spinChars)
-				p.mutex.Unlock()
-
-				// Request a render to update the spinner - but only if there's an active item
-				if p.currentItem != "" {
-					p.console.RequestUpdate()
-				}
-			}
-		}
-	}()
-}
-
-// UpdateRequestRate updates the request rate for dynamic spinner speed
-func (p *Progress) UpdateRequestRate(requestsPerSecond int) {
-	select {
-	case p.rateUpdateChan <- requestsPerSecond:
-		// Rate update sent
-	default:
-		// Channel buffer is full, discard this update
-	}
-}
-
-// StopWithPreserve stops the progress indicator and preserves the console display
-func (p *Progress) StopWithPreserve() {
-	// Stop signal handling to clean up the goroutine
-	signal.Stop(p.signalChan)
-	close(p.signalDone)
-	
-	// Stop the ticker and console update loop first
-	if p.ticker != nil {
-		p.ticker.Stop()
-	}
-	
-	// Signal stop to the goroutine
-	select {
-	case p.stopChan <- struct{}{}:
-	default:
-		// Channel might be closed already
-	}
-	
-	// Stop the console
-	p.console.Stop()
-
-	// Show final status one more time
-	p.renderStatus()
-	
-	// Leave the display visible and position cursor at the end
-	if p.savedCursorPos {
-		fmt.Print("\033[17B") // Move down to end of display area
-	}
-	
-	// Show cursor again but keep display intact
-	fmt.Print("\033[?25h") // Show cursor
-	fmt.Println()          // Add a newline after the final status
-}
-
-// Stop stops the progress indicator
-func (p *Progress) Stop() {
-	// Check if we should preserve display on exit
-	if p.preserveOnExit {
-		p.StopWithPreserve()
-		return
-	}
-	
-	// Stop signal handling to clean up the goroutine
-	signal.Stop(p.signalChan)
-	close(p.signalDone)
-	
-	// Stop the ticker and console update loop first
-	if p.ticker != nil {
-		p.ticker.Stop()
-	}
-	
-	// Signal stop to the goroutine
-	select {
-	case p.stopChan <- struct{}{}:
-	default:
-		// Channel might be closed already
-	}
-	
-	// Stop the console
-	p.console.Stop()
-
-	// Show final status one more time
-	p.renderStatus()
-	
-	// Move cursor to the end of our display area and restore original position
-	if p.savedCursorPos {
-		fmt.Print("\033[17B") // Move down to end of display area
-		fmt.Print("\033[u")   // Restore to original cursor position (before our display)
-		fmt.Print("\033[17B") // Move down past our display area
-	}
-	
-	// Show cursor again and ensure proper terminal state
-	fmt.Print("\033[?25h") // Show cursor
-	fmt.Println()          // Add a newline after the final status
-	
-	// Add a small delay to let user see the final status
-	time.Sleep(200 * time.Millisecond)
-}
-
-// Log adds a log message through the console
-func (p *Progress) Log(format string, args ...interface{}) {
-	p.console.Log(format, args...)
-}
-
-// UpdateMessage updates the progress message
-func (p *Progress) UpdateMessage(message string) {
-	p.mutex.Lock()
-	p.message = message
-	p.mutex.Unlock()
-
-	// Request a throttled update rather than immediately updating
-	p.console.RequestUpdate()
-}
+// Old Progress struct and Console removed - now using Bubble Tea for UI rendering
+// See ProgressInterface and UIProgress below after DB section
 
 // DB represents the database connection
 type DB struct {
@@ -5543,12 +4531,9 @@ func main() {
 		config := LoadConfig(args)
 		
 		// Initialize progress display FIRST - before any other operations  
-		progress := NewBubbleTeaProgress("Initializing GitHub offline MCP server...")
+		progress := NewUIProgress("Initializing GitHub offline MCP server...")
 		progress.Start()
 		defer progress.Stop()
-		
-		// Set up global logger with console handler for pull mode
-		SetupGlobalLogger(progress.console)
 		
 		// Initialize the items display now that we have config
 		progress.InitItems(config)
@@ -5928,30 +4913,26 @@ type ProgressInterface interface {
 	UpdateRequestRate(requestsPerSecond int)
 }
 
-// BubbleTeaProgress is a wrapper that provides the Progress API using Bubble Tea
-type BubbleTeaProgress struct {
+// UIProgress implements the ProgressInterface using Bubble Tea for rendering
+type UIProgress struct {
 	program        *tea.Program
-	console        *Console
 	preserveOnExit bool
 }
 
-// NewBubbleTeaProgress creates a new Bubble Tea-based progress indicator
-func NewBubbleTeaProgress(message string) *BubbleTeaProgress {
-	console := NewConsole(200) // Maintain compatibility with existing console
-	
-	return &BubbleTeaProgress{
+// NewUIProgress creates a new Bubble Tea-based progress indicator
+func NewUIProgress(message string) *UIProgress {
+	return &UIProgress{
 		program: nil, // Will be initialized in Start()
-		console: console,
 	}
 }
 
 // Start initializes and starts the Bubble Tea program
-func (p *BubbleTeaProgress) Start() {
+func (p *UIProgress) Start() {
 	// Program will be started in InitItems after we know which items are enabled
 }
 
 // InitItems initializes the items to display based on config
-func (p *BubbleTeaProgress) InitItems(config *Config) {
+func (p *UIProgress) InitItems(config *Config) {
 	enabledItems := make(map[string]bool)
 	for _, item := range config.Items {
 		enabledItems[item] = true
@@ -5972,88 +4953,81 @@ func (p *BubbleTeaProgress) InitItems(config *Config) {
 }
 
 // Stop stops the Bubble Tea program
-func (p *BubbleTeaProgress) Stop() {
+func (p *UIProgress) Stop() {
 	if p.program != nil {
 		p.program.Quit()
-	}
-	if p.console != nil {
-		p.console.Stop()
 	}
 }
 
 // StopWithPreserve stops the program while preserving display
-func (p *BubbleTeaProgress) StopWithPreserve() {
+func (p *UIProgress) StopWithPreserve() {
 	p.Stop()
 }
 
 // UpdateItemCount updates the count for an item
-func (p *BubbleTeaProgress) UpdateItemCount(item string, count int) {
+func (p *UIProgress) UpdateItemCount(item string, count int) {
 	if p.program != nil {
 		p.program.Send(itemUpdateMsg{item: item, count: count})
 	}
 }
 
 // MarkItemCompleted marks an item as completed
-func (p *BubbleTeaProgress) MarkItemCompleted(item string, count int) {
+func (p *UIProgress) MarkItemCompleted(item string, count int) {
 	if p.program != nil {
 		p.program.Send(itemCompleteMsg{item: item, count: count})
 	}
 }
 
 // MarkItemFailed marks an item as failed
-func (p *BubbleTeaProgress) MarkItemFailed(item string, message string) {
+func (p *UIProgress) MarkItemFailed(item string, message string) {
 	if p.program != nil {
 		p.program.Send(itemFailedMsg{item: item, message: message})
 	}
 }
 
 // SetCurrentItem sets the currently processing item
-func (p *BubbleTeaProgress) SetCurrentItem(item string) {
+func (p *UIProgress) SetCurrentItem(item string) {
 	if p.program != nil {
 		p.program.Send(setCurrentItemMsg(item))
 	}
 }
 
 // Log adds a log message
-func (p *BubbleTeaProgress) Log(format string, args ...interface{}) {
+func (p *UIProgress) Log(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	if p.program != nil {
 		p.program.Send(logMsg(message))
 	}
-	// Also log to console for backward compatibility
-	if p.console != nil {
-		p.console.Log("%s", message)
-	}
 }
 
 // UpdateMessage updates the main message (maps to log)
-func (p *BubbleTeaProgress) UpdateMessage(message string) {
+func (p *UIProgress) UpdateMessage(message string) {
 	p.Log("%s", message)
 }
 
 // HasAnyFailed checks if any item has failed
-func (p *BubbleTeaProgress) HasAnyFailed() bool {
+func (p *UIProgress) HasAnyFailed() bool {
 	// This would need to query the model state, but for simplicity
 	// we'll rely on the caller tracking failures
 	return false
 }
 
 // UpdateAPIStatus updates API call statistics
-func (p *BubbleTeaProgress) UpdateAPIStatus(success, warning, errors int) {
+func (p *UIProgress) UpdateAPIStatus(success, warning, errors int) {
 	if p.program != nil {
 		p.program.Send(apiStatusMsg{success: success, warning: warning, errors: errors})
 	}
 }
 
 // UpdateRateLimit updates rate limit information
-func (p *BubbleTeaProgress) UpdateRateLimit(used, limit int, resetTime time.Time) {
+func (p *UIProgress) UpdateRateLimit(used, limit int, resetTime time.Time) {
 	if p.program != nil {
 		p.program.Send(rateLimitMsg{used: used, limit: limit, resetTime: resetTime})
 	}
 }
 
 // UpdateRequestRate updates the requests per second rate (not directly shown in Bubble Tea UI)
-func (p *BubbleTeaProgress) UpdateRequestRate(requestsPerSecond int) {
+func (p *UIProgress) UpdateRequestRate(requestsPerSecond int) {
 	// This could be added to the model if desired, but for now we just ignore it
 }
 
@@ -6084,7 +5058,6 @@ type (
 		limit     int
 		resetTime time.Time
 	}
-	windowSizeMsg tea.WindowSizeMsg
 )
 
 // itemState represents the state of a pull item
@@ -6119,18 +5092,6 @@ type model struct {
 type logEntry struct {
 	time    time.Time
 	message string
-}
-
-// loadingMessages is a pool of fun loading messages
-var loadingMessages = []string{
-	"Wrangling repositories...",
-	"Herding discussions...",
-	"Catching issues...",
-	"Corralling pull requests...",
-	"Summoning data from the cloud...",
-	"Asking GitHub nicely...",
-	"Negotiating with the API...",
-	"Convincing servers to cooperate...",
 }
 
 // newModel creates a new Bubble Tea model

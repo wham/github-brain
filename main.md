@@ -30,16 +30,20 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - `github.com/charmbracelet/bubbles/spinner` - Built-in animated spinners
 - **Architecture:**
   - Bubble Tea Model holds UI state (item counts, status, logs)
-  - Background goroutines send messages to update UI (no manual rendering)
+  - Background goroutines send messages to update UI via `tea.Program.Send()`
   - Framework handles all cursor positioning, screen clearing, and render batching
-  - Window resize events handled automatically
+  - Window resize events handled automatically via `tea.WindowSizeMsg`
+- **Implementation:**
+  - `UIProgress` struct wraps `tea.Program` and implements `ProgressInterface`
+  - No manual ANSI escape codes or cursor management
+  - No Console struct needed - Bubble Tea handles everything
+  - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
 - **Playful enhancements:**
-  - Different spinner styles for each item type (dots, lines, bouncing)
+  - Animated spinner using `bubbles/spinner` with Dot style
   - Smooth color transitions for status changes (pending → active → complete)
   - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
-  - Fun loading messages ("Wrangling repositories...", "Herding discussions...")
-  - Gradient animated borders (purple → blue → cyan)
-  - Gentle "breathing" animation when idle
+  - Gradient animated borders (purple → blue → cyan) updated every second
+  - Right-aligned comma-formatted counters
 
 ## pull
 
@@ -227,62 +231,59 @@ Notes:
 
 ### Implementation Notes
 
+**Bubble Tea Message Handling:**
+
+- All UI updates use `tea.Program.Send()` to send typed messages
+- Model's `Update()` method processes messages and returns new state
+- View automatically re-renders when model changes
+- No manual cursor or screen management needed
+
 **Box Drawing:**
 
-- Use lipgloss rounded borders (╭╮╰╯) instead of sharp corners
-- Apply purple/blue gradient to border colors
-- Animate border colors on a 1-second tick
+- Use lipgloss to build bordered layouts with `lipgloss.JoinVertical`
+- Rounded borders (╭╮╰╯) styled with adaptive colors
+- Border colors animated via `tickMsg` sent every second
+- Responsive width: `max(64, terminalWidth - 4)`
 
 **Spinners:**
 
 - Use `bubbles/spinner` with Dot style (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
-- Create separate spinner instances for each item type
-- Only render spinner for currently active item
+- Spinner state managed by Bubble Tea's `spinner.Model`
+- Only one spinner shown at a time (for active item)
+- Spinner ticks handled via `spinner.TickMsg`
 
 **Number Formatting:**
 
 - Add commas to numbers > 999: `1,247` not `1247`
-- Format in activity logs and status counters
-- Right-align counters when possible
+- Helper function: `formatNumber(n int) string`
+- Used in item counts, API stats, and rate limit display
 
 **Time Formatting:**
 
-- Activity logs: `21:37:54` (HH:MM:SS only)
-- Rate limit resets: `2h 15m`, `45m`, `30s` (human-friendly)
+- Activity logs: `15:04:05` format (HH:MM:SS only)
+- Rate limit resets: `formatTimeRemaining()` returns friendly format like "2h 15m"
 
 **Window Resize:**
 
-- Listen for `tea.WindowSizeMsg`
-- Adjust box width: `max(64, terminalWidth - 4)`
-- Re-render layout automatically
+- Listen for `tea.WindowSizeMsg` in model's `Update()`
+- Store width/height in model state
+- Layout adjusts automatically on next render
 
 **Color Scheme:**
 
-- Purple/blue for borders and title
-- Bright blue for active items (with spinner)
-- Bright green for completed ✅
-- Dim gray for skipped 🔕
-- Bright red for failed ❌
-
-**Loading Messages Pool:**
-
-```
-"Wrangling repositories..."
-"Herding discussions..."
-"Catching issues..."
-"Corralling pull requests..."
-"Summoning data from the cloud..."
-"Asking GitHub nicely..."
-"Negotiating with the API..."
-"Convincing servers to cooperate..."
-```
+- Purple/blue gradient for borders (via `borderColors` array)
+- Bright blue (#12) for active items
+- Bright green (#10) for completed ✅
+- Dim gray (#240) for skipped 🔕
+- Bright red (#9) for failed ❌
+- Applied via `lipgloss.NewStyle().Foreground()`
 
 **Milestone Celebrations:**
 
-- 1,000 items: ✨
-- 5,000 items: 🎉
-- 10,000 items: 🚀
-- Show brief celebration message in activity log
+- 1,000 items: ✨ emoji in log
+- 5,000 items: 🎉 emoji in log
+- 10,000 items: 🚀✨🎉 emojis in log
+- Triggered in `itemCompleteMsg` handler
 
 ### Repositories
 
