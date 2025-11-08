@@ -502,12 +502,36 @@ func visibleLength(s string) int {
 			// Skip other escape sequences (ESC followed by one char)
 			i += 2
 		} else {
-			length++
+			// Count display width (emojis are typically 2 columns wide)
+			if isWideChar(runes[i]) {
+				length += 2
+			} else {
+				length++
+			}
 			i++
 		}
 	}
 	
 	return length
+}
+
+// isWideChar returns true if the rune is a wide character (emoji or CJK)
+func isWideChar(r rune) bool {
+	// Common emoji ranges and wide characters
+	return (r >= 0x1F300 && r <= 0x1F9FF) || // Misc Symbols and Pictographs, Emoticons, etc.
+		(r >= 0x2600 && r <= 0x26FF) ||   // Misc symbols
+		(r >= 0x2700 && r <= 0x27BF) ||   // Dingbats
+		(r >= 0xFE00 && r <= 0xFE0F) ||   // Variation Selectors
+		(r >= 0x1F000 && r <= 0x1F02F) || // Mahjong Tiles, Domino Tiles
+		(r >= 0x1F0A0 && r <= 0x1F0FF) || // Playing Cards
+		(r >= 0x1F100 && r <= 0x1F64F) || // Enclosed characters, Emoticons
+		(r >= 0x1F680 && r <= 0x1F6FF) || // Transport and Map Symbols
+		(r >= 0x1F900 && r <= 0x1F9FF) || // Supplemental Symbols and Pictographs
+		(r >= 0x3000 && r <= 0x303F) ||   // CJK Symbols and Punctuation
+		(r >= 0x3040 && r <= 0x309F) ||   // Hiragana
+		(r >= 0x30A0 && r <= 0x30FF) ||   // Katakana
+		(r >= 0x4E00 && r <= 0x9FFF) ||   // CJK Unified Ideographs
+		(r >= 0xAC00 && r <= 0xD7AF)      // Hangul Syllables
 }
 
 // Old Progress struct and Console removed - now using Bubble Tea for UI rendering
@@ -5337,15 +5361,22 @@ func (m model) View() string {
 	var b strings.Builder
 	b.Grow(4096)
 
-	// Top border with title (ensure consistent width calculation)
+	// Top border with title
+	// Total width budget: boxWidth
+	// "╭─ " = 3 chars, " " before dashes = 1 char, "╮" = 1 char
+	// So: 3 + titleWidth + 1 + dashCount + 1 = boxWidth
+	// Therefore: dashCount = boxWidth - titleWidth - 5
 	titleText := "GitHub 🧠 pull"
-	titleLen := visibleLength(titleText)
 	titleRendered := titleStyle.Render(titleText)
-	remainingWidth := boxWidth - titleLen - 4 // 4 = "╭─ " + " ╮"
+	titleWidth := visibleLength(titleRendered)
+	dashCount := boxWidth - titleWidth - 5
+	if dashCount < 0 {
+		dashCount = 0
+	}
 	
 	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╭─ "))
 	b.WriteString(titleRendered)
-	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", remainingWidth) + "╮\n"))
+	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", dashCount) + "╮\n"))
 
 	// Empty line
 	b.WriteString(renderEmptyLine(boxWidth, borderColor))
@@ -5432,7 +5463,7 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 
 	content := style.Render(icon + " " + text)
 	contentLen := visibleLength(content)
-	padding := width - contentLen - 5 // 5 = "│  " + " │"
+	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
 	if padding < 0 {
@@ -5452,7 +5483,7 @@ func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.A
 		errorStyle.Render("❌ "+formatNumber(errors))
 
 	contentLen := visibleLength(content)
-	padding := width - contentLen - 5
+	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
 	if padding < 0 {
@@ -5477,7 +5508,7 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 
 	content := headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
 	contentLen := visibleLength(content)
-	padding := width - contentLen - 5
+	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
 	if padding < 0 {
@@ -5493,7 +5524,7 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 func renderActivityHeader(width int, borderColor lipgloss.AdaptiveColor, headerStyle lipgloss.Style) string {
 	content := headerStyle.Render("💬 Activity")
 	contentLen := visibleLength(content)
-	padding := width - contentLen - 5
+	padding := width - contentLen - 4 // 4 = "│" (1) + "  " (2) + "│" (1)
 	
 	// Ensure padding is never negative
 	if padding < 0 {
@@ -5540,6 +5571,6 @@ func renderLogLine(entry logEntry, width int, borderColor lipgloss.AdaptiveColor
 
 func renderEmptyActivityLine(width int, borderColor lipgloss.AdaptiveColor) string {
 	return lipgloss.NewStyle().Foreground(borderColor).Render("│     ") +
-		strings.Repeat(" ", width-7) +
+		strings.Repeat(" ", width-7) + // 7 = "│" (1) + "     " (5) + "│" (1)
 		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
 }
