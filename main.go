@@ -5382,11 +5382,8 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 
 	displayName := capitalize(state.name)
 
-	if !state.enabled {
-		icon = "🔕"
-		style = dimStyle
-		text = displayName
-	} else if state.failed {
+	// Check status flags first (completed/failed/active), then check enabled
+	if state.failed {
 		icon = "❌"
 		style = errorStyle
 		if state.count > 0 {
@@ -5406,6 +5403,10 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 		} else {
 			text = displayName
 		}
+	} else if !state.enabled {
+		icon = "🔕"
+		style = dimStyle
+		text = displayName
 	} else {
 		icon = "⋯"
 		style = lipgloss.NewStyle()
@@ -5415,6 +5416,11 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 	content := style.Render(icon + " " + text)
 	contentLen := visibleLength(content)
 	padding := width - contentLen - 5 // 5 = "│  " + " │"
+	
+	// Ensure padding is never negative
+	if padding < 0 {
+		padding = 0
+	}
 
 	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
 		content +
@@ -5430,6 +5436,11 @@ func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.A
 
 	contentLen := visibleLength(content)
 	padding := width - contentLen - 5
+	
+	// Ensure padding is never negative
+	if padding < 0 {
+		padding = 0
+	}
 
 	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
 		content +
@@ -5450,6 +5461,11 @@ func renderRateLimit(used, limit int, resetTime time.Time, width int, borderColo
 	content := headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
 	contentLen := visibleLength(content)
 	padding := width - contentLen - 5
+	
+	// Ensure padding is never negative
+	if padding < 0 {
+		padding = 0
+	}
 
 	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
 		content +
@@ -5461,6 +5477,11 @@ func renderActivityHeader(width int, borderColor lipgloss.AdaptiveColor, headerS
 	content := headerStyle.Render("💬 Activity")
 	contentLen := visibleLength(content)
 	padding := width - contentLen - 5
+	
+	// Ensure padding is never negative
+	if padding < 0 {
+		padding = 0
+	}
 
 	return lipgloss.NewStyle().Foreground(borderColor).Render("│  ") +
 		content +
