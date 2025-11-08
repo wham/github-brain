@@ -5343,83 +5343,169 @@ func (m *model) addLog(message string) {
 
 // View renders the UI
 func (m model) View() string {
-	// Use a fixed box width that doesn't change (minimum 80, or slightly less than terminal width)
-	boxWidth := 80
+	// Calculate content width
+	contentWidth := 76
 	if m.width > 84 {
-		boxWidth = m.width - 4
+		contentWidth = m.width - 8
 	}
 
-	// Define colors
+	// Define colors and styles
 	borderColor := m.borderColors[m.colorIndex]
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))  // Bright blue
 	completeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // Bright green
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))     // Bright red
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(borderColor)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7")) // White
 
-	var b strings.Builder
-	b.Grow(4096)
-
-	// Top border with title
-	titleText := "GitHub 🧠 pull"
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	// Build content lines
+	var lines []string
 	
-	// Build the full title line maintaining border color
-	titlePlainWidth := visibleLength(titleText)
-	dashesNeeded := boxWidth - 3 - titlePlainWidth - 1 - 1  // "╭─ " (3) + title + " " (1) + dashes + "╮" (1)
-	if dashesNeeded < 0 {
-		dashesNeeded = 0
-	}
-	
-	b.WriteString(borderStyle.Render("╭─ "))
-	b.WriteString(titleStyle.Render(titleText))
-	b.WriteString(borderStyle.Render(" " + strings.Repeat("─", dashesNeeded) + "╮\n"))
-
 	// Empty line
-	b.WriteString(renderEmptyLine(boxWidth, borderColor))
-
+	lines = append(lines, "")
+	
 	// Items section
 	for _, name := range m.itemOrder {
 		state := m.items[name]
-		b.WriteString(renderItem(state, m.spinner.View(), boxWidth, borderColor, dimStyle, activeStyle, completeStyle, errorStyle))
+		lines = append(lines, formatItemLine(state, m.spinner.View(), dimStyle, activeStyle, completeStyle, errorStyle))
 	}
-
+	
 	// Empty line
-	b.WriteString(renderEmptyLine(boxWidth, borderColor))
-
+	lines = append(lines, "")
+	
 	// API Status line
-	b.WriteString(renderAPIStatus(m.apiSuccess, m.apiWarning, m.apiErrors, boxWidth, borderColor, headerStyle, completeStyle, errorStyle))
-
+	lines = append(lines, formatAPIStatusLine(m.apiSuccess, m.apiWarning, m.apiErrors, headerStyle, completeStyle, errorStyle))
+	
 	// Rate Limit line
-	b.WriteString(renderRateLimit(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, boxWidth, borderColor, headerStyle))
-
+	lines = append(lines, formatRateLimitLine(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, headerStyle))
+	
 	// Empty line
-	b.WriteString(renderEmptyLine(boxWidth, borderColor))
-
-	// Activity section (header + 5 log lines)
-	b.WriteString(renderActivityHeader(boxWidth, borderColor, headerStyle))
+	lines = append(lines, "")
+	
+	// Activity section header
+	lines = append(lines, headerStyle.Render("💬 Activity"))
+	
+	// Activity log lines
 	for i := 0; i < 5; i++ {
 		if i < len(m.logs) {
-			b.WriteString(renderLogLine(m.logs[i], boxWidth, borderColor, errorStyle))
+			lines = append(lines, formatLogLine(m.logs[i], errorStyle))
 		} else {
-			b.WriteString(renderEmptyActivityLine(boxWidth, borderColor))
+			lines = append(lines, "")
 		}
 	}
-
-	// Bottom border
-	bottomLine := lipgloss.NewStyle().Width(boxWidth - 2).Render("")
-	// Replace all spaces with horizontal line chars
-	bottomLine = strings.ReplaceAll(bottomLine, " ", "─")
-	b.WriteString(borderStyle.Render("╰"))
-	b.WriteString(bottomLine)
-	b.WriteString(borderStyle.Render("╯\n"))
-
-	return b.String()
+	
+	// Join all lines
+	content := strings.Join(lines, "\n")
+	
+	// Create box with proper width and border
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Width(contentWidth).
+		Padding(0, 1)
+	
+	box := boxStyle.Render(content)
+	
+	// Add title to the top border while maintaining color
+	titleText := "GitHub 🧠 pull"
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(borderColor)
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	boxLines := strings.Split(box, "\n")
+	if len(boxLines) > 0 {
+		// Calculate the plain title width
+		titlePlainWidth := visibleLength(titleText)
+		// Get the full width of the first line
+		firstLineWidth := lipgloss.Width(boxLines[0])
+		// Calculate dashes needed: total width - "╭─ " (3) - title - " " (1) - "╮" (1)
+		dashesNeeded := firstLineWidth - 3 - titlePlainWidth - 1 - 1
+		if dashesNeeded < 0 {
+			dashesNeeded = 0
+		}
+		
+		// Build the title line with proper coloring
+		boxLines[0] = borderStyle.Render("╭─ ") + 
+			titleStyle.Render(titleText) + 
+			borderStyle.Render(" " + strings.Repeat("─", dashesNeeded) + "╮")
+		
+		box = strings.Join(boxLines, "\n")
+	}
+	
+	return box + "\n"
 }
 
-// Helper rendering functions
+// Helper formatting functions (return plain strings, box handles borders)
 
+func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, completeStyle, errorStyle lipgloss.Style) string {
+	var icon string
+	var style lipgloss.Style
+	var text string
+
+	displayName := capitalize(state.name)
+
+	if state.failed {
+		icon = "❌"
+		style = errorStyle
+		if state.count > 0 {
+			text = fmt.Sprintf("%s: %s (errors)", displayName, formatNumber(state.count))
+		} else {
+			text = displayName
+		}
+	} else if state.completed {
+		icon = "✅"
+		style = completeStyle
+		text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+	} else if state.active {
+		icon = spinnerView
+		style = activeStyle
+		if state.count > 0 {
+			text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+		} else {
+			text = displayName
+		}
+	} else if !state.enabled {
+		icon = "🔕"
+		style = dimStyle
+		text = displayName
+	} else {
+		icon = "⋯"
+		style = lipgloss.NewStyle()
+		text = displayName
+	}
+
+	return style.Render(icon + " " + text)
+}
+
+func formatAPIStatusLine(success, warning, errors int, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
+	return headerStyle.Render("📊 API Status    ") +
+		completeStyle.Render("✅ "+formatNumber(success)) + "   " +
+		"⚠️ " + formatNumber(warning) + "   " +
+		errorStyle.Render("❌ "+formatNumber(errors))
+}
+
+func formatRateLimitLine(used, limit int, resetTime time.Time, headerStyle lipgloss.Style) string {
+	var rateLimitText string
+	if limit > 0 {
+		resetStr := formatTimeRemaining(resetTime)
+		rateLimitText = fmt.Sprintf("%s / %s used, resets in %s",
+			formatNumber(used), formatNumber(limit), resetStr)
+	} else {
+		rateLimitText = "? / ? used, resets ?"
+	}
+	return headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
+}
+
+func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
+	timestamp := entry.time.Format("15:04:05")
+	message := entry.message
+
+	// Color error messages
+	if strings.Contains(entry.message, "❌") || strings.Contains(entry.message, "Error:") {
+		return "     " + timestamp + " " + errorStyle.Render(message)
+	}
+	return "     " + timestamp + " " + message
+}
+
+// Old render functions - keeping for now but will be replaced
 func renderEmptyLine(width int, borderColor lipgloss.AdaptiveColor) string {
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 	return borderStyle.Render("│") +
@@ -5465,20 +5551,21 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 		text = displayName
 	}
 
-	// Measure plain content before styling
+	// Measure plain content and calculate padding
 	plainContent := icon + " " + text
 	contentLen := visibleLength(plainContent)
 	styledContent := style.Render(plainContent)
-	padding := width - contentLen - 4 // 4 = "│  " + "│"
+	padding := width - contentLen - 4 // 4 = "│  " (3) + "│" (1)
 	if padding < 0 {
 		padding = 0
 	}
 
+	// Style ONLY the border characters
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-	return borderStyle.Render("│  ") +
-		styledContent +
-		strings.Repeat(" ", padding) +
-		borderStyle.Render("│\n")
+	leftBorder := borderStyle.Render("│")
+	rightBorder := borderStyle.Render("│")
+	
+	return leftBorder + "  " + styledContent + strings.Repeat(" ", padding) + rightBorder + "\n"
 }
 
 func renderAPIStatus(success, warning, errors, width int, borderColor lipgloss.AdaptiveColor, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
