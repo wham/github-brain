@@ -5362,25 +5362,19 @@ func (m model) View() string {
 	b.Grow(4096)
 
 	// Top border with title
-	// DEBUG: Force a specific known width for testing
-	// Total width budget: boxWidth
-	// "╭─ " = 3 chars, " " before dashes = 1 char, "╮" = 1 char
-	// So: 3 + titleWidth + 1 + dashCount + 1 = boxWidth
-	// Therefore: dashCount = boxWidth - titleWidth - 5
 	titleText := "GitHub 🧠 pull"
-	titleWidth := visibleLength(titleText) // Measure plain text before styling
-	titleRendered := titleStyle.Render(titleText)
-	dashCount := boxWidth - titleWidth - 5
-	if dashCount < 0 {
-		dashCount = 0
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	
+	// Build the full title line maintaining border color
+	titlePlainWidth := visibleLength(titleText)
+	dashesNeeded := boxWidth - 3 - titlePlainWidth - 1 - 1  // "╭─ " (3) + title + " " (1) + dashes + "╮" (1)
+	if dashesNeeded < 0 {
+		dashesNeeded = 0
 	}
 	
-	// DEBUG: Verify our calculation
-	_ = titleWidth // Width should be 14 (G=1 i=1 t=1 H=1 u=1 b=1 space=1 brain=2 space=1 p=1 u=1 l=1 l=1)
-	
-	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╭─ "))
-	b.WriteString(titleRendered)
-	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render(" " + strings.Repeat("─", dashCount) + "╮\n"))
+	b.WriteString(borderStyle.Render("╭─ "))
+	b.WriteString(titleStyle.Render(titleText))
+	b.WriteString(borderStyle.Render(" " + strings.Repeat("─", dashesNeeded) + "╮\n"))
 
 	// Empty line
 	b.WriteString(renderEmptyLine(boxWidth, borderColor))
@@ -5414,7 +5408,12 @@ func (m model) View() string {
 	}
 
 	// Bottom border
-	b.WriteString(lipgloss.NewStyle().Foreground(borderColor).Render("╰" + strings.Repeat("─", boxWidth-2) + "╯\n"))
+	bottomLine := lipgloss.NewStyle().Width(boxWidth - 2).Render("")
+	// Replace all spaces with horizontal line chars
+	bottomLine = strings.ReplaceAll(bottomLine, " ", "─")
+	b.WriteString(borderStyle.Render("╰"))
+	b.WriteString(bottomLine)
+	b.WriteString(borderStyle.Render("╯\n"))
 
 	return b.String()
 }
@@ -5422,9 +5421,10 @@ func (m model) View() string {
 // Helper rendering functions
 
 func renderEmptyLine(width int, borderColor lipgloss.AdaptiveColor) string {
-	return lipgloss.NewStyle().Foreground(borderColor).Render("│") +
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
+	return borderStyle.Render("│") +
 		strings.Repeat(" ", width-2) +
-		lipgloss.NewStyle().Foreground(borderColor).Render("│\n")
+		borderStyle.Render("│\n")
 }
 
 func renderItem(state itemState, spinnerView string, width int, borderColor lipgloss.AdaptiveColor, dimStyle, activeStyle, completeStyle, errorStyle lipgloss.Style) string {
@@ -5465,15 +5465,19 @@ func renderItem(state itemState, spinnerView string, width int, borderColor lipg
 		text = displayName
 	}
 
-	// Build content with styles
-	content := style.Render(icon + " " + text)
+	// Measure plain content before styling
+	plainContent := icon + " " + text
+	contentLen := visibleLength(plainContent)
+	styledContent := style.Render(plainContent)
+	padding := width - contentLen - 4 // 4 = "│  " + "│"
+	if padding < 0 {
+		padding = 0
+	}
 
-	// Use lipgloss to handle width and padding automatically
-	contentStyle := lipgloss.NewStyle().Width(width - 4)
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-
 	return borderStyle.Render("│  ") +
-		contentStyle.Render(content) +
+		styledContent +
+		strings.Repeat(" ", padding) +
 		borderStyle.Render("│\n")
 }
 
