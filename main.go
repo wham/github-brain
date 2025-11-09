@@ -5526,25 +5526,10 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 }
 
 func formatAPIStatusLine(success, warning, errors int, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
-	// Use simpler approach - render as a single plain string with styled parts embedded
-	warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	
-	parts := []string{
-		headerStyle.Render("📊 API Status"),
-		"    ",
-		completeStyle.Render("✅ " + formatNumber(success)),
-		"   ",
-		warningStyle.Render("⚠️  " + formatNumber(warning)),
-		"   ",
-		errorStyle.Render("❌ " + formatNumber(errors)),
-	}
-	
-	line := strings.Join(parts, "")
-	
-	// Compensate for emoji width miscalculation by lipgloss
-	// We have 4 emojis (📊, ✅, ⚠️, ❌), each takes 2 terminal columns but lipgloss counts as 1
-	// So we need 4 extra spaces to compensate
-	return line + "    "
+	// Match the pattern of formatRateLimitLine - only style the header
+	apiText := fmt.Sprintf("OK %s   WARN %s   ERR %s ",
+		formatNumber(success), formatNumber(warning), formatNumber(errors))
+	return headerStyle.Render("📊 API Status    ") + apiText
 }
 
 func formatRateLimitLine(used, limit int, resetTime time.Time, headerStyle lipgloss.Style) string {
