@@ -4618,9 +4618,6 @@ func main() {
 		progress.Start()
 		defer progress.Stop()
 		
-		// Initialize the items display now that we have config
-		progress.InitItems(config)
-		
 		// Set up slog to route to Bubble Tea UI
 		slog.SetDefault(slog.New(NewBubbleTeaHandler(progress.program)))
 		
@@ -4645,6 +4642,9 @@ func main() {
 		if len(config.Items) == 0 {
 			config.Items = []string{"repositories", "discussions", "issues", "pull-requests"}
 		}
+		
+		// Initialize the items display now that we have config with items set
+		progress.InitItems(config)
 
 		// Validate items
 		validItems := map[string]bool{
@@ -5517,8 +5517,8 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 		style = dimStyle
 		text = displayName
 	} else {
-		icon = "⋯"
-		style = lipgloss.NewStyle()
+		icon = "📋"
+		style = dimStyle
 		text = displayName
 	}
 
