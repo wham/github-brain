@@ -78,13 +78,13 @@ Console at the beginning of the `pull` command - all items selected:
 ```
 ╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ⋯ Repositories                                                │
-│  ⋯ Discussions                                                 │
-│  ⋯ Issues                                                      │
-│  ⋯ Pull Requests                                               │
+│  📋 Repositories                                               │
+│  📋 Discussions                                                │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                            │
-│  🚀 Rate Limit    ? / ? used, resets ?                         │
+│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
+│  🚀 Rate Limit    ? / ? used, resets ?                        │
 │                                                                │
 │  💬 Activity                                                   │
 │     21:37:12 ✨ Summoning data from the cloud...              │
@@ -96,49 +96,28 @@ Console at the beginning of the `pull` command - all items selected:
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
-### Modern Console Design Elements
-
-- **Box Drawing**: Use lipgloss rounded or thick borders
-- **Emojis & Icons**: Visual status indicators throughout
-- **Animated Spinners**: Different styles per item type (dots, lines, bouncing points)
-- **Color Scheme**:
-  - Dim gray for pending/skipped items
-  - Bright blue for active items (with spinner)
-  - Bright green for completed ✅
-  - Bright red for failed ❌
-  - Purple accents for borders and highlights
-- **Gradient Borders**: Animated color rotation (purple → blue → cyan)
-- **Responsive Layout**: Minimum 64 chars, scales to terminal width
-- **Playful Touches**:
-  - Random loading messages from a pool
-  - Milestone emoji bursts (🎉✨🚀 at 1000, 5000, 10000)
-  - Comma-formatted counters that "bounce" when updating
-  - Gentle border pulse animation when idle
-
 Console at the beginning of the `pull` command - `-i repositories`:
 
 ```
 ╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ⋯ Repositories                                                │
-│  🔕 Discussions                                               │
-│  🔕 Issues                                                    │
-│  🔕 Pull Requests                                             │
+│  📋 Repositories                                               │
+│  🔕 Discussions                                                │
+│  🔕 Issues                                                     │
+│  🔕 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                          │
+│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
 │  🚀 Rate Limit    ? / ? used, resets ?                        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:37:12 🎯 Starting selective sync...                   │
-│     21:37:13 📦 Clearing existing repositories...            │
+│     21:37:12 🎯 Starting selective sync...                    │
+│     21:37:13 📦 Clearing existing repositories...             │
 │                                                                │
 │                                                                │
 │                                                                │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
-
-Note: 🔕 for skipped items with dimmed text, ⋯ for pending (animated dots).
 
 Console during first item pull:
 
@@ -146,88 +125,87 @@ Console during first item pull:
 ╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
 │  ⠋ Repositories: 1,247                                        │
-│  ⋯ Discussions                                                 │
-│  ⋯ Issues                                                      │
-│  ⋯ Pull Requests                                               │
+│  📋 Discussions                                                │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 120   ⚠️ 1   ❌ 2                        │
-│  🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m       │
+│  📊 API Status    ✅ 120   🟡 1   ❌ 2                         │
+│  🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:37:54 📦 Wrangling repositories...                    │
-│     21:37:55 📄 Fetching page 12                             │
-│     21:37:56 💾 Processing batch 3 (repos 201-300)           │
-│     21:37:57 ⚡ Rate limit: 89% remaining                    │
-│     21:37:58 ✨ Saved 47 repositories to database            │
+│     21:37:54 📦 Wrangling repositories...                     │
+│     21:37:55 📄 Fetching page 12                              │
+│     21:37:56 💾 Processing batch 3 (repos 201-300)            │
+│     21:37:57 ⚡ Rate limit: 89% remaining                     │
+│     21:37:58 ✨ Saved 47 repositories to database             │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
-
-Notes:
-
-- ⠋ = Animated spinner (rotates: ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
-- ⋯ = Pending animated dots
-- Numbers formatted with commas: 1,247
-- Time format: HH:MM:SS only
-- Rate limit: friendly "2h 15m" format
 
 Console when first item completes:
 
 ```
 ╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ✅ Repositories: 2,847                                       │
+│  ✅ Repositories: 2,847                                        │
 │  ⠙ Discussions: 156                                           │
-│  ⋯ Issues                                                      │
-│  ⋯ Pull Requests                                               │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 160   ⚠️ 1   ❌ 2                        │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m       │
+│  📊 API Status    ✅ 160   🟡 1   ❌ 2                         │
+│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:41:23 🎉 Repositories completed (2,847 synced)         │
-│     21:41:24 💬 Herding discussions...                        │
-│     21:41:25 📄 Fetching from auth-service                   │
-│     21:41:26 💾 Processing batch 1                            │
-│     21:41:27 ✨ Found 23 new discussions                      │
+│     21:41:23 🎉 Repositories completed (2,847 synced)          │
+│     21:41:24 💬 Herding discussions...                         │
+│     21:41:25 📄 Fetching from auth-service                    │
+│     21:41:26 💾 Processing batch 1                             │
+│     21:41:27 ✨ Found 23 new discussions                       │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
-
-Notes:
-
-- ✅ marks completed items (green text)
-- ⠙ spinner automatically moves to next active item (blue text)
-- Completion announcements with celebration emojis
 
 Console when an error occurs:
 
 ```
 ╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ✅ Repositories: 2,847                                       │
-│  ❌ Discussions: 156 (3 errors)                               │
-│  ⋯ Issues                                                      │
-│  ⋯ Pull Requests                                               │
+│  ✅ Repositories: 2,847                                        │
+│  ❌ Discussions: 156 (errors)                                  │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 160   ⚠️ 1   ❌ 5                        │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m       │
+│  📊 API Status    ✅ 160   🟡 1   ❌ 5                         │
+│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:42:15 ❌ API Error: Rate limit exceeded                │
-│     21:42:16 ⏳ Retrying in 30 seconds...                     │
-│     21:42:47 ⚠️  Repository access denied: private-repo       │
-│     21:42:48 ➡️  Continuing with next repository...           │
-│     21:42:49 ❌ Failed to save discussion #4521               │
+│     21:42:15 ❌ API Error: Rate limit exceeded                 │
+│     21:42:16 ⏳ Retrying in 30 seconds...                      │
+│     21:42:47 ⚠️  Repository access denied: private-repo        │
+│     21:42:48 ➡️  Continuing with next repository...            │
+│     21:42:49 ❌ Failed to save discussion #4521                │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
-Notes:
+### Console Icons
 
-- ❌ marks failed items (red text) with error count in parentheses
-- Error details logged with appropriate emoji indicators
-- System continues processing after recoverable errors
+- 📋 = Pending (enabled but not started)
+- 🔕 = Disabled (not in `-i` selection)
+- ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ = Spinner (active item, bright blue)
+- ✅ = Completed (bright green)
+- ❌ = Failed (bright red)
+
+### Layout
+
+- Gradient animated borders (purple → blue → cyan) updated every second
+- Responsive width: `max(76, terminalWidth - 4)`
+- Box expands to full terminal width
+- Numbers formatted with commas: `1,247`
+- Time format: `15:04:05` (HH:MM:SS)
+- Rate limit: friendly format like `2h 15m`
+- API Status: ✅ success, 🟡 warning (yellow circle), ❌ errors
+- Note: Avoid ⚠️ emoji (has variation selector causing width issues)
 
 ### Implementation Notes
 
