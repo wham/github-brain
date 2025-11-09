@@ -5527,7 +5527,8 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 
 func formatAPIStatusLine(success, warning, errors int, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
 	// Match the pattern of formatRateLimitLine - only style the header
-	apiText := fmt.Sprintf("OK %s   WARN %s   ERR %s ",
+	// Note: Using 🟡 instead of ⚠️ because the warning sign has a variation selector that breaks width calculation
+	apiText := fmt.Sprintf("✅ %s   🟡 %s   ❌ %s ",
 		formatNumber(success), formatNumber(warning), formatNumber(errors))
 	return headerStyle.Render("📊 API Status    ") + apiText
 }
