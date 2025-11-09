@@ -5343,12 +5343,6 @@ func (m *model) addLog(message string) {
 
 // View renders the UI
 func (m model) View() string {
-	// Calculate content width
-	contentWidth := 76
-	if m.width > 84 {
-		contentWidth = m.width - 8
-	}
-
 	// Define colors and styles
 	borderColor := m.borderColors[m.colorIndex]
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -5396,12 +5390,68 @@ func (m model) View() string {
 	// Join all lines
 	content := strings.Join(lines, "\n")
 	
-	// Create box with proper width and border
+	// Set a fixed maximum width for the box content
+	maxContentWidth := 76
+	if m.width > 84 {
+		maxContentWidth = m.width - 8
+	}
+	
+	// Pre-pad all lines to the same width using our visibleLength calculation
+	// This works around lipgloss's incorrect emoji width handling
+	contentLines := strings.Split(content, "\n")
+	lineWidths := make([]int, len(contentLines))
+	
+	// Calculate actual visible width of each line and truncate if needed
+	for i, line := range contentLines {
+		width := visibleLength(line)
+		lineWidths[i] = width
+		
+		// Truncate lines that are too long
+		if width > maxContentWidth {
+			// Truncate the line - need to be careful with ANSI codes
+			// Simple approach: truncate and add "..."
+			truncated := ""
+			currentWidth := 0
+			runes := []rune(line)
+			inEscape := false
+			
+			for j := 0; j < len(runes) && currentWidth < maxContentWidth-3; j++ {
+				r := runes[j]
+				if r == '\033' {
+					inEscape = true
+				}
+				truncated += string(r)
+				if !inEscape {
+					if isWideChar(r) {
+						currentWidth += 2
+					} else {
+						currentWidth++
+					}
+				}
+				if inEscape && ((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')) {
+					inEscape = false
+				}
+			}
+			contentLines[i] = truncated + "..."
+			lineWidths[i] = currentWidth + 3
+		}
+	}
+	
+	// Pad each line to maxContentWidth
+	for i, line := range contentLines {
+		padding := maxContentWidth - lineWidths[i]
+		if padding > 0 {
+			contentLines[i] = line + strings.Repeat(" ", padding)
+		}
+	}
+	content = strings.Join(contentLines, "\n")
+	
+	// Create box without automatic width adjustment (we've done it ourselves)
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
-		Width(contentWidth).
-		Padding(0, 1)
+		Padding(0, 1). // 1 space padding on left and right
+		Align(lipgloss.Left)
 	
 	box := boxStyle.Render(content)
 	
@@ -5476,10 +5526,25 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 }
 
 func formatAPIStatusLine(success, warning, errors int, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
-	return headerStyle.Render("📊 API Status    ") +
-		completeStyle.Render("✅ "+formatNumber(success)) + "   " +
-		"⚠️ " + formatNumber(warning) + "   " +
-		errorStyle.Render("❌ "+formatNumber(errors))
+	// Use simpler approach - render as a single plain string with styled parts embedded
+	warningStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+	
+	parts := []string{
+		headerStyle.Render("📊 API Status"),
+		"    ",
+		completeStyle.Render("✅ " + formatNumber(success)),
+		"   ",
+		warningStyle.Render("⚠️  " + formatNumber(warning)),
+		"   ",
+		errorStyle.Render("❌ " + formatNumber(errors)),
+	}
+	
+	line := strings.Join(parts, "")
+	
+	// Compensate for emoji width miscalculation by lipgloss
+	// We have 4 emojis (📊, ✅, ⚠️, ❌), each takes 2 terminal columns but lipgloss counts as 1
+	// So we need 4 extra spaces to compensate
+	return line + "    "
 }
 
 func formatRateLimitLine(used, limit int, resetTime time.Time, headerStyle lipgloss.Style) string {
