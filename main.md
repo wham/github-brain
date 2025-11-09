@@ -1,6 +1,6 @@
 # github-brain
 
-AI coding agent specification. Human documentation in README.md.
+AI coding agent specification. Human documentation in README.md. Read https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/ to understand the approach.
 
 ## CLI
 
@@ -20,6 +20,31 @@ Concurrency control:
 Use RFC3339 date format consistently.
 Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not use `fmt.Println` or `log.Println`.
 
+### Bubble Tea Integration
+
+Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for terminal UI:
+
+- **Core packages:**
+  - `github.com/charmbracelet/bubbletea` - TUI framework (Elm Architecture)
+  - `github.com/charmbracelet/lipgloss` - Styling and layout
+  - `github.com/charmbracelet/bubbles/spinner` - Built-in animated spinners
+- **Architecture:**
+  - Bubble Tea Model holds UI state (item counts, status, logs)
+  - Background goroutines send messages to update UI via `tea.Program.Send()`
+  - Framework handles all cursor positioning, screen clearing, and render batching
+  - Window resize events handled automatically via `tea.WindowSizeMsg`
+- **Implementation:**
+  - `UIProgress` struct wraps `tea.Program` and implements `ProgressInterface`
+  - No manual ANSI escape codes or cursor management
+  - No Console struct needed - Bubble Tea handles everything
+  - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
+- **Playful enhancements:**
+  - Animated spinner using `bubbles/spinner` with Dot style
+  - Smooth color transitions for status changes (pending → active → complete)
+  - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
+  - Gradient animated borders (purple → blue → cyan) updated every second
+  - Right-aligned comma-formatted counters
+
 ## pull
 
 - Verify no concurrent `pull` execution
@@ -38,208 +63,205 @@ Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not 
 - Maintain console output showing selected items and status
 - Use `log/slog` custom logger for last 5 log messages with timestamps in console output
 
-### Console Rendering Requirements
+### Console Rendering with Bubble Tea
 
-Console display must be stable and prevent jumping/flickering:
+Bubble Tea handles all rendering automatically:
 
-- Establish fixed display area of exactly 13 lines (4 items + 1 empty + 2 status + 1 empty + 5 logs)
-- Save/restore cursor position to maintain original terminal position
-- Use atomic rendering: build complete output in memory, then write once
-- Implement debounced updates with minimum 200ms interval to prevent excessive refreshing
-- Detect terminal size and ensure display fits within bounds
-- Use proper mutex locking to prevent overlapping renders
-- Clear entire display area before each update to prevent stale content
+- No manual cursor management or screen clearing
+- No debouncing or mutex locks needed
+- Automatic terminal resize handling
+- Smooth animations with `tea.Tick`
+- Background goroutines send messages to update UI via channels
 
 Console at the beginning of the `pull` command - all items selected:
 
 ```
-┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
+╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ⚪ Repositories                                               │
-│  ⚪ Discussions                                                │
-│  ⚪ Issues                                                     │
-│  ⚪ Pull Requests                                              │
+│  📋 Repositories                                               │
+│  📋 Discussions                                                │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                            │
-│  🚀 Rate Limit    ? / ? used, resets ?                         │
+│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
+│  🚀 Rate Limit    ? / ? used, resets ?                        │
 │                                                                │
 │  💬 Activity                                                   │
-│     [timestamp] Starting GitHub data synchronization...        │
-│     [timestamp] <log message>                                  │
-│     [timestamp] <log message>                                  │
-│     [timestamp] <log message>                                  │
-│     [timestamp] <log message>                                  │
+│     21:37:12 ✨ Summoning data from the cloud...              │
+│     21:37:13 🔍 Fetching current user info                    │
 │                                                                │
-└────────────────────────────────────────────────────────────────┘
+│                                                                │
+│                                                                │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
 ```
-
-### Modern Console Design Elements
-
-- **Box Drawing**: Use Unicode box-drawing characters for elegant borders
-- **Emojis & Icons**: Modern visual indicators for status and categories
-- **Color Scheme**:
-  - ⚪ White circle for pending items
-  - 🔄 Blue spinner for active items
-  - ✅ Green checkmark for completed items
-  - 🔕 Gray circle for skipped items
-  - ❌ Red X for failed items
-- **Sections**: Clear visual separation with headers and spacing
-- **Responsive Layout**: Adjust to terminal width (minimum 64 chars)
 
 Console at the beginning of the `pull` command - `-i repositories`:
 
 ```
-┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
+╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ⚪ Repositories                                               │
-│  🔕 Discussions                                               │
-│  🔕 Issues                                                    │
-│  🔕 Pull Requests                                             │
+│  📋 Repositories                                               │
+│  🔕 Discussions                                                │
+│  🔕 Issues                                                     │
+│  🔕 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 0   ⚠️ 0   ❌ 0                          │
+│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
 │  🚀 Rate Limit    ? / ? used, resets ?                        │
 │                                                                │
 │  💬 Activity                                                   │
-│     [timestamp] Starting selective sync...                    │
-│     [timestamp] <log message>                                 │
-│     [timestamp] <log message>                                 │
-│     [timestamp] <log message>                                 │
-│     [timestamp] <log message>                                 │
+│     21:37:12 🎯 Starting selective sync...                    │
+│     21:37:13 📦 Clearing existing repositories...             │
 │                                                                │
-└────────────────────────────────────────────────────────────────┘
+│                                                                │
+│                                                                │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
 ```
-
-Note 🔕 for skipped items with dimmed appearance.
 
 Console during first item pull:
 
 ```
-┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
+╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  🔄 Repositories: 1,247                                       │
-│  ⚪ Discussions                                                │
-│  ⚪ Issues                                                     │
-│  ⚪ Pull Requests                                              │
+│  ⠋ Repositories: 1,247                                        │
+│  📋 Discussions                                                │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 120   ⚠️ 1   ❌ 2                        │
-│  🚀 Rate Limit    1000/5000 used, resets in 2h 15m           │
+│  📊 API Status    ✅ 120   🟡 1   ❌ 2                         │
+│  🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:37:54 Clearing existing repositories...                │
-│     21:37:55 Fetching page 12 of repositories                 │
-│     21:37:56 Processing batch 3 (repos 201-300)               │
-│     21:37:57 Rate limit: 89% remaining                        │
-│     21:37:58 Saved 47 repositories to database                │
+│     21:37:54 📦 Wrangling repositories...                     │
+│     21:37:55 📄 Fetching page 12                              │
+│     21:37:56 💾 Processing batch 3 (repos 201-300)            │
+│     21:37:57 ⚡ Rate limit: 89% remaining                     │
+│     21:37:58 ✨ Saved 47 repositories to database             │
 │                                                                │
-└────────────────────────────────────────────────────────────────┘
+╰────────────────────────────────────────────────────────────────╯
 ```
-
-- 🔄 Animated spinner that rotates based on request rate
-- 1,247 = number of items processed so far with comma formatting
-- Time format shows only HH:MM:SS for brevity
-- Rate limit shows friendly "resets in Xh Ym" format
 
 Console when first item completes:
 
 ```
-┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
+╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ✅ Repositories: 2,847                                       │
-│  🔄 Discussions: 156                                          │
-│  ⚪ Issues                                                     │
-│  ⚪ Pull Requests                                              │
+│  ✅ Repositories: 2,847                                        │
+│  ⠙ Discussions: 156                                           │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 160   ⚠️ 1   ❌ 2                        │
-│  🚀 Rate Limit    1500/5000 used, resets in 1h 45m           │
+│  📊 API Status    ✅ 160   🟡 1   ❌ 2                         │
+│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:41:23 ✅ Repositories completed (2,847 synced)         │
-│     21:41:24 🔄 Starting discussions sync...                  │
-│     21:41:25 Fetching discussions from repo-1                 │
-│     21:41:26 Processing discussions batch 1                   │
-│     21:41:27 Found 23 new discussions                         │
+│     21:41:23 🎉 Repositories completed (2,847 synced)          │
+│     21:41:24 💬 Herding discussions...                         │
+│     21:41:25 📄 Fetching from auth-service                    │
+│     21:41:26 💾 Processing batch 1                             │
+│     21:41:27 ✨ Found 23 new discussions                       │
 │                                                                │
-└────────────────────────────────────────────────────────────────┘
+╰────────────────────────────────────────────────────────────────╯
 ```
-
-- ✅ Green checkmark for completed items with final count
-- 🔄 Blue spinner automatically moves to next active item
-- Completion announcements in activity log with emojis
 
 Console when an error occurs:
 
 ```
-┌─ GitHub 🧠 pull ─────────────────────────────────────────────┐
+╭─ GitHub 🧠 pull ─────────────────────────────────────────────╮
 │                                                                │
-│  ✅ Repositories: 2,847                                       │
-│  ❌ Discussions: 156 (3 errors)                               │
-│  ⚪ Issues                                                     │
-│  ⚪ Pull Requests                                              │
+│  ✅ Repositories: 2,847                                        │
+│  ❌ Discussions: 156 (errors)                                  │
+│  📋 Issues                                                     │
+│  📋 Pull-requests                                              │
 │                                                                │
-│  📊 API Status    ✅ 160   ⚠️ 1   ❌ 5                        │
-│  🚀 Rate Limit    1500/5000 used, resets in 1h 45m           │
+│  📊 API Status    ✅ 160   🟡 1   ❌ 5                         │
+│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:42:15 ❌ API Error: Rate limit exceeded                │
-│     21:42:16 🔄 Retrying in 30 seconds...                     │
-│     21:42:47 ⚠️  Repository access denied: private-repo       │
-│     21:42:48 🔄 Continuing with next repository...            │
-│     21:42:49 ❌ Failed to save discussion #4521               │
+│     21:42:15 ❌ API Error: Rate limit exceeded                 │
+│     21:42:16 ⏳ Retrying in 30 seconds...                      │
+│     21:42:47 ⚠️  Repository access denied: private-repo        │
+│     21:42:48 ➡️  Continuing with next repository...            │
+│     21:42:49 ❌ Failed to save discussion #4521                │
 │                                                                │
-└────────────────────────────────────────────────────────────────┘
+╰────────────────────────────────────────────────────────────────╯
 ```
 
-- ❌ Red X for items with errors, showing error count
-- Error details in activity log with appropriate emoji indicators
-- System continues processing after recoverable errors
+### Console Icons
 
-### Modern Console Implementation Requirements
+- 📋 = Pending (enabled but not started)
+- 🔕 = Disabled (not in `-i` selection)
+- ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ = Spinner (active item, bright blue)
+- ✅ = Completed (bright green)
+- ❌ = Failed (bright red)
 
-**Box Drawing Characters:**
+### Layout
 
-- Top border: `┌─` + title + `─` repeated + `┐`
-- Side borders: `│` with proper padding
-- Bottom border: `└` + `─` repeated + `┘`
-- Minimum width: 64 characters, scales with terminal width
+- Gradient animated borders (purple → blue → cyan) updated every second
+- Responsive width: `max(76, terminalWidth - 4)`
+- Box expands to full terminal width
+- Numbers formatted with commas: `1,247`
+- Time format: `15:04:05` (HH:MM:SS)
+- Rate limit: friendly format like `2h 15m`
+- API Status: ✅ success, 🟡 warning (yellow circle), ❌ errors
+- Note: Avoid ⚠️ emoji (has variation selector causing width issues)
 
-**Emoji Status Indicators:**
+### Implementation Notes
 
-- ⚪ Pending (white circle)
-- 🔄 Active (blue arrows, animate between: 🔄🔃⚡🔁)
-- ✅ Completed (green checkmark)
-- 🔕 Skipped (muted bell with gray text)
-- ❌ Failed (red X)
+**Bubble Tea Message Handling:**
+
+- All UI updates use `tea.Program.Send()` to send typed messages
+- Model's `Update()` method processes messages and returns new state
+- View automatically re-renders when model changes
+- No manual cursor or screen management needed
+
+**Box Drawing:**
+
+- Use lipgloss to build bordered layouts with `lipgloss.JoinVertical`
+- Rounded borders (╭╮╰╯) styled with adaptive colors
+- Border colors animated via `tickMsg` sent every second
+- Responsive width: `max(64, terminalWidth - 4)`
+
+**Spinners:**
+
+- Use `bubbles/spinner` with Dot style (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+- Spinner state managed by Bubble Tea's `spinner.Model`
+- Only one spinner shown at a time (for active item)
+- Spinner ticks handled via `spinner.TickMsg`
 
 **Number Formatting:**
 
-- Use comma separators for numbers > 999: `1,247`
-- Show error counts in parentheses: `156 (3 errors)`
-- Right-align counts within available space
+- Add commas to numbers > 999: `1,247` not `1247`
+- Helper function: `formatNumber(n int) string`
+- Used in item counts, API stats, and rate limit display
 
 **Time Formatting:**
 
-- Activity logs: `HH:MM:SS` format only
-- Rate limit resets: Human-friendly `2h 15m`, `45m`, `30s`
-- No timezone display (use local time)
+- Activity logs: `15:04:05` format (HH:MM:SS only)
+- Rate limit resets: `formatTimeRemaining()` returns friendly format like "2h 15m"
 
-**Responsive Layout:**
+**Window Resize:**
 
-- Minimum 64 characters width
-- Scale sections proportionally for wider terminals
-- Listen for SIGWINCH signal to detect terminal resize events
-- Dynamically update table width and re-render when terminal is resized
-- Truncate long messages with `...` if needed
-- Maintain fixed box structure regardless of content
+- Listen for `tea.WindowSizeMsg` in model's `Update()`
+- Store width/height in model state
+- Layout adjusts automatically on next render
 
 **Color Scheme:**
 
-- Box borders: Bright white/cyan
-- Section headers: Bold white with emojis
-- Completed items: Green text + ✅
-- Active items: Blue text + animated spinner
-- Skipped items: Gray/dim text + 🔕
-- Failed items: Red text + ❌
-- Log messages: Default white, errors in red
+- Purple/blue gradient for borders (via `borderColors` array)
+- Bright blue (#12) for active items
+- Bright green (#10) for completed ✅
+- Dim gray (#240) for skipped 🔕
+- Bright red (#9) for failed ❌
+- Applied via `lipgloss.NewStyle().Foreground()`
+
+**Milestone Celebrations:**
+
+- 1,000 items: ✨ emoji in log
+- 5,000 items: 🎉 emoji in log
+- 10,000 items: 🚀✨🎉 emojis in log
+- Triggered in `itemCompleteMsg` handler
 
 ### Repositories
 
