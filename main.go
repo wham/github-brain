@@ -211,12 +211,6 @@ func updateRateLimitInfo(headers http.Header) {
 }
 
 // getRateLimitInfo returns a copy of the current rate limit information
-func getRateLimitInfo() RateLimitInfo {
-	rateLimitInfoMutex.RLock()
-	defer rateLimitInfoMutex.RUnlock()
-	return currentRateLimit
-}
-
 // updateStatusCounter increments the appropriate status code counter
 func updateStatusCounter(statusCode int) {
 	statusMutex.Lock()
@@ -230,13 +224,6 @@ func updateStatusCounter(statusCode int) {
 	case statusCode >= 500:
 		statusCounters.Error5XX++
 	}
-}
-
-// getStatusCounters returns a copy of the current status counters
-func getStatusCounters() StatusCounters {
-	statusMutex.Lock()
-	defer statusMutex.Unlock()
-	return statusCounters
 }
 
 // CustomTransport wraps the default HTTP transport to capture response headers and status codes
@@ -462,13 +449,6 @@ func formatTimeRemaining(resetTime time.Time) string {
 }
 
 // max returns the maximum of two integers
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // capitalize first letter of a string
 func capitalize(s string) string {
 	if s == "" {
