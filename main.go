@@ -2250,6 +2250,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -2267,6 +2268,16 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -2624,6 +2635,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -2641,6 +2653,16 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -2775,9 +2797,11 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 
 					repoDiscussionsUpdated++
 					
-					// Update global count and progress for each individual discussion
+					// Update global count and progress every 10 discussions to reduce overhead
 					newTotal := atomic.AddInt64(&totalDiscussionsUpdated, 1)
-					progress.UpdateItemCount("discussions", int(newTotal))
+					if repoDiscussionsUpdated%10 == 0 || i == len(query.Repository.Discussions.Nodes)-1 {
+						progress.UpdateItemCount("discussions", int(newTotal))
+					}
 				}
 
 				// If we hit old discussions on this page, stop processing this repository
@@ -2860,6 +2884,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -2876,6 +2901,16 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 				lastCount = currentCount
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -3004,8 +3039,10 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 
 					newTotal := totalIssues.Add(1)
 					
-					// Update progress count for each issue
-					progress.UpdateItemCount("issues", int(newTotal))
+					// Update progress count every 10 issues to reduce overhead
+					if savedIssuesThisPage%10 == 0 || len(query.Repository.Issues.Nodes) > 0 {
+						progress.UpdateItemCount("issues", int(newTotal))
+					}
 					savedIssuesThisPage++
 				}
 
@@ -3099,6 +3136,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -3115,6 +3153,16 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 				lastCount = currentCount
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -3247,8 +3295,10 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 					newTotal := totalPullRequests.Add(1)
 					
-					// Update progress count for each pull request
-					progress.UpdateItemCount("pull-requests", int(newTotal))
+					// Update progress count every 10 pull requests to reduce overhead
+					if int(newTotal)%10 == 0 || len(query.Repository.PullRequests.Nodes) > 0 {
+						progress.UpdateItemCount("pull-requests", int(newTotal))
+					}
 				}
 
 				// Update cursor for next page
@@ -4733,42 +4783,72 @@ func main() {
 		// Initialize progress display with all items
 		progress.Log("GitHub client initialized, starting data operations")
 		
-		// Fetch current user (always runs, even when using -i)
-		progress.Log("Fetching current authenticated user...")
-		var currentUser struct {
-			Viewer struct {
-				Login string
-			}
+	// Fetch current user (always runs, even when using -i)
+	progress.Log("Fetching current authenticated user...")
+	var currentUser struct {
+		Viewer struct {
+			Login string
 		}
-		if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
-			progress.Log("Error: Failed to fetch current user: %v", err)
-			progress.preserveOnExit = true
+	}
+	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
+		// GraphQL error - decrement success counter and increment error counter
+		// since GraphQL returns HTTP 200 even for errors
+		statusMutex.Lock()
+		if statusCounters.Success2XX > 0 {
+			statusCounters.Success2XX--
+		}
+		statusCounters.Error4XX++
+		statusMutex.Unlock()
+		
+		// Even on error, update UI with any rate limit info we captured
+		rateLimitInfoMutex.RLock()
+		progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+		rateLimitInfoMutex.RUnlock()
+		
+		statusMutex.Lock()
+		progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+		statusMutex.Unlock()
+		
+		progress.Log("Error: Failed to fetch current user: %v", err)
+		progress.Log("Please check your GitHub token and network connection")
+		// Give user time to see the error before stopping
+		time.Sleep(3 * time.Second)
+		progress.Stop()
+		os.Exit(1)
+	}
+	currentUsername := currentUser.Viewer.Login
+	progress.Log("Authenticated as user: %s", currentUsername)
+	
+	// Update UI with rate limit info from the user query response
+	rateLimitInfoMutex.RLock()
+	progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+	rateLimitInfoMutex.RUnlock()
+	
+	// Update API status from the user query
+	statusMutex.Lock()
+	progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+	statusMutex.Unlock()	// Clear data if Force flag is set
+	if err := ClearData(db, config, progress); err != nil {
+		progress.Log("Error: Failed to clear data: %v", err)
+		time.Sleep(3 * time.Second)
+		progress.Stop()
+		os.Exit(1)
+	}
+
+	// No longer deleting data from other organizations - keeping all data
+	// This ensures backward compatibility with existing databases
+
+	// Pull repositories if requested
+	if pullRepositories {
+		if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
+			progress.MarkItemFailed("repositories", err.Error())
+			progress.Log("Failed to pull repositories: %v", err)
+			// Stop processing subsequent items if repositories failed
+			time.Sleep(3 * time.Second)
 			progress.Stop()
 			os.Exit(1)
 		}
-		currentUsername := currentUser.Viewer.Login
-		progress.Log("Authenticated as user: %s", currentUsername)
-		
-		// Clear data if Force flag is set
-		if err := ClearData(db, config, progress); err != nil {
-			progress.Log("Error: Failed to clear data: %v", err)
-			os.Exit(1)
-		}
-
-		// No longer deleting data from other organizations - keeping all data
-		// This ensures backward compatibility with existing databases
-
-		// Pull repositories if requested
-		if pullRepositories {
-			if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("repositories", err.Error())
-				progress.Log("Failed to pull repositories: %v", err)
-				// Stop processing subsequent items if repositories failed
-				progress.preserveOnExit = true
-				progress.Stop()
-				os.Exit(1)
-			}
-		}
+	}
 
 		// Pull discussions if requested
 		if pullDiscussions {
@@ -4776,7 +4856,7 @@ func main() {
 			if progress.HasAnyFailed() {
 				progress.Log("Skipping discussions due to previous failures")
 				// Exit early if any previous item failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4785,7 +4865,7 @@ func main() {
 				progress.MarkItemFailed("discussions", err.Error())
 				progress.Log("Error: %v", err)
 				// Stop processing subsequent items if discussions failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4797,7 +4877,7 @@ func main() {
 			if progress.HasAnyFailed() {
 				progress.Log("Skipping issues due to previous failures")
 				// Exit early if any previous item failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4806,7 +4886,7 @@ func main() {
 				progress.MarkItemFailed("issues", err.Error())
 				progress.Log("Error: %v", err)
 				// Stop processing subsequent items if issues failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4818,7 +4898,7 @@ func main() {
 			if progress.HasAnyFailed() {
 				progress.Log("Skipping pull requests due to previous failures")
 				// Exit early if any previous item failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4830,7 +4910,7 @@ func main() {
 				progress.MarkItemFailed("pull-requests", err.Error())
 				progress.Log("Error: %v", err)
 				// Stop processing subsequent items if pull requests failed
-				progress.preserveOnExit = true
+				time.Sleep(3 * time.Second)
 				progress.Stop()
 				os.Exit(1)
 			}
@@ -4981,8 +5061,7 @@ type ProgressInterface interface {
 
 // UIProgress implements the ProgressInterface using Bubble Tea for rendering
 type UIProgress struct {
-	program        *tea.Program
-	preserveOnExit bool
+	program *tea.Program
 }
 
 // NewUIProgress creates a new Bubble Tea-based progress indicator
