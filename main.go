@@ -2250,6 +2250,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -2267,6 +2268,16 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -2624,6 +2635,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 	stopRateMeasurement := make(chan struct{})
 
 	// Start a goroutine to measure and update request rate every second
+	// Also update rate limit and API status display
 	go func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -2641,6 +2653,16 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
+				
+				// Update rate limit display from global state
+				rateLimitInfoMutex.RLock()
+				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+				rateLimitInfoMutex.RUnlock()
+				
+				// Update API status display from global counters
+				statusMutex.Lock()
+				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -4774,31 +4796,33 @@ func main() {
 		// Give user time to see the error before stopping
 		time.Sleep(3 * time.Second)
 		progress.Stop()
-		fmt.Fprintf(os.Stderr, "\nError: Failed to fetch current user: %v\n", err)
-		fmt.Fprintf(os.Stderr, "Please check your GitHub token and network connection.\n")
 		os.Exit(1)
 	}
 	currentUsername := currentUser.Viewer.Login
-	progress.Log("Authenticated as user: %s", currentUsername)		// Clear data if Force flag is set
-		if err := ClearData(db, config, progress); err != nil {
-			progress.Log("Error: Failed to clear data: %v", err)
+	progress.Log("Authenticated as user: %s", currentUsername)
+	
+	// Clear data if Force flag is set
+	if err := ClearData(db, config, progress); err != nil {
+		progress.Log("Error: Failed to clear data: %v", err)
+		time.Sleep(3 * time.Second)
+		progress.Stop()
+		os.Exit(1)
+	}
+
+	// No longer deleting data from other organizations - keeping all data
+	// This ensures backward compatibility with existing databases
+
+	// Pull repositories if requested
+	if pullRepositories {
+		if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
+			progress.MarkItemFailed("repositories", err.Error())
+			progress.Log("Failed to pull repositories: %v", err)
+			// Stop processing subsequent items if repositories failed
+			time.Sleep(3 * time.Second)
+			progress.Stop()
 			os.Exit(1)
 		}
-
-		// No longer deleting data from other organizations - keeping all data
-		// This ensures backward compatibility with existing databases
-
-		// Pull repositories if requested
-		if pullRepositories {
-			if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("repositories", err.Error())
-				progress.Log("Failed to pull repositories: %v", err)
-				// Stop processing subsequent items if repositories failed
-				progress.preserveOnExit = true
-				progress.Stop()
-				os.Exit(1)
-			}
-		}
+	}
 
 		// Pull discussions if requested
 		if pullDiscussions {
@@ -4817,7 +4841,6 @@ func main() {
 				// Stop processing subsequent items if discussions failed
 				time.Sleep(3 * time.Second)
 				progress.Stop()
-				fmt.Fprintf(os.Stderr, "\nFailed to pull discussions: %v\n", err)
 				os.Exit(1)
 			}
 		}
@@ -4839,7 +4862,6 @@ func main() {
 				// Stop processing subsequent items if issues failed
 				time.Sleep(3 * time.Second)
 				progress.Stop()
-				fmt.Fprintf(os.Stderr, "\nFailed to pull issues: %v\n", err)
 				os.Exit(1)
 			}
 		}
@@ -4864,7 +4886,6 @@ func main() {
 				// Stop processing subsequent items if pull requests failed
 				time.Sleep(3 * time.Second)
 				progress.Stop()
-				fmt.Fprintf(os.Stderr, "\nFailed to pull pull requests: %v\n", err)
 				os.Exit(1)
 			}
 		}
