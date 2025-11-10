@@ -4791,6 +4791,24 @@ func main() {
 		}
 	}
 	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
+		// GraphQL error - decrement success counter and increment error counter
+		// since GraphQL returns HTTP 200 even for errors
+		statusMutex.Lock()
+		if statusCounters.Success2XX > 0 {
+			statusCounters.Success2XX--
+		}
+		statusCounters.Error4XX++
+		statusMutex.Unlock()
+		
+		// Even on error, update UI with any rate limit info we captured
+		rateLimitInfoMutex.RLock()
+		progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+		rateLimitInfoMutex.RUnlock()
+		
+		statusMutex.Lock()
+		progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+		statusMutex.Unlock()
+		
 		progress.Log("Error: Failed to fetch current user: %v", err)
 		progress.Log("Please check your GitHub token and network connection")
 		// Give user time to see the error before stopping
