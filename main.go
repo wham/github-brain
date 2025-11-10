@@ -4783,13 +4783,13 @@ func main() {
 		// Initialize progress display with all items
 		progress.Log("GitHub client initialized, starting data operations")
 		
-		// Fetch current user (always runs, even when using -i)
-		progress.Log("Fetching current authenticated user...")
-		var currentUser struct {
-			Viewer struct {
-				Login string
-			}
+	// Fetch current user (always runs, even when using -i)
+	progress.Log("Fetching current authenticated user...")
+	var currentUser struct {
+		Viewer struct {
+			Login string
 		}
+	}
 	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
 		progress.Log("Error: Failed to fetch current user: %v", err)
 		progress.Log("Please check your GitHub token and network connection")
@@ -4801,7 +4801,15 @@ func main() {
 	currentUsername := currentUser.Viewer.Login
 	progress.Log("Authenticated as user: %s", currentUsername)
 	
-	// Clear data if Force flag is set
+	// Update UI with rate limit info from the user query response
+	rateLimitInfoMutex.RLock()
+	progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+	rateLimitInfoMutex.RUnlock()
+	
+	// Update API status from the user query
+	statusMutex.Lock()
+	progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+	statusMutex.Unlock()	// Clear data if Force flag is set
 	if err := ClearData(db, config, progress); err != nil {
 		progress.Log("Error: Failed to clear data: %v", err)
 		time.Sleep(3 * time.Second)
