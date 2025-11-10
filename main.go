@@ -5061,8 +5061,7 @@ type ProgressInterface interface {
 
 // UIProgress implements the ProgressInterface using Bubble Tea for rendering
 type UIProgress struct {
-	program        *tea.Program
-	preserveOnExit bool
+	program *tea.Program
 }
 
 // NewUIProgress creates a new Bubble Tea-based progress indicator
