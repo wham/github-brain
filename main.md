@@ -2,6 +2,8 @@
 
 AI coding agent specification. Human documentation in README.md. Read https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/ to understand the approach.
 
+Keep the app in one file `main.go`.
+
 ## CLI
 
 Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull`, `mcp`, and `ui` commands.
@@ -512,7 +514,7 @@ Console when an error occurs:
 
 ## mcp
 
-- Use https://github.com/mark3labs/mcp-go
+- Use the official MCP SDK for Go: https://github.com/modelcontextprotocol/go-sdk
 - Important: Pull library repository for docs/examples instead of using `go doc`
 - Update library to latest version when modifying MCP code
 - Use stdio MCP transport
