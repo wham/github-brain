@@ -3598,42 +3598,39 @@ type ListDiscussionsInput struct {
 	Fields      []string `json:"fields,omitempty" jsonschema:"Array of fields to include in the response. Available fields: [title, url, repository, created_at, author, body]. Defaults to all fields"`
 }
 
-// ListDiscussionsOutput represents the output from list_discussions tool
-type ListDiscussionsOutput struct {
-	Result string `json:"result" jsonschema:"formatted discussion results"`
-}
-
 // ListDiscussionsTool handles the list_discussions MCP tool
-func ListDiscussionsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListDiscussionsInput) (*mcp.CallToolResult, ListDiscussionsOutput, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input ListDiscussionsInput) (*mcp.CallToolResult, ListDiscussionsOutput, error) {
+func ListDiscussionsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListDiscussionsInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListDiscussionsInput) (*mcp.CallToolResult, any, error) {
 		slog.Debug("list_discussions called", "input", input)
 
 		// Validate fields parameter
 		availableFields := []string{"title", "url", "repository", "created_at", "author", "body"}
 		if err := validateFields(input.Fields, availableFields, "discussions"); err != nil {
 			// Return a tool error (not a protocol error)
-			return nil, ListDiscussionsOutput{}, err
+			return nil, nil, err
 		}
 
 		// Parse dates
 		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
 		if err != nil {
-			return nil, ListDiscussionsOutput{}, err
+			return nil, nil, err
 		}
 
 		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
 		if err != nil {
-			return nil, ListDiscussionsOutput{}, err
+			return nil, nil, err
 		}
 
 		// Get discussions
 		discussions, err := db.GetDiscussions(input.Repository, createdFromTime, createdToTime, input.Authors)
 		if err != nil {
-			return nil, ListDiscussionsOutput{}, fmt.Errorf("failed to get discussions: %w", err)
+			return nil, nil, fmt.Errorf("failed to get discussions: %w", err)
 		}
 
 		if len(discussions) == 0 {
-			return nil, ListDiscussionsOutput{Result: "No discussions found."}, nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No discussions found."}},
+			}, nil, nil
 		}
 
 		// Format discussions
@@ -3707,7 +3704,9 @@ func ListDiscussionsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Lis
 			result.WriteString("\n---\n\n")
 		}
 
-		return nil, ListDiscussionsOutput{Result: result.String()}, nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
 	}
 }
 
@@ -3722,46 +3721,43 @@ type ListIssuesInput struct {
 	Fields      []string `json:"fields,omitempty" jsonschema:"Array of fields to include. Available: [title, url, repository, created_at, closed_at, author, status, body]"`
 }
 
-// ListIssuesOutput represents the output from list_issues tool
-type ListIssuesOutput struct {
-	Result string `json:"result" jsonschema:"formatted issue results"`
-}
-
 // ListIssuesTool handles the list_issues MCP tool
-func ListIssuesTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListIssuesInput) (*mcp.CallToolResult, ListIssuesOutput, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input ListIssuesInput) (*mcp.CallToolResult, ListIssuesOutput, error) {
+func ListIssuesTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListIssuesInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListIssuesInput) (*mcp.CallToolResult, any, error) {
 		// Validate fields
 		availableFields := []string{"title", "url", "repository", "created_at", "closed_at", "author", "status", "body"}
 		if err := validateFields(input.Fields, availableFields, "issues"); err != nil {
-			return nil, ListIssuesOutput{}, err
+			return nil, nil, err
 		}
 
 		// Parse dates
 		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
 		if err != nil {
-			return nil, ListIssuesOutput{}, err
+			return nil, nil, err
 		}
 		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
 		if err != nil {
-			return nil, ListIssuesOutput{}, err
+			return nil, nil, err
 		}
 		closedFromTime, err := parseRFC3339DatePtr(input.ClosedFrom, "closed_from")
 		if err != nil {
-			return nil, ListIssuesOutput{}, err
+			return nil, nil, err
 		}
 		closedToTime, err := parseRFC3339DatePtr(input.ClosedTo, "closed_to")
 		if err != nil {
-			return nil, ListIssuesOutput{}, err
+			return nil, nil, err
 		}
 
 		// Get issues
 		issues, err := db.GetIssues(input.Repository, createdFromTime, createdToTime, closedFromTime, closedToTime, input.Authors)
 		if err != nil {
-			return nil, ListIssuesOutput{}, fmt.Errorf("failed to get issues: %w", err)
+			return nil, nil, fmt.Errorf("failed to get issues: %w", err)
 		}
 
 		if len(issues) == 0 {
-			return nil, ListIssuesOutput{Result: "No issues found."}, nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No issues found."}},
+			}, nil, nil
 		}
 
 		// Format issues
@@ -3860,7 +3856,9 @@ func ListIssuesTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListIssu
 			result.WriteString("\n---\n\n")
 		}
 
-		return nil, ListIssuesOutput{Result: result.String()}, nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
 	}
 }
 
@@ -3877,14 +3875,9 @@ type ListPullRequestsInput struct {
 	Fields      []string `json:"fields,omitempty" jsonschema:"Fields to include: [title, url, repository, created_at, merged_at, closed_at, author, status, body]"`
 }
 
-// ListPullRequestsOutput represents the output from list_pull_requests tool
-type ListPullRequestsOutput struct {
-	Result string `json:"result" jsonschema:"formatted pull request results"`
-}
-
 // ListPullRequestsTool handles the list_pull_requests MCP tool
-func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListPullRequestsInput) (*mcp.CallToolResult, ListPullRequestsOutput, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input ListPullRequestsInput) (*mcp.CallToolResult, ListPullRequestsOutput, error) {
+func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListPullRequestsInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListPullRequestsInput) (*mcp.CallToolResult, any, error) {
 		// Validate fields
 		validFields := []string{"title", "url", "repository", "created_at", "merged_at", "closed_at", "author", "status", "body"}
 		if len(input.Fields) > 0 {
@@ -3897,7 +3890,7 @@ func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Li
 					}
 				}
 				if !found {
-					return nil, ListPullRequestsOutput{}, fmt.Errorf("Invalid fields: %s\n\nUse one of the available fields: %s", field, strings.Join(validFields, ", "))
+					return nil, nil, fmt.Errorf("Invalid fields: %s\n\nUse one of the available fields: %s", field, strings.Join(validFields, ", "))
 				}
 			}
 		}
@@ -3905,50 +3898,52 @@ func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Li
 		// Parse dates
 		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 		closedFromTime, err := parseRFC3339DatePtr(input.ClosedFrom, "closed_from")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 		closedToTime, err := parseRFC3339DatePtr(input.ClosedTo, "closed_to")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 		mergedFromTime, err := parseRFC3339DatePtr(input.MergedFrom, "merged_from")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 		mergedToTime, err := parseRFC3339DatePtr(input.MergedTo, "merged_to")
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, err
+			return nil, nil, err
 		}
 
 		// Get pull requests
 		pullRequests, err := db.GetPullRequests(input.Repository, createdFromTime, createdToTime, closedFromTime, closedToTime, mergedFromTime, mergedToTime, input.Authors)
 		if err != nil {
-			return nil, ListPullRequestsOutput{}, fmt.Errorf("failed to get pull requests: %w", err)
+			return nil, nil, fmt.Errorf("failed to get pull requests: %w", err)
 		}
 
 		if len(pullRequests) == 0 {
-			return nil, ListPullRequestsOutput{Result: "No pull requests found."}, nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "No pull requests found."}},
+		}, nil, nil
+	}
+
+	// Format output - start with total count
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Total %d pull requests found.\n\n", len(pullRequests)))
+
+	// Determine which fields to include
+	fieldsToInclude := make(map[string]bool)
+	if len(input.Fields) == 0 {
+		for _, field := range validFields {
+			fieldsToInclude[field] = true
 		}
-
-		// Format output - start with total count
-		var result strings.Builder
-		result.WriteString(fmt.Sprintf("Total %d pull requests found.\n\n", len(pullRequests)))
-
-		// Determine which fields to include
-		fieldsToInclude := make(map[string]bool)
-		if len(input.Fields) == 0 {
-			for _, field := range validFields {
-				fieldsToInclude[field] = true
-			}
-		} else {
+	} else {
 			for _, field := range input.Fields {
 				fieldsToInclude[field] = true
 			}
@@ -4023,10 +4018,14 @@ func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Li
 			if len(parts) > 1 {
 				finalResult += parts[1]
 			}
-			return nil, ListPullRequestsOutput{Result: finalResult}, nil
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: finalResult}},
+			}, nil, nil
 		}
 
-		return nil, ListPullRequestsOutput{Result: result.String()}, nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
 	}
 }
 
@@ -4036,22 +4035,17 @@ type SearchInput struct {
 	Fields []string `json:"fields,omitempty" jsonschema:"Fields to include: [title, url, repository, created_at, author, type, state, body]"`
 }
 
-// SearchOutput represents the output from search tool
-type SearchOutput struct {
-	Result string `json:"result" jsonschema:"formatted search results"`
-}
-
 // SearchTool handles the search MCP tool
-func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolRequest, SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
-	return func(ctx context.Context, req *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, SearchOutput, error) {
+func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolRequest, SearchInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, any, error) {
 		if input.Query == "" {
-			return nil, SearchOutput{}, fmt.Errorf("query parameter is required")
+			return nil, nil, fmt.Errorf("query parameter is required")
 		}
 
 		// Validate fields
 		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "body"}
 		if err := validateFields(input.Fields, availableFields, "search results"); err != nil {
-			return nil, SearchOutput{}, err
+			return nil, nil, err
 		}
 
 		// Determine which fields to include
@@ -4069,19 +4063,21 @@ func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolR
 		// Perform search
 		searchResults, err := searchEngine.Search(input.Query, 10)
 		if err != nil {
-			return nil, SearchOutput{}, fmt.Errorf("search query failed: %w", err)
+			return nil, nil, fmt.Errorf("search query failed: %w", err)
 		}
 
 		if len(searchResults) == 0 {
-			return nil, SearchOutput{Result: fmt.Sprintf("No results found for \"%s\".", input.Query)}, nil
-		}
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("No results found for \"%s\".", input.Query)}},
+		}, nil, nil
+	}
 
-		// Format results
-		var result strings.Builder
-		for _, searchResult := range searchResults {
-			var formatted strings.Builder
-			formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
-			if fieldsToInclude["url"] {
+	// Format results
+	var result strings.Builder
+	for _, searchResult := range searchResults {
+		var formatted strings.Builder
+		formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
+		if fieldsToInclude["url"] {
 				formatted.WriteString(fmt.Sprintf("- URL: %s\n", searchResult.URL))
 			}
 			if fieldsToInclude["type"] {
@@ -4107,7 +4103,9 @@ func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolR
 			result.WriteString(formatted.String())
 		}
 
-		return nil, SearchOutput{Result: result.String()}, nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
 	}
 }
 
