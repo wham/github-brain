@@ -23,9 +23,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/joho/godotenv"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -3477,886 +3476,6 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 	return false
 }
 
-
-
-
-// RunMCPServer runs the MCP server using the mcp-go library
-func RunMCPServer(db *DB) error {
-	// Load organization from environment variable
-	organization := os.Getenv("ORGANIZATION")
-	if organization == "" {
-		return fmt.Errorf("ORGANIZATION environment variable is required for MCP server")
-	}
-
-	// Create SearchEngine instance for unified search functionality
-	searchEngine := NewSearchEngine(db)
-
-	// Create a new MCP server - enable both tool and prompt capabilities
-	s := server.NewMCPServer(
-		"GitHub Offline MCP Server",
-		"1.0.0",
-		server.WithToolCapabilities(true),
-		server.WithPromptCapabilities(true),
-	)
-
-	// Register the list_discussions tool
-	listDiscussionsTool := mcp.NewTool("list_discussions",
-		mcp.WithDescription("Lists discussions with optional filtering. Discussions are separated by `---`."),
-		mcp.WithString("repository",
-			mcp.Description("Filter by repository name. Example: auth-service. Defaults to any repository in the organization."),
-		),
-		mcp.WithString("created_from",
-			mcp.Description("Filter by created_at after the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("created_to",
-			mcp.Description("Filter by created_at before the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithArray("authors",
-			mcp.Description("Array of author usernames. Example: [john_doe, jane_doe]. Defaults to any author."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-		mcp.WithArray("fields",
-			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"author\", \"body\"]. Defaults to all fields."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-	)
-
-	// Add tool handler for list_discussions
-	s.AddTool(listDiscussionsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Extract parameters using the library's parameter methods
-		repository := request.GetString("repository", "")
-		createdFromStr := request.GetString("created_from", "")
-		createdToStr := request.GetString("created_to", "")
-		authors := request.GetStringSlice("authors", []string{})
-		fields := request.GetStringSlice("fields", []string{})
-
-		// Validate fields parameter
-		availableFields := []string{"title", "url", "repository", "created_at", "author", "body"}
-		if err := validateFields(fields, availableFields, "discussions"); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Parse dates using helper functions
-		createdFromTime, err := parseRFC3339Date(createdFromStr, "created_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		createdToTime, err := parseRFC3339Date(createdToStr, "created_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Get discussions
-		discussions, err := db.GetDiscussions(repository, createdFromTime, createdToTime, authors)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get discussions: %v", err)), nil
-		}
-
-		// If no discussions found, return specific message
-		if len(discussions) == 0 {
-			return mcp.NewToolResultText("No discussions found."), nil
-		}
-
-		// Format discussions according to spec
-		var result strings.Builder
-		responseSize := 0
-		discussionsShown := 0
-		maxResponseSize := 990 * 1024 // 990 KB
-		truncated := false
-
-		// First pass: count how many discussions we can fit
-		for i, discussion := range discussions {
-			// Format discussion with field filtering
-			var formatted strings.Builder
-			
-			if shouldIncludeField("title", fields) {
-				formatted.WriteString(fmt.Sprintf("## %s\n\n", discussion.Title))
-			}
-			
-			if shouldIncludeField("url", fields) {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", discussion.URL))
-			}
-			if shouldIncludeField("repository", fields) {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", discussion.Repository))
-			}
-			if shouldIncludeField("created_at", fields) {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", discussion.CreatedAt.Format(time.RFC3339)))
-			}
-			if shouldIncludeField("author", fields) {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", discussion.Author))
-			}
-			
-			formatted.WriteString("\n")
-			
-			if shouldIncludeField("body", fields) {
-				formatted.WriteString(fmt.Sprintf("%s\n", discussion.Body))
-			}
-			
-			formatted.WriteString("\n---\n\n")
-			formattedStr := formatted.String()
-
-			// Check if adding this discussion would exceed the limit
-			if responseSize+len(formattedStr) > maxResponseSize && discussionsShown > 0 {
-				truncated = true
-				break
-			}
-
-			responseSize += len(formattedStr)
-			discussionsShown = i + 1
-		}
-
-		// If truncated, prepend the warning message
-		if truncated {
-			remaining := len(discussions) - discussionsShown
-			result.WriteString(fmt.Sprintf("Showing only the first %d discussions. There's %d more, please refine your search. Use `created_from` and `created_to` parameters to narrow the results.\n\n---\n\n",
-				discussionsShown, remaining))
-		}
-
-		// Now format the discussions we can fit
-		for i := 0; i < discussionsShown; i++ {
-			discussion := discussions[i]
-			
-			if shouldIncludeField("title", fields) {
-				result.WriteString(fmt.Sprintf("## %s\n\n", discussion.Title))
-			}
-			
-			if shouldIncludeField("url", fields) {
-				result.WriteString(fmt.Sprintf("- URL: %s\n", discussion.URL))
-			}
-			if shouldIncludeField("repository", fields) {
-				result.WriteString(fmt.Sprintf("- Repository: %s\n", discussion.Repository))
-			}
-			if shouldIncludeField("created_at", fields) {
-				result.WriteString(fmt.Sprintf("- Created at: %s\n", discussion.CreatedAt.Format(time.RFC3339)))
-			}
-			if shouldIncludeField("author", fields) {
-				result.WriteString(fmt.Sprintf("- Author: %s\n", discussion.Author))
-			}
-			
-			result.WriteString("\n")
-			
-			if shouldIncludeField("body", fields) {
-				result.WriteString(fmt.Sprintf("%s\n", discussion.Body))
-			}
-			
-			result.WriteString("\n---\n\n")
-		}
-
-		return mcp.NewToolResultText(result.String()), nil
-	})
-
-	// Register the list_issues tool
-	listIssuesTool := mcp.NewTool("list_issues",
-		mcp.WithDescription("Lists issues with optional filtering."),
-		mcp.WithString("repository",
-			mcp.Description("Filter by repository name. Example: auth-service. Defaults to any repository in the organization."),
-		),
-		mcp.WithString("created_from",
-			mcp.Description("Filter by created_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("created_to",
-			mcp.Description("Filter by created_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("closed_from",
-			mcp.Description("Filter by closed_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("closed_to",
-			mcp.Description("Filter by closed_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithArray("authors",
-			mcp.Description("Array of author usernames. Example: [john_doe, jane_doe]. Defaults to any author."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-		mcp.WithArray("fields",
-			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"closed_at\", \"author\", \"status\", \"body\"]. Defaults to all fields."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-	)
-
-	// Add tool handler for list_issues
-	s.AddTool(listIssuesTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Extract parameters using the library's parameter methods
-		repository := request.GetString("repository", "")
-		createdFromStr := request.GetString("created_from", "")
-		createdToStr := request.GetString("created_to", "")
-		closedFromStr := request.GetString("closed_from", "")
-		closedToStr := request.GetString("closed_to", "")
-		authors := request.GetStringSlice("authors", []string{})
-		fields := request.GetStringSlice("fields", []string{})
-
-		// Validate fields parameter
-		availableFields := []string{"title", "url", "repository", "created_at", "closed_at", "author", "status", "body"}
-		if err := validateFields(fields, availableFields, "issues"); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Parse dates using helper functions
-		createdFromTime, err := parseRFC3339Date(createdFromStr, "created_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		createdToTime, err := parseRFC3339Date(createdToStr, "created_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		closedFromTime, err := parseRFC3339DatePtr(closedFromStr, "closed_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		closedToTime, err := parseRFC3339DatePtr(closedToStr, "closed_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Get issues
-		issues, err := db.GetIssues(repository, createdFromTime, createdToTime, closedFromTime, closedToTime, authors)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get issues: %v", err)), nil
-		}
-
-		// If no issues found, return specific message
-		if len(issues) == 0 {
-			return mcp.NewToolResultText("No issues found."), nil
-		}
-
-		// Format issues according to spec
-		var result strings.Builder
-		responseSize := 0
-		issuesShown := 0
-		maxResponseSize := 990 * 1024 // 990 KB
-		truncated := false
-
-		// First pass: count how many issues we can fit
-		for i, issue := range issues {
-			// Determine status
-			status := "open"
-			closedAtStr := ""
-			if issue.ClosedAt != nil {
-				status = "closed"
-				closedAtStr = issue.ClosedAt.Format(time.RFC3339)
-			} else {
-				closedAtStr = ""
-			}
-
-			// Format issue with field filtering
-			var formatted strings.Builder
-			
-			if shouldIncludeField("title", fields) {
-				formatted.WriteString(fmt.Sprintf("## %s\n\n", issue.Title))
-			}
-			
-			if shouldIncludeField("url", fields) {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", issue.URL))
-			}
-			if shouldIncludeField("repository", fields) {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", issue.Repository))
-			}
-			if shouldIncludeField("created_at", fields) {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", issue.CreatedAt.Format(time.RFC3339)))
-			}
-			if shouldIncludeField("closed_at", fields) {
-				formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
-			}
-			if shouldIncludeField("author", fields) {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", issue.Author))
-			}
-			if shouldIncludeField("status", fields) {
-				formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
-			}
-			
-			formatted.WriteString("\n")
-			
-			if shouldIncludeField("body", fields) {
-				formatted.WriteString(fmt.Sprintf("%s\n", issue.Body))
-			}
-			
-			formatted.WriteString("\n---\n\n")
-			formattedStr := formatted.String()
-
-			// Check if adding this issue would exceed the limit
-			if responseSize+len(formattedStr) > maxResponseSize && issuesShown > 0 {
-				truncated = true
-				break
-			}
-
-			responseSize += len(formattedStr)
-			issuesShown = i + 1
-		}
-
-		// If truncated, prepend the warning message
-		if truncated {
-			remaining := len(issues) - issuesShown
-			result.WriteString(fmt.Sprintf("Showing only the first %d issues. There's %d more, please refine your search.\n\n---\n\n",
-				issuesShown, remaining))
-		}
-
-		// Now format the issues we can fit
-		for i := 0; i < issuesShown; i++ {
-			issue := issues[i]
-			// Determine status
-			status := "open"
-			closedAtStr := ""
-			if issue.ClosedAt != nil {
-				status = "closed"
-				closedAtStr = issue.ClosedAt.Format(time.RFC3339)
-			} else {
-				closedAtStr = ""
-			}
-
-			if shouldIncludeField("title", fields) {
-				result.WriteString(fmt.Sprintf("## %s\n\n", issue.Title))
-			}
-			
-			if shouldIncludeField("url", fields) {
-				result.WriteString(fmt.Sprintf("- URL: %s\n", issue.URL))
-			}
-			if shouldIncludeField("repository", fields) {
-				result.WriteString(fmt.Sprintf("- Repository: %s\n", issue.Repository))
-			}
-			if shouldIncludeField("created_at", fields) {
-				result.WriteString(fmt.Sprintf("- Created at: %s\n", issue.CreatedAt.Format(time.RFC3339)))
-			}
-			if shouldIncludeField("closed_at", fields) {
-				result.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
-			}
-			if shouldIncludeField("author", fields) {
-				result.WriteString(fmt.Sprintf("- Author: %s\n", issue.Author))
-			}
-			if shouldIncludeField("status", fields) {
-				result.WriteString(fmt.Sprintf("- Status: %s\n", status))
-			}
-			
-			result.WriteString("\n")
-			
-			if shouldIncludeField("body", fields) {
-				result.WriteString(fmt.Sprintf("%s\n", issue.Body))
-			}
-			
-			result.WriteString("\n---\n\n")
-		}
-
-		return mcp.NewToolResultText(result.String()), nil
-	})
-
-	// Register the list_pull_requests tool
-	listPullRequestsTool := mcp.NewTool("list_pull_requests",
-		mcp.WithDescription("Lists pull requests with optional filtering."),
-		mcp.WithString("repository",
-			mcp.Description("Filter by repository name. Example: auth-service. Defaults to any repository in the organization."),
-		),
-		mcp.WithString("created_from",
-			mcp.Description("Filter by created_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("created_to",
-			mcp.Description("Filter by created_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("closed_from",
-			mcp.Description("Filter by closed_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("closed_to",
-			mcp.Description("Filter by closed_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("merged_from",
-			mcp.Description("Filter by merged_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithString("merged_to",
-			mcp.Description("Filter by merged_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z. Defaults to any date."),
-		),
-		mcp.WithArray("authors",
-			mcp.Description("Array of author usernames. Example: [john_doe, jane_doe]. Defaults to any author."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-		mcp.WithArray("fields",
-			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"merged_at\", \"closed_at\", \"author\", \"status\", \"body\"]. Defaults to all fields."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-	)
-
-	// Add tool handler for list_pull_requests
-	s.AddTool(listPullRequestsTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Extract parameters using the library's parameter methods
-		repository := request.GetString("repository", "")
-		createdFromStr := request.GetString("created_from", "")
-		createdToStr := request.GetString("created_to", "")
-		closedFromStr := request.GetString("closed_from", "")
-		closedToStr := request.GetString("closed_to", "")
-		mergedFromStr := request.GetString("merged_from", "")
-		mergedToStr := request.GetString("merged_to", "")
-		authors := request.GetStringSlice("authors", []string{})
-		fieldsArray := request.GetStringSlice("fields", []string{"title", "url", "repository", "created_at", "merged_at", "closed_at", "author", "status", "body"})
-
-		// Define available fields for validation
-		validFields := map[string]bool{
-			"title": true, "url": true, "repository": true, "created_at": true,
-			"merged_at": true, "closed_at": true, "author": true, "status": true, "body": true,
-		}
-
-		// Validate fields parameter
-		var invalidFields []string
-		fieldsToInclude := make(map[string]bool)
-		
-		for _, field := range fieldsArray {
-			fieldName := strings.TrimSpace(field)
-			if fieldName != "" {
-				if !validFields[fieldName] {
-					invalidFields = append(invalidFields, fieldName)
-				} else {
-					fieldsToInclude[fieldName] = true
-				}
-			}
-		}
-
-		// Return error if invalid fields are found
-		if len(invalidFields) > 0 {
-			availableFields := []string{"title", "url", "repository", "created_at", "merged_at", "closed_at", "author", "status", "body"}
-			errorMsg := fmt.Sprintf("Invalid fields: %s\n\nUse one of the available fields: %s",
-				strings.Join(invalidFields, ", "),
-				strings.Join(availableFields, ", "))
-			return mcp.NewToolResultError(errorMsg), nil
-		}
-
-		// Parse dates using helper functions
-		createdFromTime, err := parseRFC3339Date(createdFromStr, "created_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		createdToTime, err := parseRFC3339Date(createdToStr, "created_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		closedFromTime, err := parseRFC3339DatePtr(closedFromStr, "closed_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		closedToTime, err := parseRFC3339DatePtr(closedToStr, "closed_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		mergedFromTime, err := parseRFC3339DatePtr(mergedFromStr, "merged_from")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		mergedToTime, err := parseRFC3339DatePtr(mergedToStr, "merged_to")
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Get pull requests
-		pullRequests, err := db.GetPullRequests(repository, createdFromTime, createdToTime, closedFromTime, closedToTime, mergedFromTime, mergedToTime, authors)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get pull requests: %v", err)), nil
-		}
-
-		// If no pull requests found, return specific message
-		if len(pullRequests) == 0 {
-			return mcp.NewToolResultText("No pull requests found."), nil
-		}
-
-		// Format pull requests according to spec
-		var result strings.Builder
-		responseSize := 0
-		pullRequestsShown := 0
-		maxResponseSize := 990 * 1024 // 990 KB
-		truncated := false
-
-		// Add total count according to spec
-		totalCount := len(pullRequests)
-		totalLine := fmt.Sprintf("Total %d pull requests found.\n\n", totalCount)
-		result.WriteString(totalLine)
-		responseSize += len(totalLine)
-
-		// First pass: count how many pull requests we can fit
-		for i, pr := range pullRequests {
-			// Determine status
-			status := "open"
-			if pr.ClosedAt != nil {
-				status = "closed"
-			}
-			
-			// Format merged_at
-			mergedAtStr := ""
-			if pr.MergedAt != nil {
-				mergedAtStr = pr.MergedAt.Format(time.RFC3339)
-			}
-			
-			// Format closed_at
-			closedAtStr := ""
-			if pr.ClosedAt != nil {
-				closedAtStr = pr.ClosedAt.Format(time.RFC3339)
-			}
-
-			// Build formatted output based on selected fields
-			var formatted strings.Builder
-			
-			// Title is always shown as the header if included
-			if fieldsToInclude["title"] {
-				formatted.WriteString(fmt.Sprintf("## %s\n\n", pr.Title))
-			} else {
-				formatted.WriteString("## [Title not included]\n\n")
-			}
-			
-			// Add fields conditionally based on fieldsToInclude
-			if fieldsToInclude["url"] {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", pr.URL))
-			}
-			if fieldsToInclude["repository"] {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", pr.Repository))
-			}
-			if fieldsToInclude["created_at"] {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", pr.CreatedAt.Format(time.RFC3339)))
-			}
-			if fieldsToInclude["merged_at"] {
-				formatted.WriteString(fmt.Sprintf("- Merged at: %s\n", mergedAtStr))
-			}
-			if fieldsToInclude["closed_at"] {
-				formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
-			}
-			if fieldsToInclude["author"] {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", pr.Author))
-			}
-			if fieldsToInclude["status"] {
-				formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
-			}
-			
-			formatted.WriteString("\n")
-			
-			if fieldsToInclude["body"] {
-				formatted.WriteString(fmt.Sprintf("%s\n", pr.Body))
-			}
-			
-			formatted.WriteString("\n---\n\n")
-			
-			formattedStr := formatted.String()
-
-			// Check if adding this pull request would exceed the limit
-			if responseSize+len(formattedStr) > maxResponseSize && pullRequestsShown > 0 {
-				truncated = true
-				break
-			}
-
-			responseSize += len(formattedStr)
-			pullRequestsShown = i + 1
-		}
-
-		// If truncated, prepend the warning message
-		if truncated {
-			remaining := len(pullRequests) - pullRequestsShown
-			truncationWarning := fmt.Sprintf("Showing only the first %d pull requests. There's %d more, please refine your search.\n\n---\n\n",
-				pullRequestsShown, remaining)
-			
-			// Insert truncation warning after the total count
-			finalResult := strings.Builder{}
-			finalResult.WriteString(totalLine)
-			finalResult.WriteString(truncationWarning)
-			
-			// Add the pull requests we can fit
-			for i := 0; i < pullRequestsShown; i++ {
-				pr := pullRequests[i]
-				// Determine status
-				status := "open"
-				if pr.ClosedAt != nil {
-					status = "closed"
-				}
-				
-				// Format merged_at
-				mergedAtStr := ""
-				if pr.MergedAt != nil {
-					mergedAtStr = pr.MergedAt.Format(time.RFC3339)
-				}
-				
-				// Format closed_at
-				closedAtStr := ""
-				if pr.ClosedAt != nil {
-					closedAtStr = pr.ClosedAt.Format(time.RFC3339)
-				}
-
-				// Build formatted output based on selected fields
-				var formatted strings.Builder
-				
-				// Title is always shown as the header if included
-				if fieldsToInclude["title"] {
-					formatted.WriteString(fmt.Sprintf("## %s\n\n", pr.Title))
-				} else {
-					formatted.WriteString("## [Title not included]\n\n")
-				}
-				
-				// Add fields conditionally based on fieldsToInclude
-				if fieldsToInclude["url"] {
-					formatted.WriteString(fmt.Sprintf("- URL: %s\n", pr.URL))
-				}
-				if fieldsToInclude["repository"] {
-					formatted.WriteString(fmt.Sprintf("- Repository: %s\n", pr.Repository))
-				}
-				if fieldsToInclude["created_at"] {
-					formatted.WriteString(fmt.Sprintf("- Created at: %s\n", pr.CreatedAt.Format(time.RFC3339)))
-				}
-				if fieldsToInclude["merged_at"] {
-					formatted.WriteString(fmt.Sprintf("- Merged at: %s\n", mergedAtStr))
-				}
-				if fieldsToInclude["closed_at"] {
-					formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
-				}
-				if fieldsToInclude["author"] {
-					formatted.WriteString(fmt.Sprintf("- Author: %s\n", pr.Author))
-				}
-				if fieldsToInclude["status"] {
-					formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
-				}
-				
-				formatted.WriteString("\n")
-				
-				if fieldsToInclude["body"] {
-					formatted.WriteString(fmt.Sprintf("%s\n", pr.Body))
-				}
-				
-				formatted.WriteString("\n---\n\n")
-				
-				finalResult.WriteString(formatted.String())
-			}
-			
-			return mcp.NewToolResultText(finalResult.String()), nil
-		}
-
-		// Now format the pull requests we can fit (when not truncated)
-		for i := 0; i < pullRequestsShown; i++ {
-			pr := pullRequests[i]
-			// Determine status
-			status := "open"
-			if pr.ClosedAt != nil {
-				status = "closed"
-			}
-			
-			// Format merged_at
-			mergedAtStr := ""
-			if pr.MergedAt != nil {
-				mergedAtStr = pr.MergedAt.Format(time.RFC3339)
-			}
-			
-			// Format closed_at
-			closedAtStr := ""
-			if pr.ClosedAt != nil {
-				closedAtStr = pr.ClosedAt.Format(time.RFC3339)
-			}
-
-			// Build formatted output based on selected fields
-			var formatted strings.Builder
-			
-			// Title is always shown as the header if included
-			if fieldsToInclude["title"] {
-				formatted.WriteString(fmt.Sprintf("## %s\n\n", pr.Title))
-			} else {
-				formatted.WriteString("## [Title not included]\n\n")
-			}
-			
-			// Add fields conditionally based on fieldsToInclude
-			if fieldsToInclude["url"] {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", pr.URL))
-			}
-			if fieldsToInclude["repository"] {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", pr.Repository))
-			}
-			if fieldsToInclude["created_at"] {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", pr.CreatedAt.Format(time.RFC3339)))
-			}
-			if fieldsToInclude["merged_at"] {
-				formatted.WriteString(fmt.Sprintf("- Merged at: %s\n", mergedAtStr))
-			}
-			if fieldsToInclude["closed_at"] {
-				formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
-			}
-			if fieldsToInclude["author"] {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", pr.Author))
-			}
-			if fieldsToInclude["status"] {
-				formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
-			}
-			
-			formatted.WriteString("\n")
-			
-			if fieldsToInclude["body"] {
-				formatted.WriteString(fmt.Sprintf("%s\n", pr.Body))
-			}
-			
-			formatted.WriteString("\n---\n\n")
-			
-			result.WriteString(formatted.String())
-		}
-
-		return mcp.NewToolResultText(result.String()), nil
-	})
-
-	// Register the search tool
-	searchTool := mcp.NewTool("search",
-		mcp.WithDescription("Full-text search across discussions, issues, and pull requests."),
-		mcp.WithString("query",
-			mcp.Description("Search query string. Example: authentication bug."),
-			mcp.Required(),
-		),
-		mcp.WithArray("fields",
-			mcp.Description("Array of fields to include in the response. Available fields: [\"title\", \"url\", \"repository\", \"created_at\", \"author\", \"type\", \"state\", \"body\"]. Defaults to all fields."),
-			mcp.Items(map[string]interface{}{
-				"type": "string",
-			}),
-		),
-	)
-
-	// Add tool handler for search
-	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Extract parameters
-		query := request.GetString("query", "")
-		if query == "" {
-			return mcp.NewToolResultError("query parameter is required"), nil
-		}
-		fields := request.GetStringSlice("fields", []string{})
-
-		// Validate fields parameter
-		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "body"}
-		if err := validateFields(fields, availableFields, "search results"); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-
-		// Set default fields if none provided
-		fieldsToInclude := make(map[string]bool)
-		if len(fields) == 0 {
-			for _, field := range availableFields {
-				fieldsToInclude[field] = true
-			}
-		} else {
-			for _, field := range fields {
-				fieldsToInclude[field] = true
-			}
-		}
-
-		// Use unified SearchEngine for consistent results
-		searchResults, err := searchEngine.Search(query, 10)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("search query failed: %v", err)), nil
-		}
-
-		var result strings.Builder
-		hasResults := len(searchResults) > 0
-
-		for _, searchResult := range searchResults {
-			var formatted strings.Builder
-			formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
-
-			if fieldsToInclude["url"] {
-				formatted.WriteString(fmt.Sprintf("- URL: %s\n", searchResult.URL))
-			}
-			if fieldsToInclude["type"] {
-				formatted.WriteString(fmt.Sprintf("- Type: %s\n", searchResult.Type))
-			}
-			if fieldsToInclude["repository"] {
-				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", searchResult.Repository))
-			}
-			if fieldsToInclude["created_at"] {
-				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", searchResult.CreatedAt.Format(time.RFC3339)))
-			}
-			if fieldsToInclude["author"] {
-				formatted.WriteString(fmt.Sprintf("- Author: %s\n", searchResult.Author))
-			}
-			if fieldsToInclude["state"] {
-				formatted.WriteString(fmt.Sprintf("- State: %s\n", searchResult.State))
-			}
-
-			if fieldsToInclude["body"] {
-				formatted.WriteString("\n")
-				formatted.WriteString(fmt.Sprintf("%s\n", searchResult.Body))
-			}
-
-			formatted.WriteString("\n---\n\n")
-			result.WriteString(formatted.String())
-		}
-
-		if !hasResults {
-			return mcp.NewToolResultText(fmt.Sprintf("No results found for \"%s\".", query)), nil
-		}
-
-		return mcp.NewToolResultText(result.String()), nil
-	})
-
-	// Register the user_summary prompt
-	userSummaryPrompt := mcp.NewPrompt("user_summary",
-		mcp.WithPromptDescription("Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests."),
-		mcp.WithArgument("username", mcp.ArgumentDescription("Username. Example: john_doe"), mcp.RequiredArgument()),
-		mcp.WithArgument("period", mcp.ArgumentDescription("Examples \"last week\", \"from August 2025 to September 2025\", \"2024-01-01 - 2024-12-31\"")),
-	)
-
-	// Add prompt handler for user_summary
-	s.AddPrompt(userSummaryPrompt, func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-		// Extract parameters from request
-		username := ""
-		period := ""
-		
-		// Access arguments through the request structure
-		for key, value := range request.Params.Arguments {
-			switch key {
-			case "username":
-				username = value
-			case "period":
-				period = value
-			}
-		}
-
-		if username == "" {
-			return nil, fmt.Errorf("username parameter is required")
-		}
-
-		// Build the prompt text according to specification
-		var promptBuilder strings.Builder
-		promptBuilder.WriteString(fmt.Sprintf("Summarize the accomplishments of the user `%s` during `%s`, focusing on the most significant contributions first. Use the following approach:\n\n", username, period))
-		promptBuilder.WriteString(fmt.Sprintf("- Use `list_discussions` to gather discussions they created within `%s`.\n", period))
-		promptBuilder.WriteString(fmt.Sprintf("- Use `list_issues` to gather issues they closed within `%s`.\n", period))
-		promptBuilder.WriteString(fmt.Sprintf("- Use `list_pull_requests` to gather pull requests they closed within `%s`.\n", period))
-		promptBuilder.WriteString("- Aggregate all results, removing duplicates.\n")
-		promptBuilder.WriteString("- Prioritize and highlight:\n")
-		promptBuilder.WriteString("  - Discussions (most important)\n")
-		promptBuilder.WriteString("  - Pull requests (next most important)\n")
-		promptBuilder.WriteString("  - Issues (least important)\n")
-		promptBuilder.WriteString("- For each contribution, include a direct link and relevant metrics or facts.\n")
-		promptBuilder.WriteString("- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.")
-
-		// Create prompt result with the generated text
-		result := &mcp.GetPromptResult{
-			Description: fmt.Sprintf("User summary for %s during %s", username, period),
-			Messages: []mcp.PromptMessage{
-				{
-					Role: "user",
-					Content: mcp.TextContent{
-						Type: "text",
-						Text: promptBuilder.String(),
-					},
-				},
-			},
-		}
-
-		return result, nil
-	})
-
-	return server.ServeStdio(s)
-}
-
 // SearchResult represents a search result item
 type SearchResult struct {
 	Type       string    `json:"type"`        // "discussion", "issue", "pull_request"
@@ -4465,7 +3584,625 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 }
 
 // searchAllTablesLike provides fallback LIKE-based search when FTS is unavailable
-// RunUIServer starts the web UI server
+
+// ============================================================================
+// MCP Server Implementation
+// ============================================================================
+
+// ListDiscussionsInput represents parameters for list_discussions tool
+type ListDiscussionsInput struct {
+	Repository  string   `json:"repository,omitempty" jsonschema:"Filter by repository name. Example: auth-service. Defaults to any repository in the organization"`
+	CreatedFrom string   `json:"created_from,omitempty" jsonschema:"Filter by created_at after the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date"`
+	CreatedTo   string   `json:"created_to,omitempty" jsonschema:"Filter by created_at before the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date"`
+	Authors     []string `json:"authors,omitempty" jsonschema:"Array of author usernames. Example: [john_doe, jane_doe]. Defaults to any author"`
+	Fields      []string `json:"fields,omitempty" jsonschema:"Array of fields to include in the response. Available fields: [title, url, repository, created_at, author, body]. Defaults to all fields"`
+}
+
+// ListDiscussionsTool handles the list_discussions MCP tool
+func ListDiscussionsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListDiscussionsInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListDiscussionsInput) (*mcp.CallToolResult, any, error) {
+		slog.Debug("list_discussions called", "input", input)
+
+		// Validate fields parameter
+		availableFields := []string{"title", "url", "repository", "created_at", "author", "body"}
+		if err := validateFields(input.Fields, availableFields, "discussions"); err != nil {
+			// Return a tool error (not a protocol error)
+			return nil, nil, err
+		}
+
+		// Parse dates
+		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Get discussions
+		discussions, err := db.GetDiscussions(input.Repository, createdFromTime, createdToTime, input.Authors)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get discussions: %w", err)
+		}
+
+		if len(discussions) == 0 {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No discussions found."}},
+			}, nil, nil
+		}
+
+		// Format discussions
+		var result strings.Builder
+		responseSize := 0
+		discussionsShown := 0
+		maxResponseSize := 990 * 1024
+		truncated := false
+
+		for i, discussion := range discussions {
+			var formatted strings.Builder
+
+			if shouldIncludeField("title", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("## %s\n\n", discussion.Title))
+			}
+			if shouldIncludeField("url", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", discussion.URL))
+			}
+			if shouldIncludeField("repository", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", discussion.Repository))
+			}
+			if shouldIncludeField("created_at", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", discussion.CreatedAt.Format(time.RFC3339)))
+			}
+			if shouldIncludeField("author", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", discussion.Author))
+			}
+			formatted.WriteString("\n")
+			if shouldIncludeField("body", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("%s\n", discussion.Body))
+			}
+			formatted.WriteString("\n---\n\n")
+
+			formattedStr := formatted.String()
+			if responseSize+len(formattedStr) > maxResponseSize && discussionsShown > 0 {
+				truncated = true
+				break
+			}
+
+			responseSize += len(formattedStr)
+			discussionsShown = i + 1
+		}
+
+		if truncated {
+			remaining := len(discussions) - discussionsShown
+			result.WriteString(fmt.Sprintf("Showing only the first %d discussions. There's %d more, please refine your search. Use `created_from` and `created_to` parameters to narrow the results.\n\n---\n\n",
+				discussionsShown, remaining))
+		}
+
+		for i := 0; i < discussionsShown; i++ {
+			discussion := discussions[i]
+			if shouldIncludeField("title", input.Fields) {
+				result.WriteString(fmt.Sprintf("## %s\n\n", discussion.Title))
+			}
+			if shouldIncludeField("url", input.Fields) {
+				result.WriteString(fmt.Sprintf("- URL: %s\n", discussion.URL))
+			}
+			if shouldIncludeField("repository", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Repository: %s\n", discussion.Repository))
+			}
+			if shouldIncludeField("created_at", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Created at: %s\n", discussion.CreatedAt.Format(time.RFC3339)))
+			}
+			if shouldIncludeField("author", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Author: %s\n", discussion.Author))
+			}
+			result.WriteString("\n")
+			if shouldIncludeField("body", input.Fields) {
+				result.WriteString(fmt.Sprintf("%s\n", discussion.Body))
+			}
+			result.WriteString("\n---\n\n")
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+	}
+}
+
+// ListIssuesInput represents parameters for list_issues tool  
+type ListIssuesInput struct {
+	Repository  string   `json:"repository,omitempty" jsonschema:"Filter by repository name. Example: auth-service"`
+	CreatedFrom string   `json:"created_from,omitempty" jsonschema:"Filter by created_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z"`
+	CreatedTo   string   `json:"created_to,omitempty" jsonschema:"Filter by created_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z"`
+	ClosedFrom  string   `json:"closed_from,omitempty" jsonschema:"Filter by closed_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z"`
+	ClosedTo    string   `json:"closed_to,omitempty" jsonschema:"Filter by closed_at before the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z"`
+	Authors     []string `json:"authors,omitempty" jsonschema:"Array of author usernames. Example: [john_doe, jane_doe]"`
+	Fields      []string `json:"fields,omitempty" jsonschema:"Array of fields to include. Available: [title, url, repository, created_at, closed_at, author, status, body]"`
+}
+
+// ListIssuesTool handles the list_issues MCP tool
+func ListIssuesTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListIssuesInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListIssuesInput) (*mcp.CallToolResult, any, error) {
+		// Validate fields
+		availableFields := []string{"title", "url", "repository", "created_at", "closed_at", "author", "status", "body"}
+		if err := validateFields(input.Fields, availableFields, "issues"); err != nil {
+			return nil, nil, err
+		}
+
+		// Parse dates
+		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
+		if err != nil {
+			return nil, nil, err
+		}
+		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
+		if err != nil {
+			return nil, nil, err
+		}
+		closedFromTime, err := parseRFC3339DatePtr(input.ClosedFrom, "closed_from")
+		if err != nil {
+			return nil, nil, err
+		}
+		closedToTime, err := parseRFC3339DatePtr(input.ClosedTo, "closed_to")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Get issues
+		issues, err := db.GetIssues(input.Repository, createdFromTime, createdToTime, closedFromTime, closedToTime, input.Authors)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get issues: %w", err)
+		}
+
+		if len(issues) == 0 {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No issues found."}},
+			}, nil, nil
+		}
+
+		// Format issues
+		var result strings.Builder
+		responseSize := 0
+		issuesShown := 0
+		maxResponseSize := 990 * 1024
+		truncated := false
+
+		for i, issue := range issues {
+			status := "open"
+			closedAtStr := ""
+			if issue.ClosedAt != nil {
+				status = "closed"
+				closedAtStr = issue.ClosedAt.Format(time.RFC3339)
+			}
+
+			var formatted strings.Builder
+			if shouldIncludeField("title", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("## %s\n\n", issue.Title))
+			}
+			if shouldIncludeField("url", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", issue.URL))
+			}
+			if shouldIncludeField("repository", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", issue.Repository))
+			}
+			if shouldIncludeField("created_at", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", issue.CreatedAt.Format(time.RFC3339)))
+			}
+			if shouldIncludeField("closed_at", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
+			}
+			if shouldIncludeField("author", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", issue.Author))
+			}
+			if shouldIncludeField("status", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
+			}
+			formatted.WriteString("\n")
+			if shouldIncludeField("body", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("%s\n", issue.Body))
+			}
+			formatted.WriteString("\n---\n\n")
+
+			formattedStr := formatted.String()
+			if responseSize+len(formattedStr) > maxResponseSize && issuesShown > 0 {
+				truncated = true
+				break
+			}
+
+			responseSize += len(formattedStr)
+			issuesShown = i + 1
+		}
+
+		if truncated {
+			remaining := len(issues) - issuesShown
+			result.WriteString(fmt.Sprintf("Showing only the first %d issues. There's %d more, please refine your search.\n\n---\n\n",
+				issuesShown, remaining))
+		}
+
+		for i := 0; i < issuesShown; i++ {
+			issue := issues[i]
+			status := "open"
+			closedAtStr := ""
+			if issue.ClosedAt != nil {
+				status = "closed"
+				closedAtStr = issue.ClosedAt.Format(time.RFC3339)
+			}
+
+			if shouldIncludeField("title", input.Fields) {
+				result.WriteString(fmt.Sprintf("## %s\n\n", issue.Title))
+			}
+			if shouldIncludeField("url", input.Fields) {
+				result.WriteString(fmt.Sprintf("- URL: %s\n", issue.URL))
+			}
+			if shouldIncludeField("repository", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Repository: %s\n", issue.Repository))
+			}
+			if shouldIncludeField("created_at", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Created at: %s\n", issue.CreatedAt.Format(time.RFC3339)))
+			}
+			if shouldIncludeField("closed_at", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
+			}
+			if shouldIncludeField("author", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Author: %s\n", issue.Author))
+			}
+			if shouldIncludeField("status", input.Fields) {
+				result.WriteString(fmt.Sprintf("- Status: %s\n", status))
+			}
+			result.WriteString("\n")
+			if shouldIncludeField("body", input.Fields) {
+				result.WriteString(fmt.Sprintf("%s\n", issue.Body))
+			}
+			result.WriteString("\n---\n\n")
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+	}
+}
+
+// ListPullRequestsInput represents parameters for list_pull_requests tool
+type ListPullRequestsInput struct {
+	Repository  string   `json:"repository,omitempty" jsonschema:"Filter by repository name"`
+	CreatedFrom string   `json:"created_from,omitempty" jsonschema:"Filter by created_at after date (RFC3339)"`
+	CreatedTo   string   `json:"created_to,omitempty" jsonschema:"Filter by created_at before date (RFC3339)"`
+	ClosedFrom  string   `json:"closed_from,omitempty" jsonschema:"Filter by closed_at after date (RFC3339)"`
+	ClosedTo    string   `json:"closed_to,omitempty" jsonschema:"Filter by closed_at before date (RFC3339)"`
+	MergedFrom  string   `json:"merged_from,omitempty" jsonschema:"Filter by merged_at after date (RFC3339)"`
+	MergedTo    string   `json:"merged_to,omitempty" jsonschema:"Filter by merged_at before date (RFC3339)"`
+	Authors     []string `json:"authors,omitempty" jsonschema:"Array of author usernames"`
+	Fields      []string `json:"fields,omitempty" jsonschema:"Fields to include: [title, url, repository, created_at, merged_at, closed_at, author, status, body]"`
+}
+
+// ListPullRequestsTool handles the list_pull_requests MCP tool
+func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, ListPullRequestsInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input ListPullRequestsInput) (*mcp.CallToolResult, any, error) {
+		// Validate fields
+		validFields := []string{"title", "url", "repository", "created_at", "merged_at", "closed_at", "author", "status", "body"}
+		if len(input.Fields) > 0 {
+			for _, field := range input.Fields {
+				found := false
+				for _, valid := range validFields {
+					if field == valid {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return nil, nil, fmt.Errorf("Invalid fields: %s\n\nUse one of the available fields: %s", field, strings.Join(validFields, ", "))
+				}
+			}
+		}
+
+		// Parse dates
+		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
+		if err != nil {
+			return nil, nil, err
+		}
+		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
+		if err != nil {
+			return nil, nil, err
+		}
+		closedFromTime, err := parseRFC3339DatePtr(input.ClosedFrom, "closed_from")
+		if err != nil {
+			return nil, nil, err
+		}
+		closedToTime, err := parseRFC3339DatePtr(input.ClosedTo, "closed_to")
+		if err != nil {
+			return nil, nil, err
+		}
+		mergedFromTime, err := parseRFC3339DatePtr(input.MergedFrom, "merged_from")
+		if err != nil {
+			return nil, nil, err
+		}
+		mergedToTime, err := parseRFC3339DatePtr(input.MergedTo, "merged_to")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Get pull requests
+		pullRequests, err := db.GetPullRequests(input.Repository, createdFromTime, createdToTime, closedFromTime, closedToTime, mergedFromTime, mergedToTime, input.Authors)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get pull requests: %w", err)
+		}
+
+		if len(pullRequests) == 0 {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: "No pull requests found."}},
+		}, nil, nil
+	}
+
+	// Format output - start with total count
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Total %d pull requests found.\n\n", len(pullRequests)))
+
+	// Determine which fields to include
+	fieldsToInclude := make(map[string]bool)
+	if len(input.Fields) == 0 {
+		for _, field := range validFields {
+			fieldsToInclude[field] = true
+		}
+	} else {
+			for _, field := range input.Fields {
+				fieldsToInclude[field] = true
+			}
+		}
+
+		responseSize := len(result.String())
+		pullRequestsShown := 0
+		maxResponseSize := 990 * 1024
+		truncated := false
+
+		for i, pr := range pullRequests {
+			status := "open"
+			if pr.ClosedAt != nil {
+				status = "closed"
+			}
+			mergedAtStr := ""
+			if pr.MergedAt != nil {
+				mergedAtStr = pr.MergedAt.Format(time.RFC3339)
+			}
+			closedAtStr := ""
+			if pr.ClosedAt != nil {
+				closedAtStr = pr.ClosedAt.Format(time.RFC3339)
+			}
+
+			var formatted strings.Builder
+			if fieldsToInclude["title"] {
+				formatted.WriteString(fmt.Sprintf("## %s\n\n", pr.Title))
+			}
+			if fieldsToInclude["url"] {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", pr.URL))
+			}
+			if fieldsToInclude["repository"] {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", pr.Repository))
+			}
+			if fieldsToInclude["created_at"] {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", pr.CreatedAt.Format(time.RFC3339)))
+			}
+			if fieldsToInclude["merged_at"] {
+				formatted.WriteString(fmt.Sprintf("- Merged at: %s\n", mergedAtStr))
+			}
+			if fieldsToInclude["closed_at"] {
+				formatted.WriteString(fmt.Sprintf("- Closed at: %s\n", closedAtStr))
+			}
+			if fieldsToInclude["author"] {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", pr.Author))
+			}
+			if fieldsToInclude["status"] {
+				formatted.WriteString(fmt.Sprintf("- Status: %s\n", status))
+			}
+			formatted.WriteString("\n")
+			if fieldsToInclude["body"] {
+				formatted.WriteString(fmt.Sprintf("%s\n", pr.Body))
+			}
+			formatted.WriteString("\n---\n\n")
+
+			formattedStr := formatted.String()
+			if responseSize+len(formattedStr) > maxResponseSize && pullRequestsShown > 0 {
+				truncated = true
+				break
+			}
+
+			responseSize += len(formattedStr)
+			result.WriteString(formattedStr)
+			pullRequestsShown = i + 1
+		}
+
+		if truncated {
+			remaining := len(pullRequests) - pullRequestsShown
+			// Insert warning after total count
+			parts := strings.SplitN(result.String(), "\n\n", 2)
+			finalResult := parts[0] + "\n\n" + fmt.Sprintf("Showing only the first %d pull requests. There's %d more, please refine your search.\n\n---\n\n", pullRequestsShown, remaining)
+			if len(parts) > 1 {
+				finalResult += parts[1]
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: finalResult}},
+			}, nil, nil
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+	}
+}
+
+// SearchInput represents parameters for search tool
+type SearchInput struct {
+	Query  string   `json:"query" jsonschema:"Search query string. Example: authentication bug,required"`
+	Fields []string `json:"fields,omitempty" jsonschema:"Fields to include: [title, url, repository, created_at, author, type, state, body]"`
+}
+
+// SearchTool handles the search MCP tool
+func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolRequest, SearchInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input SearchInput) (*mcp.CallToolResult, any, error) {
+		if input.Query == "" {
+			return nil, nil, fmt.Errorf("query parameter is required")
+		}
+
+		// Validate fields
+		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "state", "body"}
+		if err := validateFields(input.Fields, availableFields, "search results"); err != nil {
+			return nil, nil, err
+		}
+
+		// Determine which fields to include
+		fieldsToInclude := make(map[string]bool)
+		if len(input.Fields) == 0 {
+			for _, field := range availableFields {
+				fieldsToInclude[field] = true
+			}
+		} else {
+			for _, field := range input.Fields {
+				fieldsToInclude[field] = true
+			}
+		}
+
+		// Perform search
+		searchResults, err := searchEngine.Search(input.Query, 10)
+		if err != nil {
+			return nil, nil, fmt.Errorf("search query failed: %w", err)
+		}
+
+		if len(searchResults) == 0 {
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("No results found for \"%s\".", input.Query)}},
+		}, nil, nil
+	}
+
+	// Format results
+	var result strings.Builder
+	for _, searchResult := range searchResults {
+		var formatted strings.Builder
+		formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
+		if fieldsToInclude["url"] {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", searchResult.URL))
+			}
+			if fieldsToInclude["type"] {
+				formatted.WriteString(fmt.Sprintf("- Type: %s\n", searchResult.Type))
+			}
+			if fieldsToInclude["repository"] {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", searchResult.Repository))
+			}
+			if fieldsToInclude["created_at"] {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", searchResult.CreatedAt.Format(time.RFC3339)))
+			}
+			if fieldsToInclude["author"] {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", searchResult.Author))
+			}
+			if fieldsToInclude["state"] {
+				formatted.WriteString(fmt.Sprintf("- State: %s\n", searchResult.State))
+			}
+			if fieldsToInclude["body"] {
+				formatted.WriteString("\n")
+				formatted.WriteString(fmt.Sprintf("%s\n", searchResult.Body))
+			}
+			formatted.WriteString("\n---\n\n")
+			result.WriteString(formatted.String())
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+	}
+}
+
+// UserSummaryPrompt handles the user_summary MCP prompt
+func UserSummaryPrompt(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+	username := req.Params.Arguments["username"]
+	period := req.Params.Arguments["period"]
+
+	if username == "" {
+		return nil, fmt.Errorf("username parameter is required")
+	}
+	if period == "" {
+		period = "last week"
+	}
+
+	var promptBuilder strings.Builder
+	promptBuilder.WriteString(fmt.Sprintf("Summarize the accomplishments of the user `%s` during `%s`, focusing on the most significant contributions first. Use the following approach:\n\n", username, period))
+	promptBuilder.WriteString(fmt.Sprintf("- Use `list_discussions` to gather discussions they created within `%s`.\n", period))
+	promptBuilder.WriteString(fmt.Sprintf("- Use `list_issues` to gather issues they closed within `%s`.\n", period))
+	promptBuilder.WriteString(fmt.Sprintf("- Use `list_pull_requests` to gather pull requests they closed within `%s`.\n", period))
+	promptBuilder.WriteString("- Aggregate all results, removing duplicates.\n")
+	promptBuilder.WriteString("- Prioritize and highlight:\n")
+	promptBuilder.WriteString("  - Discussions (most important)\n")
+	promptBuilder.WriteString("  - Pull requests (next most important)\n")
+	promptBuilder.WriteString("  - Issues (least important)\n")
+	promptBuilder.WriteString("- For each contribution, include a direct link and relevant metrics or facts.\n")
+	promptBuilder.WriteString("- Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.")
+
+	promptText := promptBuilder.String()
+
+	return &mcp.GetPromptResult{
+		Description: fmt.Sprintf("User summary for %s during %s", username, period),
+		Messages: []*mcp.PromptMessage{
+			{
+				Role:    "user",
+				Content: &mcp.TextContent{Text: promptText},
+			},
+		},
+	}, nil
+}
+
+// RunMCPServer runs the MCP server using the official MCP SDK for Go
+func RunMCPServer(db *DB) error {
+	// Load organization from environment variable
+	organization := os.Getenv("ORGANIZATION")
+	if organization == "" {
+		return fmt.Errorf("ORGANIZATION environment variable is required for MCP server")
+	}
+
+	// Create SearchEngine instance for unified search functionality
+	searchEngine := NewSearchEngine(db)
+
+	// Create a new MCP server with implementation info
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "GitHub Offline MCP Server",
+		Version: "1.0.0",
+	}, nil)
+
+	// Register tools using the new typed API
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_discussions",
+		Description: "Lists discussions with optional filtering. Discussions are separated by `---`.",
+	}, ListDiscussionsTool(db))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_issues",
+		Description: "Lists issues with optional filtering.",
+	}, ListIssuesTool(db))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_pull_requests",
+		Description: "Lists pull requests with optional filtering.",
+	}, ListPullRequestsTool(db))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "search",
+		Description: "Full-text search across discussions, issues, and pull requests.",
+	}, SearchTool(searchEngine))
+
+	// Register prompts - note the arguments specification
+	server.AddPrompt(&mcp.Prompt{
+		Name:        "user_summary",
+		Description: "Generates a summary of the user's accomplishments based on created discussions, closed issues, and closed pull requests.",
+		Arguments: []*mcp.PromptArgument{
+			{Name: "username", Description: "Username. Example: john_doe", Required: true},
+			{Name: "period", Description: "Examples: 'last week', 'from August 2025 to September 2025', '2024-01-01 - 2024-12-31'"},
+		},
+	}, UserSummaryPrompt)
+
+	// Run the server over stdin/stdout
+	return server.Run(context.Background(), &mcp.StdioTransport{})
+}
+
+// ============================================================================
+// UI Server Implementation
+// ============================================================================
+
 // RunUIServer starts the web UI server
 func RunUIServer(db *DB, port string) error {
 	slog.Info("Initializing search engine for UI server")
