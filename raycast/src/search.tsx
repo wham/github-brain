@@ -87,6 +87,7 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     let errorData = "";
     let hasReceivedResponse = false;
     let responseTimeout: NodeJS.Timeout;
+    let isInitialized = false;
 
     // Set a timeout for the MCP response
     responseTimeout = setTimeout(() => {
@@ -100,29 +101,90 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       const output = data.toString();
       responseData += output;
 
-      // Check if we have a complete JSON-RPC response
+      // Process line-delimited JSON-RPC messages
       const lines = responseData.split("\n");
-      for (const line of lines) {
-        if (
-          line.trim() &&
-          line.includes('"jsonrpc":"2.0"') &&
-          line.includes('"id":1')
-        ) {
-          hasReceivedResponse = true;
-          clearTimeout(responseTimeout);
+      responseData = lines.pop() || ""; // Keep incomplete line for next data event
 
-          // Process the response immediately
-          try {
-            const results = parseMCPResponse(line);
-            mcpProcess.kill(); // Clean up the process
-            resolve(results);
-            return;
-          } catch (error) {
-            console.error("Parse error:", error);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const message = JSON.parse(line);
+
+          // Handle initialize response
+          if (message.id === 1 && message.result && !isInitialized) {
+            console.log("MCP server initialized");
+            isInitialized = true;
+
+            // Send initialized notification
+            const initializedNotification = {
+              jsonrpc: "2.0",
+              method: "notifications/initialized",
+              params: {},
+            };
+            mcpProcess.stdin.write(
+              JSON.stringify(initializedNotification) + "\n"
+            );
+
+            // Now send the actual search request
+            const searchRequest = {
+              jsonrpc: "2.0",
+              id: 2,
+              method: "tools/call",
+              params: {
+                name: "search",
+                arguments: {
+                  query: query,
+                  fields: [
+                    "title",
+                    "url",
+                    "repository",
+                    "created_at",
+                    "author",
+                    "type",
+                    "state",
+                  ],
+                },
+              },
+            };
+            mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
+            continue;
+          }
+
+          // Handle search response
+          if (message.id === 2 && message.result) {
+            hasReceivedResponse = true;
+            clearTimeout(responseTimeout);
+
+            try {
+              const results = parseMCPResponse(line);
+              mcpProcess.kill(); // Clean up the process
+              resolve(results);
+              return;
+            } catch (error) {
+              console.error("Parse error:", error);
+              mcpProcess.kill();
+              reject(
+                new Error(`Failed to parse MCP response: ${error.message}`)
+              );
+              return;
+            }
+          }
+
+          // Handle errors
+          if (message.error) {
+            console.error("MCP returned error:", message.error);
             mcpProcess.kill();
-            reject(new Error(`Failed to parse MCP response: ${error.message}`));
+            reject(
+              new Error(
+                `MCP error: ${message.error.message || "Unknown error"}`
+              )
+            );
             return;
           }
+        } catch (parseError) {
+          // Ignore parse errors for incomplete messages
+          console.log("Skipping unparseable message:", line);
         }
       }
     });
@@ -130,6 +192,7 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
     mcpProcess.stderr.on("data", (data) => {
       const error = data.toString();
       errorData += error;
+      console.error("MCP stderr:", error);
     });
 
     mcpProcess.on("error", (error) => {
@@ -145,32 +208,23 @@ async function callMCPSearch(query: string): Promise<SearchResult[]> {
       }
     });
 
-    // Send the search request via JSON-RPC
-    const searchRequest = {
+    // Start the MCP handshake with initialize request
+    const initializeRequest = {
       jsonrpc: "2.0",
       id: 1,
-      method: "tools/call",
+      method: "initialize",
       params: {
-        name: "search",
-        arguments: {
-          query: query,
-          fields: [
-            "title",
-            "url",
-            "repository",
-            "created_at",
-            "author",
-            "type",
-            "state",
-          ],
+        protocolVersion: "2025-06-18",
+        clientInfo: {
+          name: "raycast-github-brain",
+          version: "1.0.0",
         },
+        capabilities: {},
       },
     };
 
     try {
-      mcpProcess.stdin.write(JSON.stringify(searchRequest) + "\n");
-      // Don't end stdin immediately - let the process handle the response first
-      // The stdin will be closed when we kill the process after getting the response
+      mcpProcess.stdin.write(JSON.stringify(initializeRequest) + "\n");
     } catch (error) {
       console.error("Error writing to MCP stdin:", error);
       clearTimeout(responseTimeout);
