@@ -121,7 +121,7 @@ The app uses a registered GitHub App for authentication:
    - `slow_down`: Increase interval by 5 seconds
    - `expired_token`: Code expired, start over
    - `access_denied`: User denied, show error
-   - Success: Returns `access_token` (format: `ghu_xxxx`)
+   - Success: Returns `access_token`, `refresh_token`, and `expires_in`
 
 6. On success, prompt for organization:
 
@@ -138,7 +138,7 @@ The app uses a registered GitHub App for authentication:
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
-7. Save token (and organization if provided) to `.env` file:
+7. Save tokens (and organization if provided) to `.env` file:
    ```
    ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
    │                                                                │
@@ -156,19 +156,38 @@ The app uses a registered GitHub App for authentication:
 
 ### Token Storage
 
-Save the OAuth token and organization to `{HomeDir}/.env` file:
+Save tokens and organization to `{HomeDir}/.env` file:
 
 - If `.env` exists and has `GITHUB_TOKEN`, replace it
 - If `.env` exists without `GITHUB_TOKEN`, append it
 - If `.env` doesn't exist, create it
-- Same logic for `ORGANIZATION` if provided
+- Same logic for `GITHUB_REFRESH_TOKEN` and `ORGANIZATION`
 
 Format:
 
 ```
 GITHUB_TOKEN=ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_REFRESH_TOKEN=ghr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ORGANIZATION=my-org
 ```
+
+### Token Refresh
+
+GitHub App user access tokens expire after 8 hours. Refresh tokens are valid for 6 months.
+
+**Auto-refresh in `pull` command:**
+
+Before making API calls, check if token needs refresh:
+
+1. Try API call with current token
+2. If 401 Unauthorized and refresh token exists:
+   ```
+   POST https://github.com/login/oauth/access_token
+   client_id=<CLIENT_ID>&grant_type=refresh_token&refresh_token=<REFRESH_TOKEN>
+   ```
+3. On success: Update `GITHUB_TOKEN` and `GITHUB_REFRESH_TOKEN` in `.env`
+4. Retry the API call with new token
+5. If refresh fails: Show error message asking user to run `login` again
 
 ### Implementation Notes
 

@@ -307,6 +307,7 @@ func init() {
 // Config holds all application configuration
 type Config struct {
 	GithubToken           string
+	RefreshToken          string
 	Organization          string
 	HomeDir               string   // GitHub Brain home directory (default: ~/.github-brain)
 	DBDir                 string   // SQLite database path, constructed as <HomeDir>/db
@@ -331,6 +332,7 @@ func LoadConfig(args []string) *Config {
 
 	// Load from environment variables first
 	config.GithubToken = os.Getenv("GITHUB_TOKEN")
+	config.RefreshToken = os.Getenv("GITHUB_REFRESH_TOKEN")
 	config.Organization = os.Getenv("ORGANIZATION")
 
 	if excludedRepos := os.Getenv("EXCLUDED_REPOSITORIES"); excludedRepos != "" {
@@ -4548,30 +4550,72 @@ func main() {
 		}
 	}
 	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
-		// GraphQL error - decrement success counter and increment error counter
-		// since GraphQL returns HTTP 200 even for errors
-		statusMutex.Lock()
-		if statusCounters.Success2XX > 0 {
-			statusCounters.Success2XX--
+		// Check if this might be an auth error (token expired)
+		errStr := err.Error()
+		isAuthError := strings.Contains(errStr, "401") || 
+			strings.Contains(errStr, "Bad credentials") ||
+			strings.Contains(errStr, "Unauthorized")
+		
+		if isAuthError && config.RefreshToken != "" {
+			progress.Log("Token may have expired, attempting refresh...")
+			newToken, refreshErr := tryRefreshToken(config)
+			if refreshErr != nil {
+				progress.Log("Error: %v", refreshErr)
+				time.Sleep(3 * time.Second)
+				progress.Stop()
+				os.Exit(1)
+			}
+			
+			progress.Log("Token refreshed successfully, retrying...")
+			
+			// Recreate the client with new token
+			ts = oauth2.StaticTokenSource(
+				&oauth2.Token{AccessToken: newToken},
+			)
+			tc = oauth2.NewClient(ctx, ts)
+			tc.Transport = &CustomTransport{
+				wrapped: tc.Transport,
+			}
+			graphqlClient = githubv4.NewClient(tc)
+			
+			// Retry the query
+			if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
+				progress.Log("Error: Failed to fetch current user after token refresh: %v", err)
+				progress.Log("Please run 'login' again to re-authenticate")
+				time.Sleep(3 * time.Second)
+				progress.Stop()
+				os.Exit(1)
+			}
+		} else {
+			// GraphQL error - decrement success counter and increment error counter
+			// since GraphQL returns HTTP 200 even for errors
+			statusMutex.Lock()
+			if statusCounters.Success2XX > 0 {
+				statusCounters.Success2XX--
+			}
+			statusCounters.Error4XX++
+			statusMutex.Unlock()
+			
+			// Even on error, update UI with any rate limit info we captured
+			rateLimitInfoMutex.RLock()
+			progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+			rateLimitInfoMutex.RUnlock()
+			
+			statusMutex.Lock()
+			progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+			statusMutex.Unlock()
+			
+			progress.Log("Error: Failed to fetch current user: %v", err)
+			if config.RefreshToken == "" {
+				progress.Log("No refresh token available. Please run 'login' again")
+			} else {
+				progress.Log("Please check your GitHub token and network connection")
+			}
+			// Give user time to see the error before stopping
+			time.Sleep(3 * time.Second)
+			progress.Stop()
+			os.Exit(1)
 		}
-		statusCounters.Error4XX++
-		statusMutex.Unlock()
-		
-		// Even on error, update UI with any rate limit info we captured
-		rateLimitInfoMutex.RLock()
-		progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-		rateLimitInfoMutex.RUnlock()
-		
-		statusMutex.Lock()
-		progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-		statusMutex.Unlock()
-		
-		progress.Log("Error: Failed to fetch current user: %v", err)
-		progress.Log("Please check your GitHub token and network connection")
-		// Give user time to see the error before stopping
-		time.Sleep(3 * time.Second)
-		progress.Stop()
-		os.Exit(1)
 	}
 	currentUsername := currentUser.Viewer.Login
 	progress.Log("Authenticated as user: %s", currentUsername)
@@ -5388,11 +5432,13 @@ type DeviceCodeResponse struct {
 
 // AccessTokenResponse represents the response from GitHub's access token endpoint
 type AccessTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-	Scope       string `json:"scope"`
-	Error       string `json:"error"`
-	ErrorDesc   string `json:"error_description"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+	TokenType    string `json:"token_type"`
+	Scope        string `json:"scope"`
+	Error        string `json:"error"`
+	ErrorDesc    string `json:"error_description"`
 }
 
 // loginModel is the Bubble Tea model for the login UI
@@ -5405,6 +5451,7 @@ type loginModel struct {
 	errorMsg        string
 	username        string
 	token           string
+	refreshToken    string
 	organization    string
 	homeDir         string
 	width           int
@@ -5424,8 +5471,9 @@ type (
 		verificationURI string
 	}
 	loginAuthenticatedMsg struct {
-		username string
-		token    string
+		username     string
+		token        string
+		refreshToken string
 	}
 	loginOrgSubmittedMsg struct{}
 )
@@ -5516,12 +5564,13 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "org_input"
 		m.username = msg.username
 		m.token = msg.token
+		m.refreshToken = msg.refreshToken
 		m.textInput.Focus()
 		return m, textinput.Blink
 
 	case loginOrgSubmittedMsg:
-		// Save token and organization to .env
-		if err := saveTokenToEnv(m.homeDir, m.token, m.organization); err != nil {
+		// Save tokens and organization to .env
+		if err := saveTokenToEnv(m.homeDir, m.token, m.refreshToken, m.organization); err != nil {
 			m.status = "error"
 			m.errorMsg = fmt.Sprintf("failed to save token: %v", err)
 			m.done = true
@@ -5744,7 +5793,7 @@ func runDeviceFlow(p *tea.Program, homeDir string) {
 	_ = browser.OpenURL(deviceCode.VerificationURI)
 
 	// Step 2: Poll for access token
-	token, err := pollForAccessToken(deviceCode)
+	token, refreshToken, err := pollForAccessToken(deviceCode)
 	if err != nil {
 		p.Send(loginErrorMsg{err: err})
 		return
@@ -5758,8 +5807,8 @@ func runDeviceFlow(p *tea.Program, homeDir string) {
 	}
 
 	// Step 4: Prompt for organization (handled by UI)
-	// Token is passed via message to the UI
-	p.Send(loginAuthenticatedMsg{username: username, token: token})
+	// Tokens are passed via message to the UI
+	p.Send(loginAuthenticatedMsg{username: username, token: token, refreshToken: refreshToken})
 }
 
 func requestDeviceCode() (*DeviceCodeResponse, error) {
@@ -5798,7 +5847,7 @@ func requestDeviceCode() (*DeviceCodeResponse, error) {
 	return &deviceCode, nil
 }
 
-func pollForAccessToken(deviceCode *DeviceCodeResponse) (string, error) {
+func pollForAccessToken(deviceCode *DeviceCodeResponse) (accessToken string, refreshToken string, err error) {
 	interval := time.Duration(deviceCode.Interval) * time.Second
 	if interval < 5*time.Second {
 		interval = 5 * time.Second
@@ -5816,7 +5865,7 @@ func pollForAccessToken(deviceCode *DeviceCodeResponse) (string, error) {
 
 		req, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(data.Encode()))
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
@@ -5842,7 +5891,7 @@ func pollForAccessToken(deviceCode *DeviceCodeResponse) (string, error) {
 		case "":
 			// Success!
 			if tokenResp.AccessToken != "" {
-				return tokenResp.AccessToken, nil
+				return tokenResp.AccessToken, tokenResp.RefreshToken, nil
 			}
 		case "authorization_pending":
 			// Keep polling
@@ -5852,15 +5901,15 @@ func pollForAccessToken(deviceCode *DeviceCodeResponse) (string, error) {
 			interval += 5 * time.Second
 			continue
 		case "expired_token":
-			return "", fmt.Errorf("device code expired, please try again")
+			return "", "", fmt.Errorf("device code expired, please try again")
 		case "access_denied":
-			return "", fmt.Errorf("access denied by user")
+			return "", "", fmt.Errorf("access denied by user")
 		default:
-			return "", fmt.Errorf("%s: %s", tokenResp.Error, tokenResp.ErrorDesc)
+			return "", "", fmt.Errorf("%s: %s", tokenResp.Error, tokenResp.ErrorDesc)
 		}
 	}
 
-	return "", fmt.Errorf("timeout waiting for authorization")
+	return "", "", fmt.Errorf("timeout waiting for authorization")
 }
 
 func verifyTokenAndGetUsername(token string) (string, error) {
@@ -5881,7 +5930,72 @@ func verifyTokenAndGetUsername(token string) (string, error) {
 	return query.Viewer.Login, nil
 }
 
-func saveTokenToEnv(homeDir string, token string, organization string) error {
+// refreshAccessToken uses the refresh token to get a new access token
+func refreshAccessToken(refreshToken string) (newAccessToken string, newRefreshToken string, err error) {
+	data := url.Values{}
+	data.Set("client_id", GitHubClientID)
+	data.Set("grant_type", "refresh_token")
+	data.Set("refresh_token", refreshToken)
+
+	req, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", err
+	}
+
+	var tokenResp AccessTokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return "", "", fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	if tokenResp.Error != "" {
+		return "", "", fmt.Errorf("%s: %s", tokenResp.Error, tokenResp.ErrorDesc)
+	}
+
+	if tokenResp.AccessToken == "" {
+		return "", "", fmt.Errorf("no access token in response")
+	}
+
+	return tokenResp.AccessToken, tokenResp.RefreshToken, nil
+}
+
+// tryRefreshToken attempts to refresh the access token and update the .env file
+func tryRefreshToken(config *Config) (string, error) {
+	if config.RefreshToken == "" {
+		return "", fmt.Errorf("no refresh token available, please run 'login' again")
+	}
+
+	newToken, newRefreshToken, err := refreshAccessToken(config.RefreshToken)
+	if err != nil {
+		return "", fmt.Errorf("failed to refresh token: %w - please run 'login' again", err)
+	}
+
+	// Update .env file with new tokens
+	if err := saveTokenToEnv(config.HomeDir, newToken, newRefreshToken, config.Organization); err != nil {
+		return "", fmt.Errorf("failed to save refreshed token: %w", err)
+	}
+
+	// Update config with new tokens
+	config.GithubToken = newToken
+	config.RefreshToken = newRefreshToken
+
+	return newToken, nil
+}
+
+func saveTokenToEnv(homeDir string, token string, refreshToken string, organization string) error {
 	envPath := homeDir + "/.env"
 	
 	// Read existing .env content
@@ -5891,12 +6005,16 @@ func saveTokenToEnv(homeDir string, token string, organization string) error {
 	}
 
 	tokenLine := fmt.Sprintf("GITHUB_TOKEN=%s", token)
+	refreshLine := fmt.Sprintf("GITHUB_REFRESH_TOKEN=%s", refreshToken)
 	orgLine := fmt.Sprintf("ORGANIZATION=%s", organization)
 
 	if len(existingContent) == 0 {
 		// File doesn't exist or is empty
 		var newContent string
 		newContent = tokenLine + "\n"
+		if refreshToken != "" {
+			newContent += refreshLine + "\n"
+		}
 		if organization != "" {
 			newContent += orgLine + "\n"
 		}
@@ -5906,12 +6024,20 @@ func saveTokenToEnv(homeDir string, token string, organization string) error {
 	// Process existing content
 	lines := strings.Split(string(existingContent), "\n")
 	tokenFound := false
+	refreshFound := false
 	orgFound := false
 
 	for i, line := range lines {
 		if strings.HasPrefix(line, "GITHUB_TOKEN=") {
 			lines[i] = tokenLine
 			tokenFound = true
+		} else if strings.HasPrefix(line, "GITHUB_REFRESH_TOKEN=") {
+			if refreshToken != "" {
+				lines[i] = refreshLine
+			} else {
+				lines[i] = ""
+			}
+			refreshFound = true
 		} else if strings.HasPrefix(line, "ORGANIZATION=") {
 			if organization != "" {
 				lines[i] = orgLine
@@ -5925,6 +6051,9 @@ func saveTokenToEnv(homeDir string, token string, organization string) error {
 
 	if !tokenFound {
 		lines = append(lines, tokenLine)
+	}
+	if !refreshFound && refreshToken != "" {
+		lines = append(lines, refreshLine)
 	}
 	if !orgFound && organization != "" {
 		lines = append(lines, orgLine)
