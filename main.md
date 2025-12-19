@@ -123,39 +123,58 @@ The app uses a registered GitHub App for authentication:
    - `access_denied`: User denied, show error
    - Success: Returns `access_token` (format: `ghu_xxxx`)
 
-6. On success, save token to `.env` file:
+6. On success, prompt for organization:
+
    ```
    ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
    │                                                                │
-   │  ✅ Successfully authenticated!                                │
+   │  ✅ Successfully authenticated as @wham                        │
+   │                                                                │
+   │  Enter your GitHub organization (optional):                    │
+   │  > my-org█                                                     │
+   │                                                                │
+   │  Press Enter to skip, or type organization name                │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+7. Save token (and organization if provided) to `.env` file:
+   ```
+   ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
+   │                                                                │
+   │  ✅ Setup complete!                                            │
    │                                                                │
    │  Logged in as: @wham                                           │
-   │  Token saved to: ~/.github-brain/.env                          │
+   │  Organization: my-org                                          │
+   │  Saved to: ~/.github-brain/.env                                │
    │                                                                │
    │  You can now run:                                              │
-   │    github-brain pull -o <organization>                         │
+   │    github-brain pull                                           │
    │                                                                │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
 ### Token Storage
 
-Save the OAuth token to `{HomeDir}/.env` file:
+Save the OAuth token and organization to `{HomeDir}/.env` file:
 
 - If `.env` exists and has `GITHUB_TOKEN`, replace it
 - If `.env` exists without `GITHUB_TOKEN`, append it
-- If `.env` doesn't exist, create it with `GITHUB_TOKEN=<token>`
+- If `.env` doesn't exist, create it
+- Same logic for `ORGANIZATION` if provided
 
 Format:
 
 ```
 GITHUB_TOKEN=ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ORGANIZATION=my-org
 ```
 
 ### Implementation Notes
 
 - Use Bubble Tea for the interactive UI (consistent with `pull` command)
 - Use `github.com/pkg/browser` to open the verification URL
+- Use `github.com/charmbracelet/bubbles/textinput` for organization input
 - Poll interval: Start with GitHub's `interval` value (usually 5 seconds)
 - Timeout: Code expires after `expires_in` seconds (usually 15 minutes)
 - After saving token, verify it works by fetching `viewer { login }`

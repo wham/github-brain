@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/joho/godotenv"
@@ -5396,35 +5397,50 @@ type AccessTokenResponse struct {
 
 // loginModel is the Bubble Tea model for the login UI
 type loginModel struct {
-	spinner        spinner.Model
-	userCode       string
+	spinner         spinner.Model
+	textInput       textinput.Model
+	userCode        string
 	verificationURI string
-	status         string // "waiting", "success", "error"
-	errorMsg       string
-	username       string
-	homeDir        string
-	width          int
-	height         int
-	borderColors   []lipgloss.AdaptiveColor
-	colorIndex     int
-	done           bool
+	status          string // "waiting", "org_input", "success", "error"
+	errorMsg        string
+	username        string
+	token           string
+	organization    string
+	homeDir         string
+	width           int
+	height          int
+	borderColors    []lipgloss.AdaptiveColor
+	colorIndex      int
+	done            bool
 }
 
 // Login message types
 type (
 	loginTickMsg       time.Time
-	loginSuccessMsg    struct{ username string }
+	loginSuccessMsg    struct{}
 	loginErrorMsg      struct{ err error }
 	loginDeviceCodeMsg struct {
 		userCode        string
 		verificationURI string
 	}
+	loginAuthenticatedMsg struct {
+		username string
+		token    string
+	}
+	loginOrgSubmittedMsg struct{}
 )
 
 func newLoginModel(homeDir string) loginModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+
+	ti := textinput.New()
+	ti.Placeholder = "my-org"
+	ti.CharLimit = 100
+	ti.Width = 30
+	ti.Prompt = "> "
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	gradientColors := []lipgloss.AdaptiveColor{
 		{Light: "#874BFD", Dark: "#7D56F4"},
@@ -5437,6 +5453,7 @@ func newLoginModel(homeDir string) loginModel {
 
 	return loginModel{
 		spinner:      s,
+		textInput:    ti,
 		status:       "waiting",
 		homeDir:      homeDir,
 		width:        80,
@@ -5465,9 +5482,19 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			m.done = true
 			return m, tea.Quit
+		case "enter":
+			if m.status == "org_input" {
+				m.organization = strings.TrimSpace(m.textInput.Value())
+				return m, func() tea.Msg { return loginOrgSubmittedMsg{} }
+			}
+		}
+		// Pass key messages to textinput when in org_input mode
+		if m.status == "org_input" {
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
 		}
 
 	case tea.WindowSizeMsg:
@@ -5484,9 +5511,30 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.verificationURI = msg.verificationURI
 		return m, nil
 
+	case loginAuthenticatedMsg:
+		// User has authenticated, now prompt for organization
+		m.status = "org_input"
+		m.username = msg.username
+		m.token = msg.token
+		m.textInput.Focus()
+		return m, textinput.Blink
+
+	case loginOrgSubmittedMsg:
+		// Save token and organization to .env
+		if err := saveTokenToEnv(m.homeDir, m.token, m.organization); err != nil {
+			m.status = "error"
+			m.errorMsg = fmt.Sprintf("failed to save token: %v", err)
+			m.done = true
+			return m, nil
+		}
+		m.status = "success"
+		m.done = true
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return tea.Quit()
+		})
+
 	case loginSuccessMsg:
 		m.status = "success"
-		m.username = msg.username
 		m.done = true
 		return m, nil
 
@@ -5512,6 +5560,8 @@ func (m loginModel) View() string {
 	switch m.status {
 	case "waiting":
 		content = m.renderWaitingView()
+	case "org_input":
+		content = m.renderOrgInputView()
 	case "success":
 		content = m.renderSuccessView()
 	case "error":
@@ -5588,19 +5638,39 @@ func (m loginModel) renderWaitingView() string {
 	return b.String()
 }
 
+func (m loginModel) renderOrgInputView() string {
+	var b strings.Builder
+
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	b.WriteString("\n")
+	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
+	b.WriteString("\n")
+	b.WriteString("  Enter your GitHub organization (optional):\n")
+	b.WriteString("  " + m.textInput.View() + "\n")
+	b.WriteString("\n")
+	b.WriteString("  Press Enter to skip, or type organization name\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
 func (m loginModel) renderSuccessView() string {
 	var b strings.Builder
 
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render("✅ Successfully authenticated!") + "\n")
+	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
-	b.WriteString(fmt.Sprintf("  Token saved to: %s/.env\n", m.homeDir))
+	if m.organization != "" {
+		b.WriteString(fmt.Sprintf("  Organization: %s\n", m.organization))
+	}
+	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
 	b.WriteString("  You can now run:\n")
-	b.WriteString("    github-brain pull -o <organization>\n")
+	b.WriteString("    github-brain pull\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5686,18 +5756,9 @@ func runDeviceFlow(p *tea.Program, homeDir string) {
 		return
 	}
 
-	// Step 4: Save token to .env file
-	if err := saveTokenToEnv(homeDir, token); err != nil {
-		p.Send(loginErrorMsg{err: fmt.Errorf("failed to save token: %w", err)})
-		return
-	}
-
-	// Success!
-	p.Send(loginSuccessMsg{username: username})
-	
-	// Give user time to see success message before quitting
-	time.Sleep(2 * time.Second)
-	p.Quit()
+	// Step 4: Prompt for organization (handled by UI)
+	// Token is passed via message to the UI
+	p.Send(loginAuthenticatedMsg{username: username, token: token})
 }
 
 func requestDeviceCode() (*DeviceCodeResponse, error) {
@@ -5819,7 +5880,7 @@ func verifyTokenAndGetUsername(token string) (string, error) {
 	return query.Viewer.Login, nil
 }
 
-func saveTokenToEnv(homeDir string, token string) error {
+func saveTokenToEnv(homeDir string, token string, organization string) error {
 	envPath := homeDir + "/.env"
 	
 	// Read existing .env content
@@ -5828,35 +5889,61 @@ func saveTokenToEnv(homeDir string, token string) error {
 		return err
 	}
 
-	var newContent string
 	tokenLine := fmt.Sprintf("GITHUB_TOKEN=%s", token)
+	orgLine := fmt.Sprintf("ORGANIZATION=%s", organization)
 
 	if len(existingContent) == 0 {
 		// File doesn't exist or is empty
+		var newContent string
 		newContent = tokenLine + "\n"
-	} else {
-		// Check if GITHUB_TOKEN already exists
-		lines := strings.Split(string(existingContent), "\n")
-		found := false
-		for i, line := range lines {
-			if strings.HasPrefix(line, "GITHUB_TOKEN=") {
-				lines[i] = tokenLine
-				found = true
-				break
+		if organization != "" {
+			newContent += orgLine + "\n"
+		}
+		return os.WriteFile(envPath, []byte(newContent), 0600)
+	}
+
+	// Process existing content
+	lines := strings.Split(string(existingContent), "\n")
+	tokenFound := false
+	orgFound := false
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "GITHUB_TOKEN=") {
+			lines[i] = tokenLine
+			tokenFound = true
+		} else if strings.HasPrefix(line, "ORGANIZATION=") {
+			if organization != "" {
+				lines[i] = orgLine
+			} else {
+				// Remove org line if organization is empty
+				lines[i] = ""
 			}
+			orgFound = true
 		}
-		if !found {
-			// Append token line
-			if !strings.HasSuffix(string(existingContent), "\n") {
-				lines = append(lines, "")
-			}
-			lines = append(lines, tokenLine)
+	}
+
+	if !tokenFound {
+		lines = append(lines, tokenLine)
+	}
+	if !orgFound && organization != "" {
+		lines = append(lines, orgLine)
+	}
+
+	// Clean up empty lines at the end and rebuild
+	var cleanLines []string
+	for _, line := range lines {
+		if line != "" || len(cleanLines) == 0 {
+			cleanLines = append(cleanLines, line)
 		}
-		newContent = strings.Join(lines, "\n")
-		// Ensure file ends with newline
-		if !strings.HasSuffix(newContent, "\n") {
-			newContent += "\n"
-		}
+	}
+	// Remove trailing empty strings
+	for len(cleanLines) > 0 && cleanLines[len(cleanLines)-1] == "" {
+		cleanLines = cleanLines[:len(cleanLines)-1]
+	}
+
+	newContent := strings.Join(cleanLines, "\n")
+	if !strings.HasSuffix(newContent, "\n") {
+		newContent += "\n"
 	}
 
 	return os.WriteFile(envPath, []byte(newContent), 0600)

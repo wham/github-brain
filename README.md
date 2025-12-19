@@ -92,7 +92,7 @@ The first run may take a while. Subsequent runs are faster, fetching only new da
 | :------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
 |          | `GITHUB_TOKEN`          | Your GitHub token. Use `login` command or create a [personal token](https://github.com/settings/personal-access-tokens). **Required.** |
 | `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                               |
-| `-m`     |                         | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`).                                           |
+| `-m`     |                         | Home directory. Default: `~/.github-brain`                                                                                             |
 | `-i`     |                         | Pull only selected entities: `repositories`, `discussions`, `issues`, `pull-requests` (comma-separated).                               |
 | `-f`     |                         | Remove all data before pulling. With `-i`, removes only specified items.                                                               |
 | `-e`     | `EXCLUDED_REPOSITORIES` | Repositories to exclude (comma-separated). Useful for large repos not relevant to your analysis.                                       |
@@ -118,10 +118,10 @@ Example:
 github-brain mcp -o my-org
 ```
 
-| Argument | Variable       | Description                                                                                  |
-| :------- | :------------- | :------------------------------------------------------------------------------------------- |
+| Argument | Variable       | Description                                 |
+| :------- | :------------- | :------------------------------------------ |
 | `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                           |
-| `-m`     |                | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`). |
+| `-m`     |                | Home directory. Default: `~/.github-brain`                                                   |
 
 ### `ui`
 
@@ -131,11 +131,11 @@ Start the web UI for quick searches (alternative to MCP).
 github-brain ui -o my-org
 ```
 
-| Argument | Variable       | Description                                                                                  |
-| :------- | :------------- | :------------------------------------------------------------------------------------------- |
-| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                           |
-| `-m`     |                | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`). |
-| `-p`     | `UI_PORT`      | Port. Default: `8080`.                                                                       |
+| Argument | Variable       | Description                                |
+| :------- | :------------- | :------------------------------------------|
+| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**         |
+| `-m`     |                | Home directory. Default: `~/.github-brain` |
+| `-p`     | `UI_PORT`      | Port. Default: `8080`.                     |
 
 ### Additional Arguments
 
