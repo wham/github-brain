@@ -63,7 +63,8 @@ You can change the home directory with the `-m` argument available for all comma
 
 ### `login`
 
-Authenticate with GitHub using OAuth device flow. Opens your browser to authorize GitHub Brain and stores the token in the `.env` file.
+Opens your browser to authorize _GitHub Brain_ app and stores resulting `GITHUB_TOKEN` in the `.env` file.
+Optionally, you can also specify `ORGANIZATION` to store in the same file.
 
 Example:
 
@@ -71,18 +72,9 @@ Example:
 github-brain login
 ```
 
-| Argument | Description                                                                                  |
-| :------- | :------------------------------------------------------------------------------------------- |
-| `-m`     | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`). |
-
-The login flow:
-
-1. Displays a one-time code
-2. Opens `github.com/login/device` in your browser
-3. You enter the code and authorize the app
-4. Token is saved to `~/.github-brain/.env`
-
-After login, you can run `pull` without the `-t` argument.
+| Argument | Description                                |
+| :------- | :----------------------------------------- |
+| `-m`     | Home directory. Default: `~/.github-brain` |
 
 ### `pull`
 
@@ -205,4 +197,4 @@ The extension uses the MCP server to search GitHub data.
 
 ## Development
 
-`scripts/run` builds and runs `github-brain` with the checkout directory as home (database in `db/`, config in `.env`).
+`scripts/run` builds and runs `github-brain` with the checkout directory as home `-m` (database in `db/`, config in `.env`).
