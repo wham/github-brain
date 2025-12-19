@@ -5619,14 +5619,15 @@ func (m loginModel) renderWaitingView() string {
 		b.WriteString("  2. Enter this code:\n")
 		b.WriteString("\n")
 		
-		// Code box
+		// Code box with margin for alignment
 		codeStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("12")).
-			Padding(0, 2).
-			Bold(true)
+			Padding(0, 3).
+			Bold(true).
+			MarginLeft(5)
 		
-		b.WriteString("     " + codeStyle.Render("   "+m.userCode+"   ") + "\n")
+		b.WriteString(codeStyle.Render(m.userCode) + "\n")
 		b.WriteString("\n")
 		b.WriteString("  " + m.spinner.View() + " Waiting for authorization...\n")
 	}
