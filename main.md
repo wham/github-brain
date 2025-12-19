@@ -51,21 +51,13 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
 
 Interactive GitHub authentication using OAuth Device Flow. Stores the resulting token in the `.env` file.
 
-### GitHub App
+### OAuth App
 
-The app uses a registered GitHub App for authentication:
+The app uses a registered OAuth App for authentication:
 
 - **Client ID**: Embedded in the binary (public, safe to commit)
 - **Client Secret**: Not required for device flow (public clients)
-- **Permissions**: Configured in GitHub App settings (not OAuth scopes)
-  - Repository: Read access to code, discussions, issues, metadata, pull requests
-  - Organization: Read access to members
-
-**Why GitHub App instead of OAuth App?**
-
-- GitHub Apps can be installed per-organization, bypassing org-wide OAuth restrictions
-- Higher rate limits (15,000 requests/hour vs 5,000)
-- Fine-grained permissions instead of broad OAuth scopes
+- **Scopes**: `read:org repo` (read organization data and full repository access)
 
 ### Device Flow
 
@@ -73,10 +65,8 @@ The app uses a registered GitHub App for authentication:
 
    ```
    POST https://github.com/login/device/code
-   client_id=<CLIENT_ID>
+   client_id=<CLIENT_ID>&scope=read:org repo
    ```
-
-   Note: No `scope` parameter - GitHub Apps use permissions defined in app settings.
 
 2. GitHub returns:
 
@@ -121,7 +111,7 @@ The app uses a registered GitHub App for authentication:
    - `slow_down`: Increase interval by 5 seconds
    - `expired_token`: Code expired, start over
    - `access_denied`: User denied, show error
-   - Success: Returns `access_token`, `refresh_token`, and `expires_in`
+   - Success: Returns `access_token` (long-lived, does not expire)
 
 6. On success, prompt for organization:
 
@@ -156,38 +146,21 @@ The app uses a registered GitHub App for authentication:
 
 ### Token Storage
 
-Save tokens and organization to `{HomeDir}/.env` file:
+Save token and organization to `{HomeDir}/.env` file:
 
 - If `.env` exists and has `GITHUB_TOKEN`, replace it
 - If `.env` exists without `GITHUB_TOKEN`, append it
 - If `.env` doesn't exist, create it
-- Same logic for `GITHUB_REFRESH_TOKEN` and `ORGANIZATION`
+- Same logic for `ORGANIZATION`
 
 Format:
 
 ```
-GITHUB_TOKEN=ghu_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-GITHUB_REFRESH_TOKEN=ghr_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GITHUB_TOKEN=gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ORGANIZATION=my-org
 ```
 
-### Token Refresh
-
-GitHub App user access tokens expire after 8 hours. Refresh tokens are valid for 6 months.
-
-**Auto-refresh in `pull` command:**
-
-Before making API calls, check if token needs refresh:
-
-1. Try API call with current token
-2. If 401 Unauthorized and refresh token exists:
-   ```
-   POST https://github.com/login/oauth/access_token
-   client_id=<CLIENT_ID>&grant_type=refresh_token&refresh_token=<REFRESH_TOKEN>
-   ```
-3. On success: Update `GITHUB_TOKEN` and `GITHUB_REFRESH_TOKEN` in `.env`
-4. Retry the API call with new token
-5. If refresh fails: Show error message asking user to run `login` again
+OAuth App tokens are long-lived and do not expire unless revoked.
 
 ### Implementation Notes
 
