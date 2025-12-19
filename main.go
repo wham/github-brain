@@ -339,11 +339,6 @@ func LoadConfig(args []string) *Config {
 	// Command line args override environment variables
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "-t":
-			if i+1 < len(args) {
-				config.GithubToken = args[i+1]
-				i++
-			}
 		case "-o":
 			if i+1 < len(args) {
 				config.Organization = args[i+1]
@@ -4390,14 +4385,14 @@ func main() {
 		args := os.Args[2:]
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: pull -t <token> -o <organization> [-m <home_dir>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
+				fmt.Println("Usage: pull -o <organization> [-m <home_dir>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
 				fmt.Println("Options:")
-				fmt.Println("  -t    GitHub token (or set GITHUB_TOKEN)")
 				fmt.Println("  -o    GitHub organization (or set ORGANIZATION)")
 				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
 				fmt.Println("  -i    Items to pull (default: all)")
 				fmt.Println("  -e    Excluded repositories (comma-separated)")
 				fmt.Println("  -f    Force: clear data before pulling")
+				fmt.Println("\nAuthentication: Run 'login' first or set GITHUB_TOKEN environment variable.")
 				os.Exit(0)
 			}
 		}
@@ -4417,7 +4412,7 @@ func main() {
 		// Continue with the original logic
 		
 		if config.GithubToken == "" {
-			progress.Log("Error: GitHub token is required. Use -t or set GITHUB_TOKEN environment variable.")
+			progress.Log("Error: GitHub token is required. Run 'github-brain login' or set GITHUB_TOKEN environment variable.")
 			// Give console time to display the error before exiting
 			time.Sleep(3 * time.Second)
 			return

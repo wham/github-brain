@@ -98,7 +98,7 @@ The first run may take a while. Subsequent runs are faster, fetching only new da
 
 | Argument | Variable                | Description                                                                                                                            |
 | :------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| `-t`     | `GITHUB_TOKEN`          | Your GitHub token. Use `login` command or create a [personal token](https://github.com/settings/personal-access-tokens). **Required.** |
+|          | `GITHUB_TOKEN`          | Your GitHub token. Use `login` command or create a [personal token](https://github.com/settings/personal-access-tokens). **Required.** |
 | `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                               |
 | `-m`     |                         | Home directory. Default: `~/.github-brain` (or checkout directory if run via `scripts/run`).                                           |
 | `-i`     |                         | Pull only selected entities: `repositories`, `discussions`, `issues`, `pull-requests` (comma-separated).                               |
