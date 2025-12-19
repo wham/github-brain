@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pkg/browser"
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
@@ -38,6 +40,11 @@ var htmxJS []byte
 
 // Database schema version GUID - change this on any schema modification
 const SCHEMA_GUID = "b8f3c2a1-9e7d-4f6b-8c5a-3d2e1f0a9b8c"
+
+// GitHub App Client ID (public, safe to embed)
+// Permissions are configured in the GitHub App settings, not via scopes
+// Register at: https://github.com/settings/apps
+const GitHubClientID = "Iv23ctenJiPpElznxKwY"
 
 // Version information (set via ldflags at build time)
 var (
@@ -4350,17 +4357,34 @@ func main() {
 	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		fmt.Printf("Usage: %s <command> [<args>]\n\n", os.Args[0])
 		fmt.Println("Commands:")
+		fmt.Println("  login  Authenticate with GitHub")
 		fmt.Println("  pull   Pull GitHub repositories and discussions")
 		fmt.Println("  mcp    Start the MCP server")
 		fmt.Println("  ui     Start the web UI server")
 		fmt.Println("\nFor command-specific help, use:")
-		fmt.Println("  pull -h\n  mcp -h\n  ui -h")
+		fmt.Println("  login -h\n  pull -h\n  mcp -h\n  ui -h")
 		os.Exit(0)
 	}
 
 	cmd := os.Args[1]
 
 	switch cmd {
+	case "login":
+		args := os.Args[2:]
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-h" || args[i] == "--help" {
+				fmt.Println("Usage: login [-m <home_dir>]")
+				fmt.Println("Options:")
+				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
+				os.Exit(0)
+			}
+		}
+
+		if err := RunLogin(homeDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Login failed: %v\n", err)
+			os.Exit(1)
+		}
+
 	case "pull":
 		// Load configuration from CLI args and environment variables first
 		args := os.Args[2:]
@@ -5351,4 +5375,494 @@ func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
 		return "     " + timestamp + " " + errorStyle.Render(message)
 	}
 	return "     " + timestamp + " " + message
+}
+
+// ============================================================================
+// Login Command Implementation (OAuth Device Flow)
+// ============================================================================
+
+// DeviceCodeResponse represents the response from GitHub's device code endpoint
+type DeviceCodeResponse struct {
+	DeviceCode      string `json:"device_code"`
+	UserCode        string `json:"user_code"`
+	VerificationURI string `json:"verification_uri"`
+	ExpiresIn       int    `json:"expires_in"`
+	Interval        int    `json:"interval"`
+}
+
+// AccessTokenResponse represents the response from GitHub's access token endpoint
+type AccessTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
+	Error       string `json:"error"`
+	ErrorDesc   string `json:"error_description"`
+}
+
+// loginModel is the Bubble Tea model for the login UI
+type loginModel struct {
+	spinner        spinner.Model
+	userCode       string
+	verificationURI string
+	status         string // "waiting", "success", "error"
+	errorMsg       string
+	username       string
+	homeDir        string
+	width          int
+	height         int
+	borderColors   []lipgloss.AdaptiveColor
+	colorIndex     int
+	done           bool
+}
+
+// Login message types
+type (
+	loginTickMsg       time.Time
+	loginSuccessMsg    struct{ username string }
+	loginErrorMsg      struct{ err error }
+	loginDeviceCodeMsg struct {
+		userCode        string
+		verificationURI string
+	}
+)
+
+func newLoginModel(homeDir string) loginModel {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+
+	gradientColors := []lipgloss.AdaptiveColor{
+		{Light: "#874BFD", Dark: "#7D56F4"},
+		{Light: "#7D56F4", Dark: "#6B4FD8"},
+		{Light: "#5B4FE0", Dark: "#5948C8"},
+		{Light: "#4F7BD8", Dark: "#4B6FD0"},
+		{Light: "#48A8D8", Dark: "#45A0D0"},
+		{Light: "#48D8D0", Dark: "#45D0C8"},
+	}
+
+	return loginModel{
+		spinner:      s,
+		status:       "waiting",
+		homeDir:      homeDir,
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+	}
+}
+
+func (m loginModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.spinner.Tick,
+		loginTickCmd(),
+	)
+}
+
+func loginTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return loginTickMsg(t)
+	})
+}
+
+func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.done = true
+			return m, tea.Quit
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case loginTickMsg:
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, loginTickCmd()
+
+	case loginDeviceCodeMsg:
+		m.userCode = msg.userCode
+		m.verificationURI = msg.verificationURI
+		return m, nil
+
+	case loginSuccessMsg:
+		m.status = "success"
+		m.username = msg.username
+		m.done = true
+		return m, nil
+
+	case loginErrorMsg:
+		m.status = "error"
+		m.errorMsg = msg.err.Error()
+		m.done = true
+		return m, nil
+
+	case spinner.TickMsg:
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+func (m loginModel) View() string {
+	borderColor := m.borderColors[m.colorIndex]
+
+	var content string
+
+	switch m.status {
+	case "waiting":
+		content = m.renderWaitingView()
+	case "success":
+		content = m.renderSuccessView()
+	case "error":
+		content = m.renderErrorView()
+	}
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	// Title
+	title := " GitHub 🧠 Login "
+	titleStyle := lipgloss.NewStyle().Bold(true)
+
+	box := borderStyle.Render(content)
+	
+	// Replace top border with title
+	lines := strings.Split(box, "\n")
+	if len(lines) > 0 {
+		topBorder := lines[0]
+		titlePos := 2
+		if titlePos+len(title) < len(topBorder) {
+			runes := []rune(topBorder)
+			titleRunes := []rune(titleStyle.Render(title))
+			copy(runes[titlePos:], titleRunes)
+			lines[0] = string(runes)
+		}
+		box = strings.Join(lines, "\n")
+	}
+
+	return box
+}
+
+func (m loginModel) renderWaitingView() string {
+	var b strings.Builder
+
+	b.WriteString("\n")
+	b.WriteString("  🔐 GitHub Authentication\n")
+	b.WriteString("\n")
+
+	if m.userCode == "" {
+		b.WriteString("  " + m.spinner.View() + " Requesting device code...\n")
+	} else {
+		b.WriteString("  1. Opening browser to: github.com/login/device\n")
+		b.WriteString("\n")
+		b.WriteString("  2. Enter this code:\n")
+		b.WriteString("\n")
+		
+		// Code box
+		codeStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("12")).
+			Padding(0, 2).
+			Bold(true)
+		
+		b.WriteString("     " + codeStyle.Render("   "+m.userCode+"   ") + "\n")
+		b.WriteString("\n")
+		b.WriteString("  " + m.spinner.View() + " Waiting for authorization...\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString("  Press Ctrl+C to cancel\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m loginModel) renderSuccessView() string {
+	var b strings.Builder
+
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	b.WriteString("\n")
+	b.WriteString("  " + successStyle.Render("✅ Successfully authenticated!") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
+	b.WriteString(fmt.Sprintf("  Token saved to: %s/.env\n", m.homeDir))
+	b.WriteString("\n")
+	b.WriteString("  You can now run:\n")
+	b.WriteString("    github-brain pull -o <organization>\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m loginModel) renderErrorView() string {
+	var b strings.Builder
+
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+
+	b.WriteString("\n")
+	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
+	b.WriteString("\n")
+	b.WriteString("  Please try again.\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// RunLogin runs the OAuth device flow login
+func RunLogin(homeDir string) error {
+	// Ensure home directory exists
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		return fmt.Errorf("failed to create home directory: %w", err)
+	}
+
+	// Create the Bubble Tea model
+	m := newLoginModel(homeDir)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	// Run the device flow in a goroutine
+	go runDeviceFlow(p, homeDir)
+
+	// Run the Bubble Tea program
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("UI error: %w", err)
+	}
+
+	// Check if login was successful
+	if lm, ok := finalModel.(loginModel); ok {
+		if lm.status == "error" {
+			return fmt.Errorf("%s", lm.errorMsg)
+		}
+		if lm.status != "success" {
+			return fmt.Errorf("login cancelled")
+		}
+	}
+
+	return nil
+}
+
+func runDeviceFlow(p *tea.Program, homeDir string) {
+	// Step 1: Request device code
+	deviceCode, err := requestDeviceCode()
+	if err != nil {
+		p.Send(loginErrorMsg{err: err})
+		return
+	}
+
+	// Send device code info to UI
+	p.Send(loginDeviceCodeMsg{
+		userCode:        deviceCode.UserCode,
+		verificationURI: deviceCode.VerificationURI,
+	})
+
+	// Open browser
+	_ = browser.OpenURL(deviceCode.VerificationURI)
+
+	// Step 2: Poll for access token
+	token, err := pollForAccessToken(deviceCode)
+	if err != nil {
+		p.Send(loginErrorMsg{err: err})
+		return
+	}
+
+	// Step 3: Verify token and get username
+	username, err := verifyTokenAndGetUsername(token)
+	if err != nil {
+		p.Send(loginErrorMsg{err: fmt.Errorf("token verification failed: %w", err)})
+		return
+	}
+
+	// Step 4: Save token to .env file
+	if err := saveTokenToEnv(homeDir, token); err != nil {
+		p.Send(loginErrorMsg{err: fmt.Errorf("failed to save token: %w", err)})
+		return
+	}
+
+	// Success!
+	p.Send(loginSuccessMsg{username: username})
+	
+	// Give user time to see success message before quitting
+	time.Sleep(2 * time.Second)
+	p.Quit()
+}
+
+func requestDeviceCode() (*DeviceCodeResponse, error) {
+	data := url.Values{}
+	data.Set("client_id", GitHubClientID)
+	// Note: GitHub Apps don't use scopes - permissions are defined in app settings
+
+	req, err := http.NewRequest("POST", "https://github.com/login/device/code", strings.NewReader(data.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var deviceCode DeviceCodeResponse
+	if err := json.Unmarshal(body, &deviceCode); err != nil {
+		return nil, fmt.Errorf("failed to parse device code response: %w", err)
+	}
+
+	if deviceCode.DeviceCode == "" {
+		return nil, fmt.Errorf("no device code in response: %s", string(body))
+	}
+
+	return &deviceCode, nil
+}
+
+func pollForAccessToken(deviceCode *DeviceCodeResponse) (string, error) {
+	interval := time.Duration(deviceCode.Interval) * time.Second
+	if interval < 5*time.Second {
+		interval = 5 * time.Second
+	}
+	
+	expiresAt := time.Now().Add(time.Duration(deviceCode.ExpiresIn) * time.Second)
+
+	for time.Now().Before(expiresAt) {
+		time.Sleep(interval)
+
+		data := url.Values{}
+		data.Set("client_id", GitHubClientID)
+		data.Set("device_code", deviceCode.DeviceCode)
+		data.Set("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+
+		req, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(data.Encode()))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue // Retry on network errors
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+
+		var tokenResp AccessTokenResponse
+		if err := json.Unmarshal(body, &tokenResp); err != nil {
+			continue
+		}
+
+		switch tokenResp.Error {
+		case "":
+			// Success!
+			if tokenResp.AccessToken != "" {
+				return tokenResp.AccessToken, nil
+			}
+		case "authorization_pending":
+			// Keep polling
+			continue
+		case "slow_down":
+			// Increase interval by 5 seconds
+			interval += 5 * time.Second
+			continue
+		case "expired_token":
+			return "", fmt.Errorf("device code expired, please try again")
+		case "access_denied":
+			return "", fmt.Errorf("access denied by user")
+		default:
+			return "", fmt.Errorf("%s: %s", tokenResp.Error, tokenResp.ErrorDesc)
+		}
+	}
+
+	return "", fmt.Errorf("timeout waiting for authorization")
+}
+
+func verifyTokenAndGetUsername(token string) (string, error) {
+	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	httpClient := oauth2.NewClient(context.Background(), src)
+	client := githubv4.NewClient(httpClient)
+
+	var query struct {
+		Viewer struct {
+			Login string
+		}
+	}
+
+	if err := client.Query(context.Background(), &query, nil); err != nil {
+		return "", err
+	}
+
+	return query.Viewer.Login, nil
+}
+
+func saveTokenToEnv(homeDir string, token string) error {
+	envPath := homeDir + "/.env"
+	
+	// Read existing .env content
+	existingContent, err := os.ReadFile(envPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	var newContent string
+	tokenLine := fmt.Sprintf("GITHUB_TOKEN=%s", token)
+
+	if len(existingContent) == 0 {
+		// File doesn't exist or is empty
+		newContent = tokenLine + "\n"
+	} else {
+		// Check if GITHUB_TOKEN already exists
+		lines := strings.Split(string(existingContent), "\n")
+		found := false
+		for i, line := range lines {
+			if strings.HasPrefix(line, "GITHUB_TOKEN=") {
+				lines[i] = tokenLine
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Append token line
+			if !strings.HasSuffix(string(existingContent), "\n") {
+				lines = append(lines, "")
+			}
+			lines = append(lines, tokenLine)
+		}
+		newContent = strings.Join(lines, "\n")
+		// Ensure file ends with newline
+		if !strings.HasSuffix(newContent, "\n") {
+			newContent += "\n"
+		}
+	}
+
+	return os.WriteFile(envPath, []byte(newContent), 0600)
 }
