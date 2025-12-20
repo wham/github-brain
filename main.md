@@ -6,7 +6,7 @@ Keep the app in one file `main.go`.
 
 ## CLI
 
-Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `login`, `pull`, `mcp`, and `ui` commands.
+Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `login`, `pull`, and `mcp` commands.
 
 If the GitHub Brain home directory doesn't exist, create it.
 
@@ -17,7 +17,7 @@ Concurrency control:
 - Lock renewal: 1-second intervals
 - Lock expiration: 5 seconds
 - Release the lock when `pull` finishes
-- Other commands (`mcp`, `ui`) can run concurrently
+- Other commands (`mcp`) can run concurrently
 
 Use RFC3339 date format consistently.
 Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not use `fmt.Println` or `log.Println`.
@@ -922,19 +922,6 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
   - Issues (least important)
 - For each contribution, include a direct link and relevant metrics or facts.
 - Present a concise, unified summary that mixes all types of contributions, with the most impactful items first.
-
-## ui
-
-- Use `net/http` package with [template/html](https://pkg.go.dev/html/template) for rendering
-- Save all HTML/JS/CSS code in `index.html`
-- Embed all static assets using `embed` package
-- Use template define blocks to re-use `index.html` for search results
-- Use https://htmx.org as the frontend framework. Vanilla JS/CSS otherwise
-- Implement Google-style layout: large search input with instant results below
-- Use HTMX for dynamic search and result updates
-- Display top 10 results
-- Design: modern brutalism with purple accents, dark theme
-- Use the unified SearchEngine with FTS5 `bm25(search)` ranking (same as MCP)
 
 ## GitHub
 
