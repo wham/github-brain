@@ -2157,45 +2157,33 @@ func ClearData(db *DB, config *Config, progress ProgressInterface) error {
 		return nil
 	}
 
-	// If specific items are provided, clear only those
-	if len(config.Items) > 0 {
-		for _, item := range config.Items {
-			switch item {
-			case "repositories":
-				progress.Log("Deleting repositories table")
-				_, err := db.Exec("DELETE FROM repositories")
-				if err != nil {
-					return fmt.Errorf("failed to clear repositories: %w", err)
-				}
-			case "discussions":
-				progress.Log("Deleting discussions table")
-				_, err := db.Exec("DELETE FROM discussions")
-				if err != nil {
-					return fmt.Errorf("failed to clear discussions: %w", err)
-				}
-			case "issues":
-				progress.Log("Deleting issues table")
-				_, err := db.Exec("DELETE FROM issues")
-				if err != nil {
-					return fmt.Errorf("failed to clear issues: %w", err)
-				}
-			case "pull-requests":
-				progress.Log("Deleting pull_requests table")
-				_, err := db.Exec("DELETE FROM pull_requests")
-				if err != nil {
-					return fmt.Errorf("failed to clear pull requests: %w", err)
-				}
+	// Map item names to table names
+	itemToTable := map[string]string{
+		"repositories":  "repositories",
+		"discussions":   "discussions",
+		"issues":        "issues",
+		"pull-requests": "pull_requests",
+	}
 
+	// Determine which tables to clear
+	tablesToClear := []string{}
+	if len(config.Items) > 0 {
+		// Clear only specified items
+		for _, item := range config.Items {
+			if table, ok := itemToTable[item]; ok {
+				tablesToClear = append(tablesToClear, table)
 			}
 		}
 	} else {
-		// Clear all data
-		tables := []string{"pull_requests", "issues", "discussions", "repositories"}
-		for _, table := range tables {
-			_, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table))
-			if err != nil {
-				return fmt.Errorf("failed to clear %s: %w", table, err)
-			}
+		// Clear all tables
+		tablesToClear = []string{"pull_requests", "issues", "discussions", "repositories"}
+	}
+
+	// Clear the tables
+	for _, table := range tablesToClear {
+		progress.Log("Deleting %s table", table)
+		if _, err := db.Exec(fmt.Sprintf("DELETE FROM %s", table)); err != nil {
+			return fmt.Errorf("failed to clear %s: %w", table, err)
 		}
 	}
 
@@ -4337,23 +4325,15 @@ func main() {
 			}
 		}
 
-		// Check if we should pull each item type
-		pullRepositories := false
-		pullDiscussions := false
-		pullIssues := false
-		pullPullRequests := false
+		// Check if we should pull each item type (convert to map for efficient lookup)
+		itemsMap := make(map[string]bool)
 		for _, item := range config.Items {
-			switch item {
-			case "repositories":
-				pullRepositories = true
-			case "discussions":
-				pullDiscussions = true
-			case "issues":
-				pullIssues = true
-			case "pull-requests":
-				pullPullRequests = true
-			}
+			itemsMap[item] = true
 		}
+		pullRepositories := itemsMap["repositories"]
+		pullDiscussions := itemsMap["discussions"]
+		pullIssues := itemsMap["issues"]
+		pullPullRequests := itemsMap["pull-requests"]
 
 		// Create GitHub Brain home directory if it doesn't exist
 		if _, err := os.Stat(config.HomeDir); os.IsNotExist(err) {
