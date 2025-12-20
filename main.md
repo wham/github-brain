@@ -2,7 +2,7 @@
 
 AI coding agent specification. Human documentation in README.md. Read https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/ to understand the approach.
 
-Keep the app in one file `main.go`.
+Keep the app in one file `main.ts`.
 
 ## CLI
 
@@ -19,29 +19,29 @@ Concurrency control:
 - Release the lock when `pull` finishes
 - Other commands (`mcp`) can run concurrently
 
-Use RFC3339 date format consistently.
-Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not use `fmt.Println` or `log.Println`.
+Use RFC3339 date format consistently (ISO 8601).
+Use console logging for output (`console.log`, `console.error`). Structure log messages consistently.
 
-### Bubble Tea Integration
+### Terminal UI Integration
 
-Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for terminal UI:
+Use **Ink** framework (https://github.com/vadimdemedes/ink) for terminal UI:
 
 - **Core packages:**
-  - `github.com/charmbracelet/bubbletea` - TUI framework (Elm Architecture)
-  - `github.com/charmbracelet/lipgloss` - Styling and layout
-  - `github.com/charmbracelet/bubbles/spinner` - Built-in animated spinners
+  - `ink` - React-based TUI framework
+  - `chalk` - Terminal string styling
+  - `cli-spinners` - Animated spinner definitions
 - **Architecture:**
-  - Bubble Tea Model holds UI state (item counts, status, logs)
-  - Background goroutines send messages to update UI via `tea.Program.Send()`
+  - React components hold UI state (item counts, status, logs)
+  - Background async functions update UI state via React hooks
   - Framework handles all cursor positioning, screen clearing, and render batching
-  - Window resize events handled automatically via `tea.WindowSizeMsg`
+  - Window resize handled automatically via terminal capabilities
 - **Implementation:**
-  - `UIProgress` struct wraps `tea.Program` and implements `ProgressInterface`
+  - `UIProgress` class manages React component rendering
   - No manual ANSI escape codes or cursor management
-  - No Console struct needed - Bubble Tea handles everything
-  - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
+  - React components handle UI updates declaratively
+  - State updates trigger automatic re-renders
 - **Playful enhancements:**
-  - Animated spinner using `bubbles/spinner` with Dot style
+  - Animated spinner using cli-spinners with dots style
   - Smooth color transitions for status changes (pending → active → complete)
   - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
   - Gradient animated borders (purple → blue → cyan) updated every second
@@ -164,9 +164,9 @@ OAuth App tokens are long-lived and do not expire unless revoked.
 
 ### Implementation Notes
 
-- Use Bubble Tea for the interactive UI (consistent with `pull` command)
-- Use `github.com/pkg/browser` to open the verification URL
-- Use `github.com/charmbracelet/bubbles/textinput` for organization input
+- Use Ink for the interactive UI (consistent with `pull` command)
+- Use `open` package to open the verification URL in browser
+- Use Ink's `TextInput` component for organization input
 - Poll interval: Start with GitHub's `interval` value (usually 5 seconds)
 - Timeout: Code expires after `expires_in` seconds (usually 15 minutes)
 - After saving token, verify it works by fetching `viewer { login }`
@@ -174,8 +174,8 @@ OAuth App tokens are long-lived and do not expire unless revoked.
 ## pull
 
 - Verify no concurrent `pull` execution
-- Measure GraphQL request rate every second. Adjust `/` spin speed based on rate
-- Resolve CLI arguments and environment variables into `Config` struct:
+- Measure GraphQL request rate every second. Adjust spinner speed based on rate
+- Resolve CLI arguments and environment variables into `Config` interface:
   - `Organization`: Organization name (required)
   - `GithubToken`: GitHub API token (required)
   - `HomeDir`: GitHub Brain home directory (default: `~/.github-brain`)
@@ -183,21 +183,21 @@ OAuth App tokens are long-lived and do not expire unless revoked.
   - `Items`: Comma-separated list to pull (default: empty - pull all)
   - `Force`: Remove all data before pulling (default: false)
   - `ExcludedRepositories`: Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests (default: empty)
-- Use `Config` struct consistently, avoid multiple environment variable reads
+- Use `Config` interface consistently, avoid multiple environment variable reads
 - If `Config.Force` is set, remove all data from database before pulling. If `Config.Items` is set, only remove specified items
 - Pull items: Repositories, Discussions, Issues, Pull Requests
 - Maintain console output showing selected items and status
-- Use `log/slog` custom logger for last 5 log messages with timestamps in console output
+- Structure log messages consistently for last 5 log messages with timestamps in console output
 
-### Console Rendering with Bubble Tea
+### Console Rendering with Ink
 
-Bubble Tea handles all rendering automatically:
+Ink handles all rendering automatically:
 
 - No manual cursor management or screen clearing
 - No debouncing or mutex locks needed
 - Automatic terminal resize handling
-- Smooth animations with `tea.Tick`
-- Background goroutines send messages to update UI via channels
+- Smooth animations with React state updates
+- Background async functions update UI state via React hooks
 
 Console at the beginning of the `pull` command - all items selected:
 
@@ -335,59 +335,59 @@ Console when an error occurs:
 
 ### Implementation Notes
 
-**Bubble Tea Message Handling:**
+**Ink Component Architecture:**
 
-- All UI updates use `tea.Program.Send()` to send typed messages
-- Model's `Update()` method processes messages and returns new state
-- View automatically re-renders when model changes
+- All UI updates use React state updates to trigger re-renders
+- Components use hooks (useState, useEffect) for state management
+- View automatically re-renders when state changes
 - No manual cursor or screen management needed
 
 **Box Drawing:**
 
-- Use lipgloss to build bordered layouts with `lipgloss.JoinVertical`
-- Rounded borders (╭╮╰╯) styled with adaptive colors
-- Border colors animated via `tickMsg` sent every second
+- Use `ink-box` component for bordered layouts
+- Rounded borders (╭╮╰╯) styled with chalk colors
+- Border colors animated via setInterval updating state every second
 - Responsive width: `max(64, terminalWidth - 4)`
 
 **Spinners:**
 
-- Use `bubbles/spinner` with Dot style (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
-- Spinner state managed by Bubble Tea's `spinner.Model`
+- Use `cli-spinners` with dots style (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+- Spinner state managed via React state
 - Only one spinner shown at a time (for active item)
-- Spinner ticks handled via `spinner.TickMsg`
+- Spinner animation handled via useEffect with interval
 
 **Number Formatting:**
 
 - Add commas to numbers > 999: `1,247` not `1247`
-- Helper function: `formatNumber(n int) string`
+- Helper function: `formatNumber(n: number): string`
 - Used in item counts, API stats, and rate limit display
 
 **Time Formatting:**
 
-- Activity logs: `15:04:05` format (HH:MM:SS only)
+- Activity logs: `HH:MM:SS` format
 - Rate limit resets: `formatTimeRemaining()` returns friendly format like "2h 15m"
 
 **Window Resize:**
 
-- Listen for `tea.WindowSizeMsg` in model's `Update()`
-- Store width/height in model state
-- Layout adjusts automatically on next render
+- Ink handles terminal resize automatically
+- Use `useStdout()` hook to get terminal dimensions
+- Layout adjusts automatically on terminal size change
 
 **Color Scheme:**
 
-- Purple/blue gradient for borders (via `borderColors` array)
-- Bright blue (#12) for active items
-- Bright green (#10) for completed ✅
-- Dim gray (#240) for skipped 🔕
-- Bright red (#9) for failed ❌
-- Applied via `lipgloss.NewStyle().Foreground()`
+- Purple/blue gradient for borders using chalk
+- Bright blue for active items
+- Bright green for completed ✅
+- Dim gray for skipped 🔕
+- Bright red for failed ❌
+- Applied via chalk color methods
 
 **Milestone Celebrations:**
 
 - 1,000 items: ✨ emoji in log
 - 5,000 items: 🎉 emoji in log
 - 10,000 items: 🚀✨🎉 emojis in log
-- Triggered in `itemCompleteMsg` handler
+- Triggered when item completes
 
 ### Repositories
 
@@ -638,15 +638,13 @@ Console when an error occurs:
 
 ## mcp
 
-- Use the official MCP SDK for Go: https://github.com/modelcontextprotocol/go-sdk
-- Important: Pull library repository for docs/examples instead of using `go doc`
-- Update library to latest version when modifying MCP code
+- Use the official MCP SDK for TypeScript: @modelcontextprotocol/sdk
 - Use stdio MCP transport
 - Implement only tools listed below
 
 ### Tools
 
-When parameters are required, use `mcp.Required()` to mark them as required. Do not include _required_ in the parameter description.
+When parameters are required, mark them as required in the schema. Do not include _required_ in the parameter description.
 
 #### list_discussions
 
@@ -925,7 +923,7 @@ Summarize the accomplishments of the user `<username>` during `<period>`, focusi
 
 ## GitHub
 
-Use GitHub's GraphQL API exclusively. Use https://github.com/shurcooL/githubv4 package. 100 results per page, max 100 concurrent requests (GitHub limit).
+Use GitHub's GraphQL API exclusively. Use `@octokit/graphql` for GraphQL queries. 100 results per page, max 100 concurrent requests (GitHub limit).
 
 ### Rate Limit and Network Handling
 
@@ -956,7 +954,7 @@ Implement comprehensive error handling with unified retry and recovery strategie
 - Handle different error types:
   - Primary rate limit: wait until `x-ratelimit-reset` + 30s buffer, retry indefinitely
   - Secondary rate limit: use `retry-after` header or wait 1+ minutes with exponential backoff
-  - Network errors (`EOF`, `connection reset`, `broken pipe`, `i/o timeout`): wait 60-120s with jitter
+  - Network errors (ECONNRESET, ETIMEDOUT, ENOTFOUND): wait 60-120s with jitter
   - 5xx server errors: exponential backoff retry
   - Repository not found: no retry, remove from database
   - Timeouts (>10 seconds): GitHub terminates request, additional points deducted next hour
@@ -975,9 +973,9 @@ Implement comprehensive error handling with unified retry and recovery strategie
 
 **Concurrency and Timeouts:**
 
-- Limit concurrent requests to 50 using semaphore (conservative limit to prevent rate limiting)
-- Global rate limit state shared across all goroutines with mutex protection
-- Context cancellation support for all wait operations
+- Limit concurrent requests to 50 using promise concurrency control (conservative limit to prevent rate limiting)
+- Global rate limit state shared across all async operations
+- AbortController support for all wait operations
 - Request timeout: 10 seconds (GitHub's server timeout)
 - Page-level timeout: 5 minutes
 - Global operation timeout: 3 minutes for repository processing completion
@@ -987,7 +985,7 @@ you don't have to display the page count since you don't know it yet. For subseq
 
 ## Database
 
-SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `github.com/mattn/go-sqlite3` package. Build with FTS5 support.
+SQLite database in `{Config.DbDir}/{Config.Organization}.db` (create folder if needed). Avoid transactions. Save each GraphQL item immediately. Use `better-sqlite3` package. Build with FTS5 support.
 
 ### Database Versioning System
 
@@ -1000,8 +998,8 @@ The application uses a simple GUID-based versioning system to handle schema chan
 
 #### Schema Version
 
-```go
-const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID on any schema modification
+```typescript
+const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001"; // Change this GUID on any schema modification
 ```
 
 #### Startup Flow
@@ -1171,22 +1169,19 @@ Coded in `.github/workflow/release.yml` and `.github/workflow/build.yml`.
 
 ### Binary Versioning
 
-- Embed version and build date at compile time:
-  ```bash
-  go build -ldflags "-X main.Version={semver} -X main.BuildDate=$(date -u +%Y-%m-%d)"
-  ```
+- Embed version and build date at build time using package.json version
 - Display with `--version`: `github-brain 1.2.3 (2025-10-29)`
 - NPM package version always matches binary version
 
 ### Build Targets
 
-Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to understand CGO requirements for SQLite FTS5 support.
+Use `@vercel/ncc` or `esbuild` to bundle TypeScript into standalone executables with `pkg` or similar tools.
 
-- `darwin-amd64` - Intel Macs
+- `darwin-x64` - Intel Macs
 - `darwin-arm64` - Apple Silicon
-- `linux-amd64` - x86_64 servers/desktops
+- `linux-x64` - x86_64 servers/desktops
 - `linux-arm64` - ARM servers (AWS Graviton, Raspberry Pi)
-- `windows-amd64` - Windows machines
+- `win32-x64` - Windows machines
 
 ### Artifacts
 
@@ -1210,6 +1205,7 @@ Read https://github.com/mattn/go-sqlite3?tab=readme-ov-file#compiling to underst
 
 **Build System:**
 
-- Built natively on platform-specific GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
-- Linux ARM64 cross-compiled using `gcc-aarch64-linux-gnu`
-- CGO build flags: `CGO_CFLAGS="-DSQLITE_ENABLE_FTS5"`, `CGO_LDFLAGS="-lm"` (Linux only)
+- Built using TypeScript compiler and bundler (esbuild or ncc)
+- Use `pkg` or similar tool to create standalone executables
+- Platform-specific builds on GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
+- SQLite with FTS5 support via better-sqlite3 (includes prebuilt binaries)
