@@ -6,7 +6,11 @@
     "github-brain": "bin/github-brain.js"
   },
   "scripts": {
-    "postinstall": "node install.js"
+    "postinstall": "node install.js",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "prepare": "npm run build",
+    "clean": "rm -rf dist"
   },
   "repository": {
     "type": "git",
@@ -22,6 +26,27 @@
   ],
   "author": "wham",
   "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@octokit/graphql": "^8.1.1",
+    "better-sqlite3": "^11.7.0",
+    "chalk": "^4.1.2",
+    "cli-spinners": "^2.9.2",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.7",
+    "ink": "^3.2.0",
+    "ink-box": "^2.0.0",
+    "ink-spinner": "^4.0.3",
+    "ink-text-input": "^4.0.3",
+    "open": "^8.4.2",
+    "react": "^17.0.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "@types/react": "^17.0.80",
+    "typescript": "^5.7.2"
+  },
   "optionalDependencies": {
     "github-brain-darwin-arm64": "0.0.0",
     "github-brain-darwin-x64": "0.0.0",
@@ -31,6 +56,7 @@
   },
   "files": [
     "bin",
-    "install.js"
+    "install.js",
+    "dist"
   ]
 }
