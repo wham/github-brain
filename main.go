@@ -182,24 +182,15 @@ func updateRateLimitInfo(headers http.Header) {
 	rateLimitInfoMutex.Lock()
 	defer rateLimitInfoMutex.Unlock()
 
-	if limit := headers.Get("x-ratelimit-limit"); limit != "" {
-		if val, err := strconv.Atoi(limit); err == nil {
-			currentRateLimit.Limit = val
-		}
+	if val, ok := parseHeaderInt(headers, "x-ratelimit-limit"); ok {
+		currentRateLimit.Limit = val
 	}
-
-	if remaining := headers.Get("x-ratelimit-remaining"); remaining != "" {
-		if val, err := strconv.Atoi(remaining); err == nil {
-			currentRateLimit.Remaining = val
-		}
+	if val, ok := parseHeaderInt(headers, "x-ratelimit-remaining"); ok {
+		currentRateLimit.Remaining = val
 	}
-
-	if used := headers.Get("x-ratelimit-used"); used != "" {
-		if val, err := strconv.Atoi(used); err == nil {
-			currentRateLimit.Used = val
-		}
+	if val, ok := parseHeaderInt(headers, "x-ratelimit-used"); ok {
+		currentRateLimit.Used = val
 	}
-
 	if reset := headers.Get("x-ratelimit-reset"); reset != "" {
 		if val, err := strconv.ParseInt(reset, 10, 64); err == nil {
 			currentRateLimit.Reset = time.Unix(val, 0)
@@ -207,7 +198,6 @@ func updateRateLimitInfo(headers http.Header) {
 	}
 }
 
-// getRateLimitInfo returns a copy of the current rate limit information
 // updateStatusCounter increments the appropriate status code counter
 func updateStatusCounter(statusCode int) {
 	statusMutex.Lock()
@@ -1073,60 +1063,51 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 	progress.Log("Found %d repositories with your contributions (will receive 2x boost)", len(userReposMap))
 	slog.Info("User contribution repositories identified", "count", len(userReposMap), "username", currentUsername)
 	
-	// Insert discussions with boost calculation
-	if discussionCount > 0 {
-		progress.Log("Indexing %d discussions into search table...", discussionCount)
-		slog.Info("Indexing discussions...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
-			SELECT 'discussion', title, body, url, repository, author, created_at, 'open',
-			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
-			FROM discussions
-		`, currentUsername)
-		if err != nil {
-			return fmt.Errorf("failed to populate discussions in search table: %w", err)
+	// Helper to index a table type into search
+	indexTable := func(tableName, typeName string, count int, query string) error {
+		if count == 0 {
+			progress.Log("No %s to index", tableName)
+			return nil
 		}
-		progress.Log("✅ Completed indexing %d discussions", discussionCount)
-	} else {
-		progress.Log("No discussions to index")
+		progress.Log("Indexing %d %s into search table...", count, tableName)
+		slog.Info("Indexing " + tableName + "...")
+		if _, err := db.Exec(query, currentUsername); err != nil {
+			return fmt.Errorf("failed to populate %s in search table: %w", tableName, err)
+		}
+		progress.Log("✅ Completed indexing %d %s", count, tableName)
+		return nil
+	}
+	
+	// Insert discussions
+	if err := indexTable("discussions", "discussion", discussionCount, `
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
+		SELECT 'discussion', title, body, url, repository, author, created_at, 'open',
+		       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
+		FROM discussions
+	`); err != nil {
+		return err
 	}
 
-	// Insert issues with boost calculation
-	if issueCount > 0 {
-		progress.Log("Indexing %d issues into search table...", issueCount)
-		slog.Info("Indexing issues...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
-			SELECT 'issue', title, body, url, repository, author, created_at, 
-			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
-			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
-			FROM issues
-		`, currentUsername)
-		if err != nil {
-			return fmt.Errorf("failed to populate issues in search table: %w", err)
-		}
-		progress.Log("✅ Completed indexing %d issues", issueCount)
-	} else {
-		progress.Log("No issues to index")
+	// Insert issues
+	if err := indexTable("issues", "issue", issueCount, `
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
+		SELECT 'issue', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
+		       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
+		FROM issues
+	`); err != nil {
+		return err
 	}
 
-	// Insert pull requests with boost calculation
-	if prCount > 0 {
-		progress.Log("Indexing %d pull requests into search table...", prCount)
-		slog.Info("Indexing pull requests...")
-		_, err := db.Exec(`
-			INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
-			SELECT 'pull_request', title, body, url, repository, author, created_at, 
-			       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
-			       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
-			FROM pull_requests
-		`, currentUsername)
-		if err != nil {
-			return fmt.Errorf("failed to populate pull_requests in search table: %w", err)
-		}
-		progress.Log("✅ Completed indexing %d pull requests", prCount)
-	} else {
-		progress.Log("No pull requests to index")
+	// Insert pull requests
+	if err := indexTable("pull requests", "pull_request", prCount, `
+		INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
+		SELECT 'pull_request', title, body, url, repository, author, created_at, 
+		       CASE WHEN closed_at IS NULL THEN 'open' ELSE 'closed' END,
+		       CASE WHEN author = ? THEN 2.0 ELSE 1.0 END
+		FROM pull_requests
+	`); err != nil {
+		return err
 	}
 
 	progress.Log("🎉 Search index rebuild completed successfully with %d total items", totalItems)
@@ -2261,15 +2242,9 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-				// Update rate limit display from global state
-				rateLimitInfoMutex.RLock()
-				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-				rateLimitInfoMutex.RUnlock()
+// Update rate limit and API status display from global state
+updateProgressStatus(progress)
 				
-				// Update API status display from global counters
-				statusMutex.Lock()
-				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -2646,15 +2621,9 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-				// Update rate limit display from global state
-				rateLimitInfoMutex.RLock()
-				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-				rateLimitInfoMutex.RUnlock()
+// Update rate limit and API status display from global state
+updateProgressStatus(progress)
 				
-				// Update API status display from global counters
-				statusMutex.Lock()
-				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -2894,15 +2863,9 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-				// Update rate limit display from global state
-				rateLimitInfoMutex.RLock()
-				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-				rateLimitInfoMutex.RUnlock()
+// Update rate limit and API status display from global state
+updateProgressStatus(progress)
 				
-				// Update API status display from global counters
-				statusMutex.Lock()
-				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -3146,15 +3109,9 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-				// Update rate limit display from global state
-				rateLimitInfoMutex.RLock()
-				progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-				rateLimitInfoMutex.RUnlock()
+// Update rate limit and API status display from global state
+updateProgressStatus(progress)
 				
-				// Update API status display from global counters
-				statusMutex.Lock()
-				progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-				statusMutex.Unlock()
 			}
 		}
 	}()
@@ -4196,6 +4153,53 @@ func RunMCPServer(db *DB) error {
 // UI Server Implementation
 // ============================================================================
 
+// logErrorAndReturn logs an error message, waits for display, and returns (for use in main goroutine with defer)
+func logErrorAndReturn(progress ProgressInterface, format string, args ...interface{}) {
+	progress.Log(format, args...)
+	time.Sleep(3 * time.Second)
+}
+
+// handleFatalError logs an error and exits gracefully after a delay
+func handleFatalError(progress ProgressInterface, format string, args ...interface{}) {
+	logErrorAndReturn(progress, format, args...)
+	progress.Stop()
+	os.Exit(1)
+}
+
+// handlePullItemError marks an item as failed and exits
+func handlePullItemError(progress ProgressInterface, item string, err error) {
+	progress.MarkItemFailed(item, err.Error())
+	handleFatalError(progress, "Error: %v", err)
+}
+
+// checkPreviousFailures checks if any previous item failed and exits if so
+func checkPreviousFailures(progress ProgressInterface, currentItem string) {
+	if progress.HasAnyFailed() {
+		handleFatalError(progress, "Skipping %s due to previous failures", currentItem)
+	}
+}
+
+// updateProgressStatus updates the progress UI with current rate limit and API status
+func updateProgressStatus(progress ProgressInterface) {
+	rateLimitInfoMutex.RLock()
+	progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
+	rateLimitInfoMutex.RUnlock()
+	
+	statusMutex.Lock()
+	progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
+	statusMutex.Unlock()
+}
+
+// parseHeaderInt safely parses an integer from an HTTP header
+func parseHeaderInt(headers http.Header, key string) (int, bool) {
+	if value := headers.Get(key); value != "" {
+		if val, err := strconv.Atoi(value); err == nil {
+			return val, true
+		}
+	}
+	return 0, false
+}
+
 func main() {
 	// Handle --version flag before any other processing
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
@@ -4293,15 +4297,11 @@ func main() {
 		// Continue with the original logic
 		
 		if config.GithubToken == "" {
-			progress.Log("Error: GitHub token is required. Run 'github-brain login' or set GITHUB_TOKEN environment variable.")
-			// Give console time to display the error before exiting
-			time.Sleep(3 * time.Second)
+			logErrorAndReturn(progress, "Error: GitHub token is required. Run 'github-brain login' or set GITHUB_TOKEN environment variable.")
 			return
 		}
 		if config.Organization == "" {
-			progress.Log("Error: Organization is required. Use -o or set ORGANIZATION environment variable.")
-			// Give console time to display the error before exiting
-			time.Sleep(3 * time.Second)
+			logErrorAndReturn(progress, "Error: Organization is required. Use -o or set ORGANIZATION environment variable.")
 			return
 		}
 
@@ -4322,9 +4322,7 @@ func main() {
 		}
 		for _, item := range config.Items {
 			if !validItems[item] {
-				progress.Log("Error: Invalid item: %s. Valid items are: repositories, discussions, issues, pull-requests", item)
-				// Give console time to display the error before exiting
-				time.Sleep(3 * time.Second)
+				logErrorAndReturn(progress, "Error: Invalid item: %s. Valid items are: repositories, discussions, issues, pull-requests", item)
 				return
 			}
 		}
@@ -4351,8 +4349,7 @@ func main() {
 		if _, err := os.Stat(config.HomeDir); os.IsNotExist(err) {
 			progress.Log("Creating GitHub Brain home directory: %s", config.HomeDir)
 			if err := os.MkdirAll(config.HomeDir, 0755); err != nil {
-				progress.Log("Error: Failed to create home directory: %v", err)
-				time.Sleep(3 * time.Second)
+				logErrorAndReturn(progress, "Error: Failed to create home directory: %v", err)
 				return
 			}
 		}
@@ -4361,17 +4358,14 @@ func main() {
 		progress.Log("Initializing database at path: %s", getDBPath(config.DBDir, config.Organization))
 		db, err := InitDB(config.DBDir, config.Organization, progress)
 		if err != nil {
-			progress.Log("Error: Failed to initialize database: %v", err)
-			// Give console time to display the error before exiting
-			time.Sleep(3 * time.Second)
+			logErrorAndReturn(progress, "Error: Failed to initialize database: %v", err)
 			return
 		}
 		defer db.Close()
 
 		// Acquire lock to prevent concurrent pull operations
 		if err := db.LockPull(); err != nil {
-			progress.Log("Error: Failed to acquire lock: %v", err)
-			time.Sleep(3 * time.Second)
+			logErrorAndReturn(progress, "Error: Failed to acquire lock: %v", err)
 			return
 		}
 
@@ -4438,38 +4432,19 @@ func main() {
 		statusMutex.Unlock()
 		
 		// Even on error, update UI with any rate limit info we captured
-		rateLimitInfoMutex.RLock()
-		progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-		rateLimitInfoMutex.RUnlock()
-		
-		statusMutex.Lock()
-		progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-		statusMutex.Unlock()
+		updateProgressStatus(progress)
 		
 		progress.Log("Error: Failed to fetch current user: %v", err)
 		progress.Log("Please run 'login' again to re-authenticate")
-		// Give user time to see the error before stopping
-		time.Sleep(3 * time.Second)
-		progress.Stop()
-		os.Exit(1)
+		handleFatalError(progress, "")
 	}
 	currentUsername := currentUser.Viewer.Login
 	progress.Log("Authenticated as user: %s", currentUsername)
 	
 	// Update UI with rate limit info from the user query response
-	rateLimitInfoMutex.RLock()
-	progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
-	rateLimitInfoMutex.RUnlock()
-	
-	// Update API status from the user query
-	statusMutex.Lock()
-	progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
-	statusMutex.Unlock()	// Clear data if Force flag is set
+	updateProgressStatus(progress)	// Clear data if Force flag is set
 	if err := ClearData(db, config, progress); err != nil {
-		progress.Log("Error: Failed to clear data: %v", err)
-		time.Sleep(3 * time.Second)
-		progress.Stop()
-		os.Exit(1)
+		handleFatalError(progress, "Error: Failed to clear data: %v", err)
 	}
 
 	// No longer deleting data from other organizations - keeping all data
@@ -4479,79 +4454,35 @@ func main() {
 	if pullRepositories {
 		if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
 			progress.MarkItemFailed("repositories", err.Error())
-			progress.Log("Failed to pull repositories: %v", err)
-			// Stop processing subsequent items if repositories failed
-			time.Sleep(3 * time.Second)
-			progress.Stop()
-			os.Exit(1)
+			handleFatalError(progress, "Failed to pull repositories: %v", err)
 		}
 	}
 
-		// Pull discussions if requested
-		if pullDiscussions {
-			// Check if any previous item failed
-			if progress.HasAnyFailed() {
-				progress.Log("Skipping discussions due to previous failures")
-				// Exit early if any previous item failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
-
-			if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("discussions", err.Error())
-				progress.Log("Error: %v", err)
-				// Stop processing subsequent items if discussions failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
+	// Pull discussions if requested
+	if pullDiscussions {
+		checkPreviousFailures(progress, "discussions")
+		if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
+			handlePullItemError(progress, "discussions", err)
 		}
+	}
 
-		// Pull issues if requested
-		if pullIssues {
-			// Check if any previous item failed
-			if progress.HasAnyFailed() {
-				progress.Log("Skipping issues due to previous failures")
-				// Exit early if any previous item failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
-
-			if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("issues", err.Error())
-				progress.Log("Error: %v", err)
-				// Stop processing subsequent items if issues failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
+	// Pull issues if requested
+	if pullIssues {
+		checkPreviousFailures(progress, "issues")
+		if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
+			handlePullItemError(progress, "issues", err)
 		}
+	}
 
-		// Pull pull requests if requested
-		if pullPullRequests {
-			// Check if any previous item failed
-			if progress.HasAnyFailed() {
-				progress.Log("Skipping pull requests due to previous failures")
-				// Exit early if any previous item failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
-
-			progress.Log("Starting pull requests operation")
-
-			progress.Log("About to call PullPullRequests")
-			if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
-				progress.MarkItemFailed("pull-requests", err.Error())
-				progress.Log("Error: %v", err)
-				// Stop processing subsequent items if pull requests failed
-				time.Sleep(3 * time.Second)
-				progress.Stop()
-				os.Exit(1)
-			}
+	// Pull pull requests if requested
+	if pullPullRequests {
+		checkPreviousFailures(progress, "pull requests")
+		progress.Log("Starting pull requests operation")
+		progress.Log("About to call PullPullRequests")
+		if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
+			handlePullItemError(progress, "pull-requests", err)
 		}
+	}
 
 		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 		progress.UpdateMessage("Updating search index...")
