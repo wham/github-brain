@@ -18,10 +18,6 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 ![](./docs/pull.png)
 
-GitHub Brain also includes a Raycast extension:
-
-![](./docs/raycast.png)
-
 GitHub Brain is [programmed in Markdown](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-using-markdown-as-a-programming-language-when-building-with-ai/).
 
 ## Installation
@@ -166,16 +162,6 @@ Add to the VS Code MCP configuration file:
 ```
 
 Merge with existing `servers` if present.
-
-## Raycast Extension
-
-Run the Raycast extension with:
-
-```sh
-scripts/raycast
-```
-
-The extension uses the MCP server to search GitHub data.
 
 ## Development
 
