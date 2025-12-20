@@ -4266,7 +4266,7 @@ func main() {
 		}
 
 		if err := RunLogin(homeDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Login failed: %v\n", err)
+			slog.Error("Login failed", "error", err)
 			os.Exit(1)
 		}
 
@@ -4547,7 +4547,7 @@ func main() {
 		}
 
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
+		slog.Error("Unknown command", "command", cmd)
 		fmt.Printf("Use %s -h for help\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -4606,7 +4606,7 @@ func (p *UIProgress) InitItems(config *Config) {
 	// Start the program in a goroutine
 	go func() {
 		if _, err := p.program.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error running Bubble Tea program: %v\n", err)
+			slog.Error("Error running Bubble Tea program", "error", err)
 		}
 	}()
 	
@@ -5010,41 +5010,26 @@ func (m model) View() string {
 			contentLines[i] = line + strings.Repeat(" ", padding)
 		}
 	}
+	
+	// Add title as first line of content
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	titleLine := titleStyle.Render("GitHub 🧠 pull")
+	// Pad title line to match content width
+	titlePadding := maxContentWidth - visibleLength(titleLine)
+	if titlePadding > 0 {
+		titleLine = titleLine + strings.Repeat(" ", titlePadding)
+	}
+	contentLines = append([]string{titleLine}, contentLines...)
 	content = strings.Join(contentLines, "\n")
 	
-	// Create box without automatic width adjustment (we've done it ourselves)
+	// Create box with standard lipgloss borders
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
-		Padding(0, 1). // 1 space padding on left and right
+		Padding(0, 1).
 		Align(lipgloss.Left)
 	
 	box := boxStyle.Render(content)
-	
-	// Add title to the top border while maintaining color
-	titleText := "GitHub 🧠 pull"
-	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(borderColor)
-	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
-	
-	boxLines := strings.Split(box, "\n")
-	if len(boxLines) > 0 {
-		// Calculate the plain title width
-		titlePlainWidth := visibleLength(titleText)
-		// Get the full width of the first line
-		firstLineWidth := lipgloss.Width(boxLines[0])
-		// Calculate dashes needed: total width - "╭─ " (3) - title - " " (1) - "╮" (1)
-		dashesNeeded := firstLineWidth - 3 - titlePlainWidth - 1 - 1
-		if dashesNeeded < 0 {
-			dashesNeeded = 0
-		}
-		
-		// Build the title line with proper coloring
-		boxLines[0] = borderStyle.Render("╭─ ") + 
-			titleStyle.Render(titleText) + 
-			borderStyle.Render(" " + strings.Repeat("─", dashesNeeded) + "╮")
-		
-		box = strings.Join(boxLines, "\n")
-	}
 	
 	return box + "\n"
 }
@@ -5314,32 +5299,18 @@ func (m loginModel) View() string {
 		maxContentWidth = 64
 	}
 
-	// Create border style
+	// Create border style with title
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(true).
+		BorderBottom(true).
 		Padding(0, 1).
 		Width(maxContentWidth)
 
-	// Title
-	title := " GitHub 🧠 Login "
-	titleStyle := lipgloss.NewStyle().Bold(true)
-
 	box := borderStyle.Render(content)
-	
-	// Replace top border with title
-	lines := strings.Split(box, "\n")
-	if len(lines) > 0 {
-		topBorder := lines[0]
-		titlePos := 2
-		if titlePos+len(title) < len(topBorder) {
-			runes := []rune(topBorder)
-			titleRunes := []rune(titleStyle.Render(title))
-			copy(runes[titlePos:], titleRunes)
-			lines[0] = string(runes)
-		}
-		box = strings.Join(lines, "\n")
-	}
 
 	return box
 }
@@ -5347,6 +5318,8 @@ func (m loginModel) View() string {
 func (m loginModel) renderWaitingView() string {
 	var b strings.Builder
 
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
 	b.WriteString("  🔐 GitHub Authentication\n")
 	b.WriteString("\n")
@@ -5382,8 +5355,10 @@ func (m loginModel) renderWaitingView() string {
 func (m loginModel) renderOrgInputView() string {
 	var b strings.Builder
 
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
+	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
 	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
 	b.WriteString("\n")
@@ -5399,8 +5374,10 @@ func (m loginModel) renderOrgInputView() string {
 func (m loginModel) renderSuccessView() string {
 	var b strings.Builder
 
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
+	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
 	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
@@ -5420,8 +5397,10 @@ func (m loginModel) renderSuccessView() string {
 func (m loginModel) renderErrorView() string {
 	var b strings.Builder
 
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
+	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
 	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
