@@ -2240,8 +2240,8 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-// Update rate limit and API status display from global state
-updateProgressStatus(progress)
+				// Update rate limit and API status display from global state
+				updateProgressStatus(progress)
 				
 			}
 		}
@@ -2619,8 +2619,8 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-// Update rate limit and API status display from global state
-updateProgressStatus(progress)
+				// Update rate limit and API status display from global state
+				updateProgressStatus(progress)
 				
 			}
 		}
@@ -2861,8 +2861,8 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-// Update rate limit and API status display from global state
-updateProgressStatus(progress)
+				// Update rate limit and API status display from global state
+				updateProgressStatus(progress)
 				
 			}
 		}
@@ -3107,8 +3107,8 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
 				
-// Update rate limit and API status display from global state
-updateProgressStatus(progress)
+				// Update rate limit and API status display from global state
+				updateProgressStatus(progress)
 				
 			}
 		}
@@ -4432,7 +4432,9 @@ func main() {
 	progress.Log("Authenticated as user: %s", currentUsername)
 	
 	// Update UI with rate limit info from the user query response
-	updateProgressStatus(progress)	// Clear data if Force flag is set
+	updateProgressStatus(progress)
+	
+	// Clear data if Force flag is set
 	if err := ClearData(db, config, progress); err != nil {
 		handleFatalError(progress, "Error: Failed to clear data: %v", err)
 	}
