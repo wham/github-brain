@@ -6,7 +6,7 @@ Keep the app in one file `main.go`.
 
 ## CLI
 
-Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `pull`, `mcp`, and `ui` commands.
+Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `login`, `pull`, `mcp`, and `ui` commands.
 
 If the GitHub Brain home directory doesn't exist, create it.
 
@@ -46,6 +46,130 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
   - Gradient animated borders (purple → blue → cyan) updated every second
   - Right-aligned comma-formatted counters
+
+## login
+
+Interactive GitHub authentication using OAuth Device Flow. Stores the resulting token in the `.env` file.
+
+### OAuth App
+
+The app uses a registered OAuth App for authentication:
+
+- **Client ID**: Embedded in the binary (public, safe to commit)
+- **Client Secret**: Not required for device flow (public clients)
+- **Scopes**: `read:org repo` (read organization data and full repository access)
+
+### Device Flow
+
+1. Request device code from GitHub:
+
+   ```
+   POST https://github.com/login/device/code
+   client_id=<CLIENT_ID>&scope=read:org repo
+   ```
+
+2. GitHub returns:
+
+   - `device_code`: Secret code for polling
+   - `user_code`: Code user enters (e.g., `ABCD-1234`)
+   - `verification_uri`: `https://github.com/login/device`
+   - `expires_in`: Code expiration (usually 900 seconds)
+   - `interval`: Polling interval (usually 5 seconds)
+
+3. Display the code and open browser:
+
+   ```
+   ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
+   │                                                                │
+   │  🔐 GitHub Authentication                                      │
+   │                                                                │
+   │  1. Opening browser to: github.com/login/device                │
+   │                                                                │
+   │  2. Enter this code:                                           │
+   │                                                                │
+   │     ╭──────────────────╮                                       │
+   │     │    ABCD-1234     │                                       │
+   │     ╰──────────────────╯                                       │
+   │                                                                │
+   │  ⠋ Waiting for authorization...                                │
+   │                                                                │
+   │  Press Ctrl+C to cancel                                        │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+4. Poll for access token:
+
+   ```
+   POST https://github.com/login/oauth/access_token
+   client_id=<CLIENT_ID>&device_code=<DEVICE_CODE>&grant_type=urn:ietf:params:oauth:grant-type:device_code
+   ```
+
+5. Handle poll responses:
+
+   - `authorization_pending`: Keep polling
+   - `slow_down`: Increase interval by 5 seconds
+   - `expired_token`: Code expired, start over
+   - `access_denied`: User denied, show error
+   - Success: Returns `access_token` (long-lived, does not expire)
+
+6. On success, prompt for organization:
+
+   ```
+   ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
+   │                                                                │
+   │  ✅ Successfully authenticated as @wham                        │
+   │                                                                │
+   │  Enter your GitHub organization (optional):                    │
+   │  > my-org█                                                     │
+   │                                                                │
+   │  Press Enter to skip, or type organization name                │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+7. Save tokens (and organization if provided) to `.env` file:
+   ```
+   ╭─ GitHub 🧠 Login ─────────────────────────────────────────────╮
+   │                                                                │
+   │  ✅ Setup complete!                                            │
+   │                                                                │
+   │  Logged in as: @wham                                           │
+   │  Organization: my-org                                          │
+   │  Saved to: ~/.github-brain/.env                                │
+   │                                                                │
+   │  You can now run:                                              │
+   │    github-brain pull                                           │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+### Token Storage
+
+Save token and organization to `{HomeDir}/.env` file:
+
+- If `.env` exists and has `GITHUB_TOKEN`, replace it
+- If `.env` exists without `GITHUB_TOKEN`, append it
+- If `.env` doesn't exist, create it
+- Same logic for `ORGANIZATION`
+
+Format:
+
+```
+GITHUB_TOKEN=gho_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ORGANIZATION=my-org
+```
+
+OAuth App tokens are long-lived and do not expire unless revoked.
+
+### Implementation Notes
+
+- Use Bubble Tea for the interactive UI (consistent with `pull` command)
+- Use `github.com/pkg/browser` to open the verification URL
+- Use `github.com/charmbracelet/bubbles/textinput` for organization input
+- Poll interval: Start with GitHub's `interval` value (usually 5 seconds)
+- Timeout: Code expires after `expires_in` seconds (usually 15 minutes)
+- After saving token, verify it works by fetching `viewer { login }`
 
 ## pull
 
