@@ -4257,7 +4257,7 @@ func main() {
 		}
 
 		if err := RunLogin(homeDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Login failed: %v\n", err)
+			slog.Error("Login failed", "error", err)
 			os.Exit(1)
 		}
 
@@ -4617,7 +4617,7 @@ func main() {
 		}
 
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
+		slog.Error("Unknown command", "command", cmd)
 		fmt.Printf("Use %s -h for help\n", os.Args[0])
 		os.Exit(1)
 	}
@@ -4676,7 +4676,7 @@ func (p *UIProgress) InitItems(config *Config) {
 	// Start the program in a goroutine
 	go func() {
 		if _, err := p.program.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error running Bubble Tea program: %v\n", err)
+			slog.Error("Error running Bubble Tea program", "error", err)
 		}
 	}()
 	
