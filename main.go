@@ -62,6 +62,16 @@ var (
 	statusMutex    sync.Mutex
 )
 
+// gradientColors defines the color gradient for UI borders (purple → blue → cyan)
+var gradientColors = []lipgloss.AdaptiveColor{
+	{Light: "#874BFD", Dark: "#7D56F4"}, // Purple
+	{Light: "#7D56F4", Dark: "#6B4FD8"}, // Purple-blue
+	{Light: "#5B4FE0", Dark: "#5948C8"}, // Blue-purple
+	{Light: "#4F7BD8", Dark: "#4B6FD0"}, // Blue
+	{Light: "#48A8D8", Dark: "#45A0D0"}, // Cyan-blue
+	{Light: "#48D8D0", Dark: "#45D0C8"}, // Cyan
+}
+
 // Removed ConsoleHandler - not needed with Bubble Tea
 
 // BubbleTeaHandler is a custom slog handler that routes logs to Bubble Tea UI
@@ -4763,16 +4773,6 @@ func newModel(enabledItems map[string]bool) model {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Bright blue
 
-	// Define gradient colors for border animation (purple → blue → cyan)
-	gradientColors := []lipgloss.AdaptiveColor{
-		{Light: "#874BFD", Dark: "#7D56F4"}, // Purple
-		{Light: "#7D56F4", Dark: "#6B4FD8"}, // Purple-blue
-		{Light: "#5B4FE0", Dark: "#5948C8"}, // Blue-purple
-		{Light: "#4F7BD8", Dark: "#4B6FD0"}, // Blue
-		{Light: "#48A8D8", Dark: "#45A0D0"}, // Cyan-blue
-		{Light: "#48D8D0", Dark: "#45D0C8"}, // Cyan
-	}
-
 	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
 	items := make(map[string]itemState)
 	for _, name := range itemOrder {
@@ -5201,15 +5201,6 @@ func newLoginModel(homeDir string) loginModel {
 	ti.Width = 30
 	ti.Prompt = "> "
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
-	gradientColors := []lipgloss.AdaptiveColor{
-		{Light: "#874BFD", Dark: "#7D56F4"},
-		{Light: "#7D56F4", Dark: "#6B4FD8"},
-		{Light: "#5B4FE0", Dark: "#5948C8"},
-		{Light: "#4F7BD8", Dark: "#4B6FD0"},
-		{Light: "#48A8D8", Dark: "#45A0D0"},
-		{Light: "#48D8D0", Dark: "#45D0C8"},
-	}
 
 	return loginModel{
 		spinner:      s,
