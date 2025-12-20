@@ -3,11 +3,8 @@ package main
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"encoding/json"
 	"fmt"
-	"html"
-	"html/template"
 	"io"
 	"log/slog"
 	"math/rand"
@@ -31,13 +28,6 @@ import (
 	"github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
 )
-
-// Embedded static assets
-//go:embed index.html
-var indexHTML string
-
-//go:embed htmx.min.js
-var htmxJS []byte
 
 // Database schema version GUID - change this on any schema modification
 const SCHEMA_GUID = "b8f3c2a1-9e7d-4f6b-8c5a-3d2e1f0a9b8c"
@@ -4206,115 +4196,6 @@ func RunMCPServer(db *DB) error {
 // UI Server Implementation
 // ============================================================================
 
-// RunUIServer starts the web UI server
-func RunUIServer(db *DB, port string) error {
-	slog.Info("Initializing search engine for UI server")
-	searchEngine := NewSearchEngine(db)
-
-	// Parse the embedded index.html template
-	tmpl, err := template.New("index").Parse(indexHTML)
-	if err != nil {
-		return fmt.Errorf("failed to parse template: %v", err)
-	}
-
-	// Serve the index.html file for the root route
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		if err := tmpl.Execute(w, nil); err != nil {
-			slog.Error("Failed to execute index template", "error", err)
-			http.Error(w, "Template error", http.StatusInternalServerError)
-		}
-	})
-
-	// Serve the embedded HTMX JavaScript file
-	http.HandleFunc("/htmx.min.js", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/javascript")
-		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		if _, err := w.Write(htmxJS); err != nil {
-			slog.Error("Failed to write HTMX JavaScript", "error", err)
-		}
-	})
-
-	// Search handler for HTMX requests
-	http.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query().Get("value")
-		if query == "" {
-			// Return empty results for empty query
-			w.Header().Set("Content-Type", "text/html")
-			if err := tmpl.ExecuteTemplate(w, "empty-results", nil); err != nil {
-				slog.Error("Failed to execute empty-results template", "error", err)
-				http.Error(w, "Template error", http.StatusInternalServerError)
-			}
-			return
-		}
-
-		results, err := searchEngine.Search(query, 10)
-		if err != nil {
-			slog.Error("Search query failed", "query", query, "error", err)
-			http.Error(w, fmt.Sprintf("Search error: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/html")
-		
-		if len(results) == 0 {
-			if err := tmpl.ExecuteTemplate(w, "no-results", map[string]string{"Query": html.EscapeString(query)}); err != nil {
-				slog.Error("Failed to execute no-results template", "error", err)
-				http.Error(w, "Template error", http.StatusInternalServerError)
-			}
-			return
-		}
-
-		// Render each result using the template
-		for _, result := range results {
-			// Determine type badge based on URL
-			typeBadge := "discussion"
-			typeClass := "type-discussion"
-			if strings.Contains(result.URL, "/issues/") {
-				typeBadge = "issue"
-				typeClass = "type-issue"
-			} else if strings.Contains(result.URL, "/pull/") {
-				typeBadge = "pr"
-				typeClass = "type-pr"
-			}
-
-			// Truncate body if too long
-			body := result.Body
-			if len(body) > 200 {
-				body = body[:200] + "..."
-			}
-
-			// Format the created date
-			createdAt := ""
-			if !result.CreatedAt.IsZero() {
-				createdAt = result.CreatedAt.Format("Jan 2, 2006")
-			}
-
-			templateData := map[string]string{
-				"URL":        html.EscapeString(result.URL),
-				"Title":      html.EscapeString(result.Title),
-				"TypeClass":  typeClass,
-				"TypeBadge":  typeBadge,
-				"Repository": html.EscapeString(result.Repository),
-				"Author":     html.EscapeString(result.Author),
-				"CreatedAt":  createdAt,
-				"Body":       html.EscapeString(body),
-			}
-
-			if err := tmpl.ExecuteTemplate(w, "result-item", templateData); err != nil {
-				slog.Error("Failed to execute result-item template", "error", err, "result_url", result.URL)
-				http.Error(w, "Template error", http.StatusInternalServerError)
-				return
-			}
-		}
-	})
-
-	fmt.Printf("Starting GitHub Brain UI server on http://localhost:%s\n", port)
-	fmt.Println("Press Ctrl+C to stop the server")
-
-	return http.ListenAndServe(":"+port, nil)
-}
-
 func main() {
 	// Handle --version flag before any other processing
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
@@ -4356,9 +4237,8 @@ func main() {
 		fmt.Println("  login  Authenticate with GitHub")
 		fmt.Println("  pull   Pull GitHub repositories and discussions")
 		fmt.Println("  mcp    Start the MCP server")
-		fmt.Println("  ui     Start the web UI server")
 		fmt.Println("\nFor command-specific help, use:")
-		fmt.Println("  login -h\n  pull -h\n  mcp -h\n  ui -h")
+		fmt.Println("  login -h\n  pull -h\n  mcp -h")
 		os.Exit(0)
 	}
 
@@ -4733,57 +4613,6 @@ func main() {
 
 		if err := RunMCPServer(db); err != nil {
 			slog.Error("MCP server error", "error", err)
-			os.Exit(1)
-		}
-
-	case "ui":
-		args := os.Args[2:]
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: ui -o <organization> [-m <home_dir>] [-p <port>] [-s]")
-				fmt.Println("Options:")
-				fmt.Println("  -o    GitHub organization (required)")
-				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
-				fmt.Println("  -p    Port for UI server (default: 8080)")
-				fmt.Println("  -s    Skip creating FTS table")
-				os.Exit(0)
-			}
-		}
-
-		// Load configuration from CLI args and environment variables
-		config := LoadConfig(args)
-
-		// Parse port from args and environment (default: 8080)
-		port := os.Getenv("UI_PORT")
-		if port == "" {
-			port = "8080"
-		}
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-p" && i+1 < len(args) {
-				port = args[i+1]
-			}
-		}
-
-		// Get organization from config or environment
-		organization := config.Organization
-		if organization == "" {
-			organization = os.Getenv("ORGANIZATION")
-			if organization == "" {
-				slog.Error("Organization is required for UI mode. Set via -o flag or ORGANIZATION environment variable")
-				os.Exit(1)
-			}
-		}
-
-		// Initialize database without progress indicator
-		db, err := InitDB(config.DBDir, organization, nil)
-		if err != nil {
-			slog.Error("Failed to initialize database", "error", err)
-			os.Exit(1)
-		}
-		defer db.Close()
-
-		if err := RunUIServer(db, port); err != nil {
-			slog.Error("UI server error", "error", err)
 			os.Exit(1)
 		}
 

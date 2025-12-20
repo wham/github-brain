@@ -18,11 +18,7 @@ GitHub Brain complements (but does not replace) the [official GitHub MCP server]
 
 ![](./docs/pull.png)
 
-GitHub Brain also includes a web-based UI for ultra-fast search:
-
-![](./docs/ui.png)
-
-And a Raycast extension:
+GitHub Brain also includes a Raycast extension:
 
 ![](./docs/raycast.png)
 
@@ -122,20 +118,6 @@ github-brain mcp -o my-org
 | :------- | :------------- | :------------------------------------------ |
 | `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                           |
 | `-m`     |                | Home directory. Default: `~/.github-brain`                                                   |
-
-### `ui`
-
-Start the web UI for quick searches (alternative to MCP).
-
-```sh
-github-brain ui -o my-org
-```
-
-| Argument | Variable       | Description                                |
-| :------- | :------------- | :------------------------------------------|
-| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**         |
-| `-m`     |                | Home directory. Default: `~/.github-brain` |
-| `-p`     | `UI_PORT`      | Port. Default: `8080`.                     |
 
 ### Additional Arguments
 
