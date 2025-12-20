@@ -4157,6 +4157,13 @@ func logErrorAndReturn(progress ProgressInterface, format string, args ...interf
 	time.Sleep(3 * time.Second)
 }
 
+// exitAfterDelay waits for display and exits (for use when errors are already logged)
+func exitAfterDelay(progress ProgressInterface) {
+	time.Sleep(3 * time.Second)
+	progress.Stop()
+	os.Exit(1)
+}
+
 // handleFatalError logs an error and exits gracefully after a delay
 func handleFatalError(progress ProgressInterface, format string, args ...interface{}) {
 	logErrorAndReturn(progress, format, args...)
@@ -4426,7 +4433,7 @@ func main() {
 		
 		progress.Log("Error: Failed to fetch current user: %v", err)
 		progress.Log("Please run 'login' again to re-authenticate")
-		handleFatalError(progress, "")
+		exitAfterDelay(progress)
 	}
 	currentUsername := currentUser.Viewer.Login
 	progress.Log("Authenticated as user: %s", currentUsername)
