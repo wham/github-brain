@@ -1,0 +1,52 @@
+# golangci-lint configuration
+# Documentation: https://golangci-lint.run/usage/configuration/
+version: 2
+
+linters:
+  enable:
+    # Default/standard linters
+    - errcheck      # Checks for unchecked errors
+    - govet         # Reports suspicious constructs
+    - ineffassign   # Detects ineffectual assignments
+    - staticcheck   # Comprehensive static analysis
+    - unused        # Checks for unused code
+    
+    # Additional common linters
+    - revive        # Fast, configurable linter (golint replacement)
+    - misspell      # Finds commonly misspelled English words
+    - gosec         # Inspects for security problems
+    - bodyclose     # Checks HTTP response body is closed
+    - goconst       # Finds repeated strings that could be constants
+    - gocyclo       # Checks cyclomatic complexity
+
+formatters:
+  enable:
+    - gofmt         # Format code properly
+    - goimports     # Manage import statements
+
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+  
+  govet:
+    enable-all: true
+  
+  gocyclo:
+    min-complexity: 15  # Standard threshold
+  
+  gosec:
+    excludes:
+      - G104  # Audit errors not checked - covered by errcheck
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on test files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - gosec
+  
+  max-issues-per-linter: 0
+  max-same-issues: 0
