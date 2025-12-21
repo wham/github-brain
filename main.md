@@ -1182,10 +1182,6 @@ Use **golangci-lint** for code quality checks. Configuration in `.golangci.yml`.
 - **goconst** - Finds repeated strings that could be constants
 - **gocyclo** - Checks cyclomatic complexity (threshold: 15)
 
-**Formatters enabled:**
-- **gofmt** - Formats code properly
-- **goimports** - Manages import statements
-
 **Running the linter:**
 ```bash
 # Standalone

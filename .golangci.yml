@@ -19,11 +19,6 @@ linters:
     - goconst       # Finds repeated strings that could be constants
     - gocyclo       # Checks cyclomatic complexity
 
-formatters:
-  enable:
-    - gofmt         # Format code properly
-    - goimports     # Manage import statements
-
 linters-settings:
   errcheck:
     check-type-assertions: false
