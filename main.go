@@ -4057,6 +4057,249 @@ func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolR
 	}
 }
 
+// TesterInput represents parameters for tester tool
+type TesterInput struct {
+	Repository  string   `json:"repository,omitempty" jsonschema:"Filter by repository name. Example: auth-service. Defaults to any repository in the organization"`
+	CreatedFrom string   `json:"created_from,omitempty" jsonschema:"Filter by created_at after the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date"`
+	CreatedTo   string   `json:"created_to,omitempty" jsonschema:"Filter by created_at before the specified date. Example: 2025-06-18T19:19:08Z. Defaults to any date"`
+	Authors     []string `json:"authors,omitempty" jsonschema:"Array of author usernames. Example: [john_doe, jane_doe]. Defaults to any author"`
+	Fields      []string `json:"fields,omitempty" jsonschema:"Array of fields to include in the response. Available fields: [title, url, repository, created_at, author, type, status, body]. Defaults to all fields"`
+}
+
+// TesterTool handles the tester MCP tool - analyzes test-related issues and pull requests
+func TesterTool(db *DB) func(context.Context, *mcp.CallToolRequest, TesterInput) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input TesterInput) (*mcp.CallToolResult, any, error) {
+		slog.Debug("tester called", "input", input)
+
+		// Validate fields parameter
+		availableFields := []string{"title", "url", "repository", "created_at", "author", "type", "status", "body"}
+		if err := validateFields(input.Fields, availableFields, "tester"); err != nil {
+			return nil, nil, err
+		}
+
+		// Parse dates
+		createdFromTime, err := parseRFC3339Date(input.CreatedFrom, "created_from")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		createdToTime, err := parseRFC3339Date(input.CreatedTo, "created_to")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		// Search for test-related items using common test keywords
+		testKeywords := []string{
+			"test", "testing", "tests", "spec", "specs",
+			"unit test", "integration test", "e2e test", "test suite",
+			"test failure", "test fix", "flaky test", "test coverage",
+			"ci test", "failing test", "broken test",
+		}
+
+		var allResults []struct {
+			Title      string
+			URL        string
+			Repository string
+			CreatedAt  time.Time
+			Author     string
+			Type       string
+			Status     string
+			Body       string
+		}
+
+		// Search issues for test-related content
+		issues, err := db.GetIssues(input.Repository, createdFromTime, createdToTime, nil, nil, input.Authors)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get issues: %w", err)
+		}
+
+		for _, issue := range issues {
+			// Check if issue is test-related
+			titleLower := strings.ToLower(issue.Title)
+			bodyLower := strings.ToLower(issue.Body)
+			isTestRelated := false
+
+			for _, keyword := range testKeywords {
+				if strings.Contains(titleLower, keyword) || strings.Contains(bodyLower, keyword) {
+					isTestRelated = true
+					break
+				}
+			}
+
+			if isTestRelated {
+				status := "open"
+				if issue.ClosedAt != nil {
+					status = "closed"
+				}
+				allResults = append(allResults, struct {
+					Title      string
+					URL        string
+					Repository string
+					CreatedAt  time.Time
+					Author     string
+					Type       string
+					Status     string
+					Body       string
+				}{
+					Title:      issue.Title,
+					URL:        issue.URL,
+					Repository: issue.Repository,
+					CreatedAt:  issue.CreatedAt,
+					Author:     issue.Author,
+					Type:       "issue",
+					Status:     status,
+					Body:       issue.Body,
+				})
+			}
+		}
+
+		// Search pull requests for test-related content
+		prs, err := db.GetPullRequests(input.Repository, createdFromTime, createdToTime, nil, nil, nil, nil, input.Authors)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get pull requests: %w", err)
+		}
+
+		for _, pr := range prs {
+			// Check if PR is test-related
+			titleLower := strings.ToLower(pr.Title)
+			bodyLower := strings.ToLower(pr.Body)
+			isTestRelated := false
+
+			for _, keyword := range testKeywords {
+				if strings.Contains(titleLower, keyword) || strings.Contains(bodyLower, keyword) {
+					isTestRelated = true
+					break
+				}
+			}
+
+			if isTestRelated {
+				status := "open"
+				if pr.ClosedAt != nil {
+					status = "closed"
+				}
+				allResults = append(allResults, struct {
+					Title      string
+					URL        string
+					Repository string
+					CreatedAt  time.Time
+					Author     string
+					Type       string
+					Status     string
+					Body       string
+				}{
+					Title:      pr.Title,
+					URL:        pr.URL,
+					Repository: pr.Repository,
+					CreatedAt:  pr.CreatedAt,
+					Author:     pr.Author,
+					Type:       "pull_request",
+					Status:     status,
+					Body:       pr.Body,
+				})
+			}
+		}
+
+		// Sort by created date ascending
+		// Already sorted by GetIssues and GetPullRequests, but we need to merge them
+		// Simple approach: keep the order from each source
+
+		if len(allResults) == 0 {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No test-related issues or pull requests found."}},
+			}, nil, nil
+		}
+
+		// Format results
+		var result strings.Builder
+		responseSize := 0
+		itemsShown := 0
+		maxResponseSize := 990 * 1024
+		truncated := false
+
+		// Add summary header
+		result.WriteString(fmt.Sprintf("Found %d test-related items (%d issues, %d pull requests).\n\n---\n\n",
+			len(allResults),
+			countByType(allResults, "issue"),
+			countByType(allResults, "pull_request")))
+
+		for i, item := range allResults {
+			var formatted strings.Builder
+
+			if shouldIncludeField("title", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("## %s\n\n", item.Title))
+			}
+			if shouldIncludeField("url", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- URL: %s\n", item.URL))
+			}
+			if shouldIncludeField("type", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Type: %s\n", item.Type))
+			}
+			if shouldIncludeField("repository", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Repository: %s\n", item.Repository))
+			}
+			if shouldIncludeField("created_at", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Created at: %s\n", item.CreatedAt.Format(time.RFC3339)))
+			}
+			if shouldIncludeField("author", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Author: %s\n", item.Author))
+			}
+			if shouldIncludeField("status", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("- Status: %s\n", item.Status))
+			}
+			formatted.WriteString("\n")
+			if shouldIncludeField("body", input.Fields) {
+				formatted.WriteString(fmt.Sprintf("%s\n", item.Body))
+			}
+			formatted.WriteString("\n---\n\n")
+
+			formattedStr := formatted.String()
+			if responseSize+len(formattedStr) > maxResponseSize && itemsShown > 0 {
+				truncated = true
+				break
+			}
+
+			responseSize += len(formattedStr)
+			result.WriteString(formattedStr)
+			itemsShown = i + 1
+		}
+
+		if truncated {
+			remaining := len(allResults) - itemsShown
+			truncationMsg := fmt.Sprintf("\n\nShowing only the first %d items. There are %d more test-related items, please refine your search using `created_from`, `created_to`, or `repository` parameters.\n",
+				itemsShown, remaining)
+			// Prepend the truncation message
+			finalResult := truncationMsg + result.String()
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: finalResult}},
+			}, nil, nil
+		}
+
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{&mcp.TextContent{Text: result.String()}},
+		}, nil, nil
+	}
+}
+
+// countByType counts items of a specific type in the results
+func countByType(results []struct {
+	Title      string
+	URL        string
+	Repository string
+	CreatedAt  time.Time
+	Author     string
+	Type       string
+	Status     string
+	Body       string
+}, typeToCount string) int {
+	count := 0
+	for _, r := range results {
+		if r.Type == typeToCount {
+			count++
+		}
+	}
+	return count
+}
+
 // UserSummaryPrompt handles the user_summary MCP prompt
 func UserSummaryPrompt(ctx context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
 	username := req.Params.Arguments["username"]
@@ -4132,6 +4375,11 @@ func RunMCPServer(db *DB) error {
 		Name:        "search",
 		Description: "Full-text search across discussions, issues, and pull requests.",
 	}, SearchTool(searchEngine))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "tester",
+		Description: "Analyzes test-related issues and pull requests. Searches for testing activities, test failures, test improvements, and test coverage discussions across the organization.",
+	}, TesterTool(db))
 
 	// Register prompts - note the arguments specification
 	server.AddPrompt(&mcp.Prompt{
