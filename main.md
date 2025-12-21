@@ -30,6 +30,8 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - `github.com/charmbracelet/bubbletea` - TUI framework (Elm Architecture)
   - `github.com/charmbracelet/lipgloss` - Styling and layout
   - `github.com/charmbracelet/bubbles/spinner` - Built-in animated spinners
+  - `github.com/charmbracelet/bubbles/progress` - Progress bars with smooth animations
+  - `github.com/charmbracelet/bubbles/help` - Interactive help key bindings
 - **Architecture:**
   - Bubble Tea Model holds UI state (item counts, status, logs)
   - Background goroutines send messages to update UI via `tea.Program.Send()`
@@ -40,12 +42,36 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - No manual ANSI escape codes or cursor management
   - No Console struct needed - Bubble Tea handles everything
   - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
-- **Playful enhancements:**
-  - Animated spinner using `bubbles/spinner` with Dot style
-  - Smooth color transitions for status changes (pending → active → complete)
-  - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
-  - Gradient animated borders (purple → blue → cyan) updated every second
-  - Right-aligned comma-formatted counters
+- **Enhanced Playful Design:**
+  - **Visual Polish:**
+    - Multiple animated spinner styles - alternate between Dot, Line, Points every 10 seconds
+    - Smooth progress bars showing completion percentage for each sync item
+    - Rainbow gradient animated borders (purple → blue → cyan → green → yellow) cycling every 800ms
+    - Pulsing glow effect on active items using lipgloss gradients
+    - Rich color palette using lipgloss adaptive colors for light/dark terminal themes
+  - **Interactive Features:**
+    - Keyboard shortcuts: `p` to pause/resume, `s` for stats view, `h` for help, `q` to quit
+    - Live keyboard help footer showing available actions
+    - Toggle between compact and detailed view modes with `d` key
+    - Copy stats to clipboard with `c` key (using bubbles/clipboard)
+  - **Playful Animations:**
+    - Celebration emojis at milestones: ✨ 100 items, 🎊 1,000 items, 🎉 5,000 items, 🚀 10,000 items
+    - Animated "bouncing" emoji for active operations (moves position slightly)
+    - Success confetti animation when all items complete (burst of colored dots)
+    - Smooth count-up animation for numbers using easing functions
+    - Item checkmarks animate in with a "pop" effect (scale from small to normal)
+  - **Enhanced Information Display:**
+    - Horizontal progress bars below each item showing percentage complete
+    - Estimated time remaining (ETA) calculated from rate and shown per item
+    - Real-time throughput display (items/second) with sparkline mini-chart
+    - Color-coded rate limit indicator: green (>70%), yellow (30-70%), red (<30%)
+    - Animated wave pattern in background of box for visual interest
+  - **Smart Status Messages:**
+    - Context-aware activity messages that adapt to what's happening
+    - Show current repository name being synced in real-time
+    - Display batch sizes and pagination info dynamically
+    - Rotating fun facts about GitHub during long operations
+    - Tip messages about features during idle moments
 
 ## login
 
@@ -76,26 +102,37 @@ The app uses a registered OAuth App for authentication:
    - `expires_in`: Code expiration (usually 900 seconds)
    - `interval`: Polling interval (usually 5 seconds)
 
-3. Display the code and open browser:
+3. Display the code and open browser (enhanced design):
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
+   │  ✨ GitHub 🧠 Login                                            │
    │                                                                │
-   │  🔐 GitHub Authentication                                      │
+   │  ┌──────────────────────────────────────────────────────────┐ │
+   │  │  🔐 GitHub Authentication                                 │ │
+   │  │                                                           │ │
+   │  │  Step 1 of 2: Authorize Access                           │ │
+   │  │                                                           │ │
+   │  │  ✅ Browser opened automatically                          │ │
+   │  │  🌐 github.com/login/device                              │ │
+   │  └──────────────────────────────────────────────────────────┘ │
    │                                                                │
-   │  1. Opening browser to: github.com/login/device                │
+   │  📋 Enter this verification code in your browser:             │
    │                                                                │
-   │  2. Enter this code:                                           │
+   │     ╭─────────────────────────────╮                           │
+   │     │                             │                           │
+   │     │       A B C D - 1 2 3 4     │                           │
+   │     │                             │                           │
+   │     ╰─────────────────────────────╯                           │
    │                                                                │
-   │     ╭──────────────────╮                                       │
-   │     │    ABCD-1234     │                                       │
-   │     ╰──────────────────╯                                       │
+   │  ⠋ Waiting for your authorization...                          │
    │                                                                │
-   │  ⠋ Waiting for authorization...                                │
+   │  ┌──────────────────────────────────────────────────────────┐ │
+   │  │  ⏱️  Time remaining: 14m 32s                              │ │
+   │  │  🔄 Checking status...                                    │ │
+   │  └──────────────────────────────────────────────────────────┘ │
    │                                                                │
-   │  Press Ctrl+C to cancel                                        │
-   │                                                                │
+   │  💡 Press Ctrl+C to cancel                                    │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -114,35 +151,60 @@ The app uses a registered OAuth App for authentication:
    - `access_denied`: User denied, show error
    - Success: Returns `access_token` (long-lived, does not expire)
 
-6. On success, prompt for organization:
+6. On success, prompt for organization (enhanced design):
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
+   │  ✨ GitHub 🧠 Login                                            │
    │                                                                │
-   │  ✅ Successfully authenticated as @wham                        │
+   │  ┌──────────────────────────────────────────────────────────┐ │
+   │  │  ✅ Authentication Successful!                            │ │
+   │  │                                                           │ │
+   │  │  👤 Logged in as: @wham                                   │ │
+   │  │  🔑 Access token received                                 │ │
+   │  └──────────────────────────────────────────────────────────┘ │
    │                                                                │
-   │  Enter your GitHub organization (optional):                    │
-   │  > my-org█                                                     │
+   │  Step 2 of 2: Configure Organization (Optional)               │
    │                                                                │
-   │  Press Enter to skip, or type organization name                │
+   │  📂 Which GitHub organization would you like to sync?         │
+   │                                                                │
+   │     ╭─────────────────────────────────────────────────────╮   │
+   │     │ > my-org█                                           │   │
+   │     ╰─────────────────────────────────────────────────────╯   │
+   │                                                                │
+   │  💡 Press Enter to skip or type organization name             │
+   │  💡 You can change this later in ~/.github-brain/.env         │
    │                                                                │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
-7. Save tokens (and organization if provided) to `.env` file:
+7. Save tokens (and organization if provided) to `.env` file (enhanced design):
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
+   │  ✨ GitHub 🧠 Login                                            │
    │                                                                │
-   │  ✅ Setup complete!                                            │
+   │  ┌──────────────────────────────────────────────────────────┐ │
+   │  │  🎉 Setup Complete!                                       │ │
+   │  │                                                           │ │
+   │  │  ✅ All set and ready to go!                             │ │
+   │  └──────────────────────────────────────────────────────────┘ │
    │                                                                │
-   │  Logged in as: @wham                                           │
-   │  Organization: my-org                                          │
-   │  Saved to: ~/.github-brain/.env                                │
+   │  📋 Configuration Summary:                                     │
    │                                                                │
-   │  You can now run:                                              │
-   │    github-brain pull                                           │
+   │     👤 User:         @wham                                     │
+   │     🏢 Organization: my-org                                    │
+   │     📁 Config:       ~/.github-brain/.env                      │
+   │     🔑 Token:        gho_****....**** (hidden for security)    │
+   │                                                                │
+   │  🚀 Next Steps:                                                │
+   │                                                                │
+   │     1. Run this command to sync data:                          │
+   │        $ github-brain pull                                     │
+   │                                                                │
+   │     2. Then start the MCP server:                              │
+   │        $ github-brain mcp                                      │
+   │                                                                │
+   │  💡 Tip: Data syncs are incremental - first run takes longer! │
    │                                                                │
    ╰────────────────────────────────────────────────────────────────╯
    ```
@@ -165,6 +227,35 @@ ORGANIZATION=my-org
 
 OAuth App tokens are long-lived and do not expire unless revoked.
 
+### Error Handling
+
+When authentication fails or times out:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  ✨ GitHub 🧠 Login                                            │
+│                                                                │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  ❌ Authentication Failed                                 │ │
+│  │                                                           │ │
+│  │  The verification code has expired or was denied.        │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                │
+│  🔄 What happened?                                             │
+│                                                                │
+│     • Code expired after 15 minutes                            │
+│     OR                                                         │
+│     • Authorization was denied in browser                      │
+│                                                                │
+│  💡 What to do:                                                │
+│                                                                │
+│     Run 'github-brain login' again to get a new code          │
+│                                                                │
+│  📚 Need help? Visit: github.com/wham/github-brain            │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
+```
+
 ### Implementation Notes
 
 - Use Bubble Tea for the interactive UI (consistent with `pull` command)
@@ -173,6 +264,34 @@ OAuth App tokens are long-lived and do not expire unless revoked.
 - Poll interval: Start with GitHub's `interval` value (usually 5 seconds)
 - Timeout: Code expires after `expires_in` seconds (usually 15 minutes)
 - After saving token, verify it works by fetching `viewer { login }`
+
+**Enhanced Visual Elements:**
+
+- Use animated spinner during polling (bubbles/spinner with Dot style)
+- Display countdown timer showing time remaining until code expires
+- Format verification code with spaces for readability (ABCD-1234)
+- Enlarge verification code box with larger padding
+- Use nested boxes for status panels (authentication status, summary)
+- Rainbow gradient border animation (same as pull command)
+- Show progress indicator during polling (checking status...)
+- Mask token in final display for security (show only first 4 and last 4 chars)
+
+**Interactive Features:**
+
+- Text input for organization uses bubbles/textinput with cursor
+- Input field has rounded border and placeholder text
+- Real-time validation feedback as user types
+- Clear visual indication of required vs optional fields
+- Step indicators (Step 1 of 2, Step 2 of 2) for progress tracking
+- Helpful tips at bottom of each screen
+
+**Error States:**
+
+- Clear error messages with visual emphasis (❌ icon, red text)
+- Explain what went wrong in plain language
+- Provide actionable next steps
+- Link to documentation for additional help
+- Graceful handling of network errors, timeouts, and denials
 
 ## pull
 
@@ -202,27 +321,36 @@ Bubble Tea handles all rendering automatically:
 - Smooth animations with `tea.Tick`
 - Background goroutines send messages to update UI via channels
 
-Console at the beginning of the `pull` command - all items selected:
+Console at the beginning of the `pull` command - all items selected (enhanced design):
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  ✨ GitHub 🧠 pull                                             │
 │                                                                │
-│  📋 Repositories                                               │
-│  📋 Discussions                                                │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│  📦 Repositories                                               │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
 │                                                                │
-│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
-│  🚀 Rate Limit    ? / ? used, resets ?                        │
+│  💬 Discussions                                                │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🐛 Issues                                                     │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🔀 Pull-requests                                              │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  📊 API Status   ✅ 0   ⚡ 0   ❌ 0                      │  │
+│  │  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░ 100%               │  │
+│  │  ⏱️  Elapsed      0s                                      │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  💬 Activity                                                   │
 │     21:37:12 ✨ Summoning data from the cloud...              │
-│     21:37:13 🔍 Fetching current user info                    │
+│     21:37:13 🔍 Authenticating with GitHub API                │
+│     21:37:14 🎯 Ready to sync 4 item types!                   │
 │                                                                │
-│                                                                │
-│                                                                │
-│                                                                │
+│  💡 Tip: Press 'h' for help, 'p' to pause, 'q' to quit       │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -230,23 +358,27 @@ Console at the beginning of the `pull` command - `-i repositories`:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  ✨ GitHub 🧠 pull                                             │
 │                                                                │
-│  📋 Repositories                                               │
-│  🔕 Discussions                                                │
-│  🔕 Issues                                                     │
-│  🔕 Pull-requests                                              │
+│  📦 Repositories                                               │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
 │                                                                │
-│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
-│  🚀 Rate Limit    ? / ? used, resets ?                        │
+│  🔕 Discussions           (skipped)                            │
+│  🔕 Issues                (skipped)                            │
+│  🔕 Pull-requests         (skipped)                            │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  📊 API Status   ✅ 0   ⚡ 0   ❌ 0                      │  │
+│  │  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░ 100%               │  │
+│  │  ⏱️  Elapsed      0s                                      │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  💬 Activity                                                   │
 │     21:37:12 🎯 Starting selective sync...                    │
 │     21:37:13 📦 Clearing existing repositories...             │
+│     21:37:14 🔧 Preparing database for fresh data             │
 │                                                                │
-│                                                                │
-│                                                                │
-│                                                                │
+│  💡 Tip: Use -i to sync specific items                        │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -254,23 +386,34 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  ✨ GitHub 🧠 pull                                             │
 │                                                                │
-│  ⠋ Repositories: 1,247                                        │
-│  📋 Discussions                                                │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│  ⠋ Repositories: 1,247          📈 ~42/s     ⏱️  ETA 1m 23s  │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░ 44%                         │
 │                                                                │
-│  📊 API Status    ✅ 120   🟡 1   ❌ 2                         │
-│  🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m        │
+│  💬 Discussions                                                │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🐛 Issues                                                     │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🔀 Pull-requests                                              │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  📊 API Status   ✅ 120   ⚡ 1   ❌ 2                    │  │
+│  │  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓░░░░░░░ 80% │ resets 2h 15m │  │
+│  │  ⏱️  Elapsed      2m 34s                                  │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:37:54 📦 Wrangling repositories...                     │
-│     21:37:55 📄 Fetching page 12                              │
-│     21:37:56 💾 Processing batch 3 (repos 201-300)            │
-│     21:37:57 ⚡ Rate limit: 89% remaining                     │
-│     21:37:58 ✨ Saved 47 repositories to database             │
+│     21:37:54 📦 Wrangling repositories... [auth-service]      │
+│     21:37:55 📄 Fetching page 12 of ~25                       │
+│     21:37:56 💾 Saved batch 3 (repos 201-300)                 │
+│     21:37:57 ⚡ Rate limit: 80% remaining                     │
+│     21:37:58 ✨ 100 repos synced! Keep going!                 │
 │                                                                │
+│  💡 Press 's' for detailed stats, 'p' to pause               │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -278,23 +421,34 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  ✨ GitHub 🧠 pull                                             │
 │                                                                │
-│  ✅ Repositories: 2,847                                        │
-│  ⠙ Discussions: 156                                           │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│  ✅ Repositories: 2,847         🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
 │                                                                │
-│  📊 API Status    ✅ 160   🟡 1   ❌ 2                         │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
+│  ⠙ Discussions: 156             📈 ~8/s      ⏱️  ETA 42s     │
+│     ▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  12%              │
+│                                                                │
+│  🐛 Issues                                                     │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🔀 Pull-requests                                              │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  📊 API Status   ✅ 160   ⚡ 1   ❌ 2                    │  │
+│  │  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓░░░░░░░ 70% │ resets 1h 45m   │  │
+│  │  ⏱️  Elapsed      5m 12s                                  │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  💬 Activity                                                   │
-│     21:41:23 🎉 Repositories completed (2,847 synced)          │
-│     21:41:24 💬 Herding discussions...                         │
-│     21:41:25 📄 Fetching from auth-service                    │
-│     21:41:26 💾 Processing batch 1                             │
-│     21:41:27 ✨ Found 23 new discussions                       │
+│     21:41:23 🎉 Repositories completed! (2,847 synced)        │
+│     21:41:24 💬 Now herding discussions... [platform-api]     │
+│     21:41:25 📄 Fetching from repository 3 of 47              │
+│     21:41:26 💾 Processing batch 1 (12 new discussions)       │
+│     21:41:27 ✨ Found 23 new discussions - looking good!      │
 │                                                                │
+│  💡 Did you know? Use -e to exclude large repos               │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -302,44 +456,175 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  ✨ GitHub 🧠 pull                                             │
 │                                                                │
-│  ✅ Repositories: 2,847                                        │
-│  ❌ Discussions: 156 (errors)                                  │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│  ✅ Repositories: 2,847         🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
 │                                                                │
-│  📊 API Status    ✅ 160   🟡 1   ❌ 5                         │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
+│  ❌ Discussions: 156             ⚠️  Errors encountered        │
+│     ▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  28%              │
+│                                                                │
+│  🐛 Issues                                                     │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  🔀 Pull-requests                                              │
+│     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  0%              │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  📊 API Status   ✅ 160   ⚡ 1   ❌ 5                    │  │
+│  │  🚦 Rate Limit   ▓▓░░░░░░░░░░░░░░ 30% │ ⚠️  resets 1h 45m│  │
+│  │  ⏱️  Elapsed      7m 45s                                  │  │
+│  └─────────────────────────────────────────────────────────┘  │
 │                                                                │
 │  💬 Activity                                                   │
 │     21:42:15 ❌ API Error: Rate limit exceeded                 │
-│     21:42:16 ⏳ Retrying in 30 seconds...                      │
+│     21:42:16 ⏳ Auto-retry in 30 seconds... [attempt 2/10]    │
 │     21:42:47 ⚠️  Repository access denied: private-repo        │
-│     21:42:48 ➡️  Continuing with next repository...            │
+│     21:42:48 ➡️  Skipped - continuing with next repo           │
 │     21:42:49 ❌ Failed to save discussion #4521                │
 │                                                                │
+│  💡 Some errors are normal - check logs after completion      │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+Console when all operations complete successfully:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  ✨ GitHub 🧠 pull                                             │
+│                                                                │
+│  ✅ Repositories: 2,847         🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
+│                                                                │
+│  ✅ Discussions: 1,234          🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
+│                                                                │
+│  ✅ Issues: 5,678               🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
+│                                                                │
+│  ✅ Pull-requests: 3,421        🎊 Complete!                   │
+│     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓ 100%             │
+│                                                                │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  🎉 Sync Complete! 13,180 total items synced              │  │
+│  │  📊 API Status   ✅ 427   ⚡ 3   ❌ 2                    │  │
+│  │  🚦 Rate Limit   ▓▓▓▓▓░░░░░░░░░ 55% │ resets 45m         │  │
+│  │  ⏱️  Total Time   12m 34s                                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                                │
+│  💬 Activity                                                   │
+│     21:47:23 ✨ Rebuilding search index...                    │
+│     21:47:24 🔍 Indexed 13,180 items                          │
+│     21:47:25 💾 Optimizing database...                        │
+│     21:47:26 ✅ Database optimized                            │
+│     21:47:27 🚀 All done! Ready to query with 'mcp' command   │
+│                                                                │
+│  💡 Your GitHub Brain is now up to date! 🧠✨                 │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
 ### Console Icons
 
-- 📋 = Pending (enabled but not started)
-- 🔕 = Disabled (not in `-i` selection)
-- ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ = Spinner (active item, bright blue)
-- ✅ = Completed (bright green)
-- ❌ = Failed (bright red)
+**Item Status:**
+- 📦 = Repositories (pending/active)
+- 💬 = Discussions (pending/active)
+- 🐛 = Issues (pending/active)
+- 🔀 = Pull-requests (pending/active)
+- 🔕 = Disabled (not in `-i` selection), shown with dimmed text
+- ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ = Spinner (active item, bright blue, rotates every 80ms)
+- ✅ = Completed (bright green with glow effect)
+- ❌ = Failed (bright red with error indicator)
+
+**Progress Indicators:**
+- ░ = Empty progress bar segment (dim gray)
+- ▓ = Filled progress bar segment (gradient: blue → cyan → green based on percentage)
+- Percentage shown at end of bar (0-100%)
+- Smooth animation as bar fills
+
+**API Status:**
+- ✅ = Successful requests (bright green)
+- ⚡ = Warnings/retries (bright yellow)
+- ❌ = Errors (bright red)
+
+**Rate Limit Indicator:**
+- 🚦 = Rate limit status with visual bar
+- Bar color: 
+  - Green (▓▓▓▓▓▓▓▓▓▓) when >70% remaining
+  - Yellow (▓▓▓▓▓▓) when 30-70% remaining
+  - Red (▓▓) when <30% remaining (with ⚠️ warning)
+
+**Activity Log Emojis:**
+- ✨ = Milestone reached, special events
+- 🎊 = Major milestone (1000+ items)
+- 🎉 = Completion celebration (5000+ items)
+- 🚀 = Huge milestone (10,000+ items)
+- 📦 = Repository operations
+- 💬 = Discussion operations
+- 🐛 = Issue operations
+- 🔀 = Pull request operations
+- 📄 = Pagination/fetching
+- 💾 = Database operations
+- ⚡ = Rate limit info
+- 🔍 = Search/query operations
+- ⏳ = Waiting/retrying
+- ➡️ = Continuation/skipping
+- 🎯 = Starting/targeting
+- 🔧 = Configuration/setup
+- 💡 = Tips and suggestions
 
 ### Layout
 
-- Gradient animated borders (purple → blue → cyan) updated every second
+**Visual Structure:**
+- Rainbow gradient animated borders (purple → blue → cyan → green → yellow → orange) cycling every 800ms
 - Responsive width: `max(76, terminalWidth - 4)`
 - Box expands to full terminal width
-- Numbers formatted with commas: `1,247`
+- Content padding: 1 space on each side
+- Title with sparkle emoji: ✨ GitHub 🧠 pull
+
+**Item Display:**
+- Each item has 2 lines: status line + progress bar
+- Status line format: `[icon] [name]: [count]     [rate] [ETA]`
+- Progress bar uses lipgloss for smooth rendering
+- 40 character wide progress bar for consistency
+- Real-time count updates with smooth number animation
+
+**Stats Panel:**
+- Boxed section with rounded corners (┌─┐ └─┘)
+- 3-4 rows of key metrics
+- Right-aligned numbers for easy scanning
+- Color-coded indicators for quick assessment
+
+**Activity Log:**
+- Shows last 5 log entries with timestamps
 - Time format: `15:04:05` (HH:MM:SS)
-- Rate limit: friendly format like `2h 15m`
-- API Status: ✅ success, 🟡 warning (yellow circle), ❌ errors
-- Note: Avoid ⚠️ emoji (has variation selector causing width issues)
+- Auto-scrolls as new entries arrive
+- Entries fade color slightly for older messages
+- Emoji prefix for visual categorization
+
+**Footer Tips:**
+- Rotating helpful tips shown at bottom
+- Updates every 30 seconds or on state change
+- Context-aware based on current operation
+- Keyboard shortcuts highlighted with single quotes
+
+**Number Formatting:**
+- Commas for thousands: `1,247` not `1247`
+- Percentage with % symbol: `44%`
+- Rate format: `~42/s` (approximate items per second)
+- Time remaining: `1m 23s` or `2h 15m` format
+
+**Color Palette:**
+- Title/headers: Bold white (#FFFFFF)
+- Active spinner: Bright blue (#12)
+- Complete items: Bright green (#10) with subtle glow
+- Failed items: Bright red (#9) with warning
+- Disabled items: Dim gray (#240)
+- Progress bars: Gradient based on percentage
+  - 0-30%: Blue (#12)
+  - 30-70%: Cyan (#14)
+  - 70-100%: Green (#10)
+- Border animation: 6-color rainbow gradient
+- Background: Transparent, adapts to terminal theme
 
 ### Implementation Notes
 
@@ -350,53 +635,212 @@ Console when an error occurs:
 - View automatically re-renders when model changes
 - No manual cursor or screen management needed
 
+**Enhanced Message Types:**
+- `itemUpdateMsg` - Update item count and status
+- `itemCompleteMsg` - Mark item as complete
+- `itemErrorMsg` - Mark item as failed
+- `progressMsg` - Update progress percentage (0.0-1.0)
+- `rateMsg` - Update items/second rate
+- `etaMsg` - Update estimated time remaining
+- `logMsg` - Add log entry to activity feed
+- `celebrationMsg` - Trigger milestone celebration
+- `statsMsg` - Update API and rate limit stats
+- `tickMsg` - Drive border and animation updates (every 800ms)
+- `spinnerTickMsg` - Update spinner animation (every 80ms)
+- `tipRotateMsg` - Rotate footer tip (every 30s)
+
 **Box Drawing:**
 
 - Use standard lipgloss borders - no custom border painting or string manipulation
 - Rounded borders (╭╮╰╯) styled with `lipgloss.RoundedBorder()`
 - Title rendered as bold text inside the box, not embedded in border
-- Border colors animated via `tickMsg` sent every second
-- Responsive width: `max(64, terminalWidth - 4)`
+- Border colors animated via `tickMsg` sent every 800ms for smoother animation
+- Responsive width: `max(76, terminalWidth - 4)`
+- Nested box for stats panel using `lipgloss.Border(lipgloss.NormalBorder())`
+
+**Progress Bars:**
+
+- Use `bubbles/progress` package for smooth animations
+- Initialize with `progress.New(progress.WithDefaultGradient())`
+- Update via `progress.SetPercent(value)` where value is 0.0-1.0
+- Width set to 40 characters for consistency across all items
+- Custom gradient colors: blue → cyan → green as progress increases
+- Render with `progressBar.View()` method
 
 **Spinners:**
 
-- Use `bubbles/spinner` with Dot style (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏)
+- Use `bubbles/spinner` with alternating styles every 10 seconds
+- Styles cycle: Dot → Line → Points → back to Dot
 - Spinner state managed by Bubble Tea's `spinner.Model`
 - Only one spinner shown at a time (for active item)
-- Spinner ticks handled via `spinner.TickMsg`
+- Spinner ticks handled via `spinner.TickMsg` at 80ms intervals
+- Color: Bright blue (#12) matching theme
 
-**Number Formatting:**
+**Keyboard Shortcuts:**
 
-- Add commas to numbers > 999: `1,247` not `1247`
-- Helper function: `formatNumber(n int) string`
-- Used in item counts, API stats, and rate limit display
+- `h` - Toggle help panel showing all keyboard shortcuts
+- `p` - Pause/resume sync operations
+- `s` - Toggle stats view (expanded metrics)
+- `d` - Toggle detailed/compact view modes
+- `c` - Copy current stats to clipboard (requires bubbles/clipboard)
+- `q` or `Ctrl+C` - Quit application
+- Shortcuts displayed in footer with visual hints
+- Use `bubbles/key` package for key binding management
 
-**Time Formatting:**
+**Number Animation:**
 
-- Activity logs: `15:04:05` format (HH:MM:SS only)
-- Rate limit resets: `formatTimeRemaining()` returns friendly format like "2h 15m"
+- Implement count-up animation using easing functions
+- Update target count, animate from current to target over 500ms
+- Use quadratic easing out for smooth, natural feel
+- Store current and target in model, interpolate in View
+- Apply to all numeric counters for polish
+
+**Celebration Effects:**
+
+- Trigger on milestone messages (100, 1000, 5000, 10000 items)
+- Display special emoji in log: ✨🎊🎉🚀
+- Brief border color change to celebrate (flash green)
+- Optional: animated "confetti" using colored dots for 2 seconds
+- Return to normal animation after celebration
+
+**Rate Limit Visualization:**
+
+- Convert rate limit percentage to progress bar
+- Dynamic color based on remaining percentage:
+  - Green (>70%): Normal operations
+  - Yellow (30-70%): Approaching limit, show warning
+  - Red (<30%): Critical, may pause soon
+- Show reset time in human-readable format
+- Update every API response to keep accurate
+
+**ETA Calculation:**
+
+- Track items processed per second over sliding 30-second window
+- Calculate remaining items: total - current
+- ETA = remaining / rate (in seconds)
+- Format: `42s`, `1m 23s`, `2h 15m` depending on duration
+- Show "calculating..." during first 10 seconds
+- Update every 2 seconds for smooth display
 
 **Window Resize:**
 
 - Listen for `tea.WindowSizeMsg` in model's `Update()`
 - Store width/height in model state
+- Recalculate box width: `max(76, width - 4)`
+- Adjust progress bar width proportionally if needed
 - Layout adjusts automatically on next render
+- All content reflows based on new dimensions
 
 **Color Scheme:**
 
-- Purple/blue gradient for borders (via `borderColors` array)
-- Bright blue (#12) for active items
-- Bright green (#10) for completed ✅
-- Dim gray (#240) for skipped 🔕
-- Bright red (#9) for failed ❌
-- Applied via `lipgloss.NewStyle().Foreground()`
+- Use `lipgloss.AdaptiveColor` for light/dark terminal compatibility
+- Define palette at package level for consistency
+- Purple/blue/cyan/green/yellow/orange gradient for borders
+- Bright blue (#12) for active items and spinners
+- Bright green (#10) for completed items and success
+- Bright red (#9) for failed items and errors
+- Dim gray (#240) for disabled/skipped items
+- Applied via `lipgloss.NewStyle().Foreground(color)`
+- Background always transparent
 
 **Milestone Celebrations:**
 
-- 1,000 items: ✨ emoji in log
-- 5,000 items: 🎉 emoji in log
-- 10,000 items: 🚀✨🎉 emojis in log
-- Triggered in `itemCompleteMsg` handler
+- 100 items: ✨ emoji in log with encouraging message
+- 1,000 items: 🎊 emoji with "Great progress!" message
+- 5,000 items: 🎉 emoji with "Amazing work!" message
+- 10,000 items: 🚀✨🎉 triple emoji combo with "Stellar!" message
+- Triggered in `itemUpdateMsg` handler when crossing threshold
+- Check previous count vs new count to trigger once
+
+**Activity Log Formatting:**
+
+- Maximum 5 visible entries
+- Newest at bottom (natural reading order)
+- Timestamp prefix: `HH:MM:SS` in dim color
+- Emoji for categorization (visual scanning)
+- Message text in default color
+- Older entries fade slightly (reduce alpha)
+- Auto-trim to fit width, add ellipsis if needed
+- Store last 10 entries, display last 5
+
+**Footer Tips System:**
+
+- Array of helpful tip strings
+- Rotate index every 30 seconds via `tipRotateMsg`
+- Context-aware: show different tips based on state
+  - During sync: show progress shortcuts
+  - On errors: show error recovery tips
+  - On completion: show next steps
+- Format: `💡 Tip: [message]` or `💡 [keyboard shortcut help]`
+- Always visible at bottom of box
+
+**Interactive Keyboard Controls:**
+
+The pull command supports real-time keyboard interaction during sync operations:
+
+- **`h` or `?`** - Toggle help overlay showing all keyboard shortcuts
+  - Displays modal box with keybinding reference
+  - Press any key to dismiss and return to sync view
+  - Help stays on top of main UI
+
+- **`p`** - Pause/Resume sync operations
+  - Pauses all active API requests gracefully
+  - Shows "⏸️  Paused" indicator in stats panel
+  - Press again to resume from where it stopped
+  - Useful when rate limit is low or to conserve bandwidth
+
+- **`s`** - Toggle expanded stats view
+  - Switches between compact and detailed stats display
+  - Detailed view shows:
+    - Per-item success/warning/error counts
+    - Request latency (min/avg/max)
+    - Throughput graph (sparkline)
+    - Detailed rate limit breakdown
+  - Compact view (default): single-line stats
+
+- **`d`** - Toggle detailed/compact activity log
+  - Compact: 5 lines of recent activity
+  - Detailed: 15 lines with expanded context
+  - Scrolls automatically as new entries arrive
+
+- **`c`** - Copy current statistics to clipboard
+  - Copies formatted summary of sync progress
+  - Includes counts, timing, rate limit status
+  - Ready to paste into reports or issues
+  - Requires `bubbles/clipboard` package
+
+- **`r`** - Force refresh of current display
+  - Manually triggers full UI re-render
+  - Clears any rendering artifacts
+  - Useful if terminal gets corrupted
+
+- **`q` or `Ctrl+C`** - Graceful shutdown
+  - Stops all operations cleanly
+  - Saves current progress to database
+  - Shows summary of what was completed
+  - Exits after cleanup (takes 1-2 seconds)
+
+**Keyboard Shortcuts Display:**
+
+When `h` is pressed, show overlay:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  ⌨️  Keyboard Shortcuts                                        │
+│                                                                │
+│  h or ?    Show this help                                     │
+│  p         Pause/Resume sync                                  │
+│  s         Toggle stats view (compact ↔ detailed)            │
+│  d         Toggle activity log (compact ↔ detailed)          │
+│  c         Copy stats to clipboard                           │
+│  r         Force refresh display                             │
+│  q         Quit (Ctrl+C also works)                          │
+│                                                                │
+│  Press any key to dismiss                                      │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+This overlay appears centered on screen, on top of the main UI, with a semi-transparent background effect using lipgloss styling.
 
 ### Repositories
 
