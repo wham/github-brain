@@ -5495,6 +5495,9 @@ type loginModel struct {
 	borderColors    []lipgloss.AdaptiveColor
 	colorIndex      int
 	done            bool
+	// New fields for enhanced UX
+	expiresAt       time.Time
+	startTime       time.Time
 }
 
 // Login message types
@@ -5545,7 +5548,7 @@ func (m loginModel) Init() tea.Cmd {
 }
 
 func loginTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(800*time.Millisecond, func(t time.Time) tea.Msg {
 		return loginTickMsg(t)
 	})
 }
@@ -5668,34 +5671,78 @@ func (m loginModel) renderWaitingView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	
+	b.WriteString(titleStyle.Render("✨ GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  🔐 GitHub Authentication\n")
-	b.WriteString("\n")
+	
+	// Nested box for authentication status
+	statusBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(1, 2)
+	
+	var statusContent strings.Builder
+	statusContent.WriteString("🔐 GitHub Authentication\n")
+	statusContent.WriteString("\n")
+	statusContent.WriteString("Step 1 of 2: Authorize Access\n")
+	statusContent.WriteString("\n")
 
 	if m.userCode == "" {
-		b.WriteString("  " + m.spinner.View() + " Requesting device code...\n")
+		statusContent.WriteString("⠋ Requesting device code...")
 	} else {
-		b.WriteString("  1. Opening browser to: github.com/login/device\n")
-		b.WriteString("\n")
-		b.WriteString("  2. Enter this code:\n")
+		statusContent.WriteString("✅ Browser opened automatically\n")
+		statusContent.WriteString("🌐 github.com/login/device")
+	}
+	
+	b.WriteString(statusBox.Render(statusContent.String()) + "\n")
+	b.WriteString("\n")
+
+	if m.userCode != "" {
+		b.WriteString("📋 Enter this verification code in your browser:\n")
 		b.WriteString("\n")
 		
-		// Code box with margin for alignment
+		// Code box with spacing for readability
+		codeWithSpaces := strings.Join(strings.Split(m.userCode, ""), " ") // Add spaces between characters
 		codeStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("12")).
-			Padding(0, 3).
+			Padding(1, 3).
 			Bold(true).
+			Align(lipgloss.Center).
 			MarginLeft(5)
 		
-		b.WriteString(codeStyle.Render(m.userCode) + "\n")
+		b.WriteString(codeStyle.Render(codeWithSpaces) + "\n")
 		b.WriteString("\n")
-		b.WriteString("  " + m.spinner.View() + " Waiting for authorization...\n")
+		b.WriteString("  " + m.spinner.View() + " Waiting for your authorization...\n")
+		b.WriteString("\n")
+		
+		// Status panel with countdown
+		statusPanel := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(dimStyle.GetForeground()).
+			Padding(0, 2)
+		
+		var panelContent strings.Builder
+		if !m.expiresAt.IsZero() {
+			remaining := time.Until(m.expiresAt)
+			if remaining > 0 {
+				minutes := int(remaining.Minutes())
+				seconds := int(remaining.Seconds()) % 60
+				panelContent.WriteString(fmt.Sprintf("⏱️  Time remaining: %dm %ds\n", minutes, seconds))
+			} else {
+				panelContent.WriteString("⏱️  Code expired\n")
+			}
+		} else {
+			panelContent.WriteString("⏱️  Time remaining: calculating...\n")
+		}
+		panelContent.WriteString("🔄 Checking status...")
+		
+		b.WriteString(statusPanel.Render(panelContent.String()) + "\n")
+		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString("  Press Ctrl+C to cancel\n")
+	b.WriteString(dimStyle.Render("💡 Press Ctrl+C to cancel") + "\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5705,16 +5752,42 @@ func (m loginModel) renderOrgInputView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("✨ GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
+	
+	// Success panel
+	successBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("10")).
+		Padding(1, 2)
+	
+	var successContent strings.Builder
+	successContent.WriteString("✅ Authentication Successful!\n")
+	successContent.WriteString("\n")
+	successContent.WriteString(fmt.Sprintf("👤 Logged in as: @%s\n", m.username))
+	successContent.WriteString("🔑 Access token received")
+	
+	b.WriteString(successBox.Render(successContent.String()) + "\n")
 	b.WriteString("\n")
-	b.WriteString("  Enter your GitHub organization (optional):\n")
-	b.WriteString("  " + m.textInput.View() + "\n")
+	
+	b.WriteString("Step 2 of 2: Configure Organization (Optional)\n")
 	b.WriteString("\n")
-	b.WriteString("  Press Enter to skip, or type organization name\n")
+	b.WriteString("📂 Which GitHub organization would you like to sync?\n")
+	b.WriteString("\n")
+	
+	// Input box
+	inputBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(0, 1).
+		MarginLeft(5)
+	
+	b.WriteString(inputBox.Render(m.textInput.View()) + "\n")
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("💡 Press Enter to skip or type organization name") + "\n")
+	b.WriteString(dimStyle.Render("💡 You can change this later in ~/.github-brain/.env") + "\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5724,20 +5797,54 @@ func (m loginModel) renderSuccessView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("✨ GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
+	
+	// Success panel
+	successBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("10")).
+		Padding(1, 2)
+	
+	var successContent strings.Builder
+	successContent.WriteString("🎉 Setup Complete!\n")
+	successContent.WriteString("\n")
+	successContent.WriteString("✅ All set and ready to go!")
+	
+	b.WriteString(successBox.Render(successContent.String()) + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
+	
+	b.WriteString("📋 Configuration Summary:\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("   👤 User:         @%s\n", m.username))
 	if m.organization != "" {
-		b.WriteString(fmt.Sprintf("  Organization: %s\n", m.organization))
+		b.WriteString(fmt.Sprintf("   🏢 Organization: %s\n", m.organization))
+	} else {
+		b.WriteString("   🏢 Organization: (not specified)\n")
 	}
-	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
+	b.WriteString(fmt.Sprintf("   📁 Config:       %s/.env\n", m.homeDir))
+	
+	// Mask token for security
+	maskedToken := ""
+	if len(m.token) > 8 {
+		maskedToken = m.token[:4] + strings.Repeat("*", len(m.token)-8) + m.token[len(m.token)-4:]
+	} else {
+		maskedToken = strings.Repeat("*", len(m.token))
+	}
+	b.WriteString(fmt.Sprintf("   🔑 Token:        %s (hidden for security)\n", maskedToken))
 	b.WriteString("\n")
-	b.WriteString("  You can now run:\n")
-	b.WriteString("    github-brain pull\n")
+	
+	b.WriteString("🚀 Next Steps:\n")
+	b.WriteString("\n")
+	b.WriteString("   1. Run this command to sync data:\n")
+	b.WriteString("      $ github-brain pull\n")
+	b.WriteString("\n")
+	b.WriteString("   2. Then start the MCP server:\n")
+	b.WriteString("      $ github-brain mcp\n")
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("💡 Tip: Data syncs are incremental - first run takes longer!") + "\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5747,15 +5854,42 @@ func (m loginModel) renderErrorView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("✨ GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
+	
+	// Error panel
+	errorBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("9")).
+		Padding(1, 2)
+	
+	var errorContent strings.Builder
+	errorContent.WriteString("❌ Authentication Failed\n")
+	errorContent.WriteString("\n")
+	errorContent.WriteString("The verification code has expired or was denied.")
+	
+	b.WriteString(errorBox.Render(errorContent.String()) + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
+	
+	b.WriteString("🔄 What happened?\n")
 	b.WriteString("\n")
-	b.WriteString("  Please try again.\n")
+	b.WriteString("   • Code expired after 15 minutes\n")
+	b.WriteString("   OR\n")
+	b.WriteString("   • Authorization was denied in browser\n")
+	b.WriteString("\n")
+	
+	b.WriteString("💡 What to do:\n")
+	b.WriteString("\n")
+	b.WriteString("   Run 'github-brain login' again to get a new code\n")
+	b.WriteString("\n")
+	
+	if m.errorMsg != "" {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("   Details: %s\n", m.errorMsg)) + "\n")
+	}
+	
+	b.WriteString(dimStyle.Render("📚 Need help? Visit: github.com/wham/github-brain") + "\n")
 	b.WriteString("\n")
 
 	return b.String()
