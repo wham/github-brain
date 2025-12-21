@@ -1193,8 +1193,8 @@ golangci-lint run --timeout=5m
 
 **CI Integration:**
 - Linting runs automatically on all PRs via `.github/workflows/build.yml`
-- Build fails if linter finds issues
-- Part of the standard build task in `scripts/run`
+- Build fails if linter finds issues (blocking)
+- In local development (`scripts/run`), linting runs but is non-blocking to allow rapid iteration
 
 ### Release Model
 
