@@ -4199,9 +4199,8 @@ func TesterTool(db *DB) func(context.Context, *mcp.CallToolRequest, TesterInput)
 			}
 		}
 
-		// Sort by created date ascending
-		// Already sorted by GetIssues and GetPullRequests, but we need to merge them
-		// Simple approach: keep the order from each source
+		// Results are ordered by creation date within each type (issues, then pull requests)
+		// Issues and pull requests are already sorted by GetIssues and GetPullRequests
 
 		if len(allResults) == 0 {
 			return &mcp.CallToolResult{
@@ -4265,7 +4264,7 @@ func TesterTool(db *DB) func(context.Context, *mcp.CallToolRequest, TesterInput)
 
 		if truncated {
 			remaining := len(allResults) - itemsShown
-			truncationMsg := fmt.Sprintf("\n\nShowing only the first %d items. There are %d more test-related items, please refine your search using `created_from`, `created_to`, or `repository` parameters.\n",
+			truncationMsg := fmt.Sprintf("Showing only the first %d items. There are %d more test-related items, please refine your search using `created_from`, `created_to`, or `repository` parameters.\n\n",
 				itemsShown, remaining)
 			// Prepend the truncation message
 			finalResult := truncationMsg + result.String()
