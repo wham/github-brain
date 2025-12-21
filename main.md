@@ -904,6 +904,78 @@ The example above includes all fields. If `fields` parameter is provided, only i
 
 For the `body` field, show the full content from the matched item.
 
+#### tester
+
+Analyzes test-related issues and pull requests. Identifies testing activities, test failures, test improvements, and test coverage discussions across the organization. This tool searches for common test-related keywords in both issue and pull request titles and bodies.
+
+##### Parameters
+
+- `repository`: Filter by repository name. Example: `auth-service`. Defaults to any repository in the organization.
+- `created_from`: Filter by `created_at` after the specified date. Example: `2025-06-18T19:19:08Z`. Defaults to any date.
+- `created_to`: Filter by `created_at` before the specified date. Example: `2025-06-18T19:19:08Z`. Defaults to any date.
+- `authors`: Array of author usernames. Example: `[john_doe, jane_doe]`. Defaults to any author.
+- `fields`: Array of fields to include in the response. Available fields: `["title", "url", "repository", "created_at", "author", "type", "status", "body"]`. Defaults to all fields.
+
+##### Response
+
+Validate `fields` parameter. If it contains invalid fields, output:
+
+```
+Invalid fields: <invalid_fields>
+
+Use one of the available fields: <available_fields>
+```
+
+Where `<invalid_fields>` is a comma-separated list of invalid fields, and `<available_fields>` is a comma-separated list of available fields.
+
+The tool searches for test-related keywords including:
+- Basic: `test`, `testing`, `tests`, `spec`, `specs`
+- Test types: `unit test`, `integration test`, `e2e test`, `test suite`
+- Test issues: `test failure`, `test fix`, `flaky test`, `test coverage`
+- CI/CD: `ci test`, `failing test`, `broken test`
+
+Query both issues and pull requests, filter by date and authors if specified. If no test-related items are found, output:
+
+```
+No test-related issues or pull requests found.
+```
+
+If items are found, start with a summary header:
+
+```
+Found <total> test-related items (<issue_count> issues, <pr_count> pull requests).
+
+---
+```
+
+Then loop through items and output for each:
+
+```
+## <title>
+
+- URL: <url>
+- Type: <issue|pull_request>
+- Repository: <repository>
+- Created at: <created_at>
+- Author: <author>
+- Status: <open|closed>
+
+<body>
+
+---
+```
+
+The example above includes all fields. If `fields` parameter is provided, only include those fields in the output.
+
+While looping through items, keep track of the total size of the response. If the next item would take the response size over 990 kb, stop the loop. Prepend the response with:
+
+```
+Showing only the first <n> items. There are <x> more test-related items, please refine your search using `created_from`, `created_to`, or `repository` parameters.
+
+```
+
+Where `<n>` is the number of items shown, and `<x>` is the number of items not shown.
+
 ### Prompts
 
 Each prompt should just return the template string with parameter interpolation, and the MCP client will handle calling the actual tools.
