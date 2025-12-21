@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,7 +63,7 @@ var (
 	statusMutex    sync.Mutex
 )
 
-// gradientColors defines the color gradient for UI borders (purple → blue → cyan)
+// gradientColors defines the color gradient for UI borders (rainbow: purple → blue → cyan → green → yellow → orange)
 var gradientColors = []lipgloss.AdaptiveColor{
 	{Light: "#874BFD", Dark: "#7D56F4"}, // Purple
 	{Light: "#7D56F4", Dark: "#6B4FD8"}, // Purple-blue
@@ -70,6 +71,12 @@ var gradientColors = []lipgloss.AdaptiveColor{
 	{Light: "#4F7BD8", Dark: "#4B6FD0"}, // Blue
 	{Light: "#48A8D8", Dark: "#45A0D0"}, // Cyan-blue
 	{Light: "#48D8D0", Dark: "#45D0C8"}, // Cyan
+	{Light: "#48D8A8", Dark: "#45D0A0"}, // Cyan-green
+	{Light: "#48D860", Dark: "#45D058"}, // Green
+	{Light: "#A8D848", Dark: "#A0D045"}, // Yellow-green
+	{Light: "#D8D848", Dark: "#D0D045"}, // Yellow
+	{Light: "#D8A848", Dark: "#D0A045"}, // Orange-yellow
+	{Light: "#D87848", Dark: "#D07045"}, // Orange
 }
 
 // Removed ConsoleHandler - not needed with Bubble Tea
@@ -4720,16 +4727,42 @@ type (
 		limit     int
 		resetTime time.Time
 	}
+	// New message types for enhanced UX
+	progressMsg struct {
+		item    string
+		percent float64 // 0.0 to 1.0
+	}
+	rateMsg struct {
+		item          string
+		itemsPerSecond float64
+	}
+	etaMsg struct {
+		item     string
+		duration time.Duration
+	}
+	elapsedTimeMsg time.Duration
+	celebrationMsg struct {
+		count int
+	}
+	showHelpMsg        bool
+	pauseResumeMsg     bool
+	toggleStatsViewMsg bool
+	toggleDetailLogMsg bool
 )
 
 // itemState represents the state of a pull item
 type itemState struct {
-	name      string
-	enabled   bool
-	active    bool
-	completed bool
-	failed    bool
-	count     int
+	name           string
+	enabled        bool
+	active         bool
+	completed      bool
+	failed         bool
+	count          int
+	progress       float64       // 0.0 to 1.0
+	rate           float64       // items per second
+	eta            time.Duration // estimated time remaining
+	progressBar    progress.Model
+	totalEstimated int // estimated total items for progress calculation
 }
 
 // model is the Bubble Tea model for the pull command UI
@@ -4748,6 +4781,16 @@ type model struct {
 	height         int
 	borderColors   []lipgloss.AdaptiveColor
 	colorIndex     int
+	// New fields for enhanced UX
+	startTime      time.Time
+	elapsed        time.Duration
+	paused         bool
+	showHelp       bool
+	detailedStats  bool
+	detailedLog    bool
+	lastCelebration int // Track last milestone to avoid repeating
+	tips           []string
+	currentTip     int
 }
 
 // logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
@@ -4765,25 +4808,54 @@ func newModel(enabledItems map[string]bool) model {
 	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
 	items := make(map[string]itemState)
 	for _, name := range itemOrder {
+		// Create a progress bar for each item
+		prog := progress.New(progress.WithDefaultGradient())
+		prog.Width = 40 // Fixed width progress bar
+		
 		items[name] = itemState{
-			name:      name,
-			enabled:   enabledItems[name],
-			active:    false,
-			completed: false,
-			failed:    false,
-			count:     0,
+			name:           name,
+			enabled:        enabledItems[name],
+			active:         false,
+			completed:      false,
+			failed:         false,
+			count:          0,
+			progress:       0.0,
+			rate:           0.0,
+			eta:            0,
+			progressBar:    prog,
+			totalEstimated: 0,
 		}
 	}
 
+	// Tips for rotating footer
+	tips := []string{
+		"Press 'h' for help, 'p' to pause, 'q' to quit",
+		"Use -i to sync specific items",
+		"Data syncs are incremental - first run takes longer!",
+		"Use -e to exclude large repos",
+		"Did you know? Use -f to force a fresh sync",
+		"Press 's' for detailed stats",
+		"Some errors are normal - check logs after completion",
+	}
+
 	return model{
-		items:        items,
-		itemOrder:    itemOrder,
-		spinner:      s,
-		logs:         make([]logEntry, 0, 5),
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		items:           items,
+		itemOrder:       itemOrder,
+		spinner:         s,
+		logs:            make([]logEntry, 0, 5),
+		width:           80,
+		height:          24,
+		borderColors:    gradientColors,
+		colorIndex:      0,
+		startTime:       time.Now(),
+		elapsed:         0,
+		paused:          false,
+		showHelp:        false,
+		detailedStats:   false,
+		detailedLog:     false,
+		lastCelebration: 0,
+		tips:            tips,
+		currentTip:      0,
 	}
 }
 
@@ -4795,9 +4867,9 @@ func (m model) Init() tea.Cmd {
 	)
 }
 
-// tickCmd returns a command that ticks every second for border animation
+// tickCmd returns a command that ticks every 800ms for border animation
 func tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+	return tea.Tick(800*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }
@@ -4808,25 +4880,121 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle help overlay first - any key dismisses it
+		if m.showHelp {
+			m.showHelp = false
+			return m, nil
+		}
+		
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "h", "?":
+			m.showHelp = true
+			return m, nil
+		case "p":
+			m.paused = !m.paused
+			return m, nil
+		case "s":
+			m.detailedStats = !m.detailedStats
+			return m, nil
+		case "d":
+			m.detailedLog = !m.detailedLog
+			return m, nil
+		case "r":
+			// Force refresh - just return the model as-is
+			return m, nil
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// Update progress bar widths based on terminal size
+		barWidth := 40
+		if m.width > 80 {
+			barWidth = 50
+		}
+		for name, state := range m.items {
+			state.progressBar.Width = barWidth
+			m.items[name] = state
+		}
 		return m, nil
 
 	case tickMsg:
+		// Update elapsed time
+		m.elapsed = time.Since(m.startTime)
 		// Rotate border color
 		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		// Rotate tips every 30 seconds (37.5 ticks at 800ms)
+		if int(m.elapsed.Seconds())%30 == 0 {
+			m.currentTip = (m.currentTip + 1) % len(m.tips)
+		}
 		return m, tickCmd()
 
 	case itemUpdateMsg:
 		if state, exists := m.items[msg.item]; exists {
 			state.count = msg.count
 			state.active = true
+			m.items[msg.item] = state
+			
+			// Check for milestone celebrations
+			checkMilestone := func(count int) bool {
+				if count >= 10000 && m.lastCelebration < 10000 {
+					m.lastCelebration = 10000
+					return true
+				} else if count >= 5000 && m.lastCelebration < 5000 {
+					m.lastCelebration = 5000
+					return true
+				} else if count >= 1000 && m.lastCelebration < 1000 {
+					m.lastCelebration = 1000
+					return true
+				} else if count >= 100 && m.lastCelebration < 100 {
+					m.lastCelebration = 100
+					return true
+				}
+				return false
+			}
+			
+			if checkMilestone(msg.count) {
+				// Trigger celebration in logs
+				var celebMsg string
+				switch m.lastCelebration {
+				case 100:
+					celebMsg = fmt.Sprintf("✨ %d items synced! Keep going!", msg.count)
+				case 1000:
+					celebMsg = fmt.Sprintf("🎊 %s items synced! Great progress!", formatNumber(msg.count))
+				case 5000:
+					celebMsg = fmt.Sprintf("🎉 %s items synced! Amazing work!", formatNumber(msg.count))
+				case 10000:
+					celebMsg = fmt.Sprintf("🚀✨🎉 %s items synced! Stellar!", formatNumber(msg.count))
+				}
+				
+				m.logs = append([]logEntry{{time: time.Now(), message: celebMsg}}, m.logs...)
+				if len(m.logs) > 5 {
+					m.logs = m.logs[:5]
+				}
+			}
+		}
+		return m, nil
+	
+	case progressMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.progress = msg.percent
+			state.progressBar.SetPercent(msg.percent)
+			m.items[msg.item] = state
+		}
+		return m, nil
+	
+	case rateMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.rate = msg.itemsPerSecond
+			m.items[msg.item] = state
+		}
+		return m, nil
+	
+	case etaMsg:
+		if state, exists := m.items[msg.item]; exists {
+			state.eta = msg.duration
 			m.items[msg.item] = state
 		}
 		return m, nil
@@ -4849,6 +5017,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state.completed = true
 			state.active = false
 			state.count = msg.count
+			state.progress = 1.0
+			state.progressBar.SetPercent(1.0)
 			m.items[msg.item] = state
 		}
 		// Add celebration log for milestones
@@ -4858,6 +5028,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addLog(fmt.Sprintf("🎉 %s completed (%s synced)!", capitalize(msg.item), formatNumber(msg.count)))
 		} else if msg.count >= 1000 {
 			m.addLog(fmt.Sprintf("✨ %s completed (%s synced)", capitalize(msg.item), formatNumber(msg.count)))
+		} else {
+			m.addLog(fmt.Sprintf("✅ %s completed (%s synced)", capitalize(msg.item), formatNumber(msg.count)))
 		}
 		return m, nil
 
@@ -4908,6 +5080,11 @@ func (m *model) addLog(message string) {
 
 // View renders the UI
 func (m model) View() string {
+	// If help overlay is shown, display it centered on top of main UI
+	if m.showHelp {
+		return m.renderHelpOverlay()
+	}
+	
 	// Define colors and styles
 	borderColor := m.borderColors[m.colorIndex]
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -4922,20 +5099,22 @@ func (m model) View() string {
 	// Empty line
 	lines = append(lines, "")
 	
-	// Items section
+	// Items section with progress bars
 	for _, name := range m.itemOrder {
 		state := m.items[name]
-		lines = append(lines, formatItemLine(state, m.spinner.View(), dimStyle, activeStyle, completeStyle, errorStyle))
+		// Item status line
+		lines = append(lines, formatItemLine(state, m.spinner.View(), dimStyle, activeStyle, completeStyle, errorStyle, m.paused))
+		// Progress bar line (only for enabled items)
+		if state.enabled {
+			lines = append(lines, formatProgressLine(state, dimStyle))
+		}
+		// Empty line for spacing
+		lines = append(lines, "")
 	}
 	
-	// Empty line
-	lines = append(lines, "")
-	
-	// API Status line
-	lines = append(lines, formatAPIStatusLine(m.apiSuccess, m.apiWarning, m.apiErrors, headerStyle, completeStyle, errorStyle))
-	
-	// Rate Limit line
-	lines = append(lines, formatRateLimitLine(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, headerStyle))
+	// Stats panel with boxed layout
+	statsLines := formatStatsPanel(m, headerStyle, completeStyle, errorStyle, dimStyle)
+	lines = append(lines, statsLines...)
 	
 	// Empty line
 	lines = append(lines, "")
@@ -4943,14 +5122,25 @@ func (m model) View() string {
 	// Activity section header
 	lines = append(lines, headerStyle.Render("💬 Activity"))
 	
-	// Activity log lines
-	for i := 0; i < 5; i++ {
+	// Activity log lines (5 for compact, 15 for detailed)
+	logCount := 5
+	if m.detailedLog {
+		logCount = 15
+	}
+	for i := 0; i < logCount; i++ {
 		if i < len(m.logs) {
 			lines = append(lines, formatLogLine(m.logs[i], errorStyle))
 		} else {
 			lines = append(lines, "")
 		}
 	}
+	
+	// Empty line
+	lines = append(lines, "")
+	
+	// Footer tip
+	tip := m.tips[m.currentTip]
+	lines = append(lines, dimStyle.Render("💡 "+tip))
 	
 	// Join all lines
 	content := strings.Join(lines, "\n")
@@ -4963,7 +5153,6 @@ func (m model) View() string {
 	}
 	
 	// Pre-pad all lines to the same width using our visibleLength calculation
-	// This works around lipgloss's incorrect emoji width handling
 	contentLines := strings.Split(content, "\n")
 	lineWidths := make([]int, len(contentLines))
 	
@@ -4975,7 +5164,6 @@ func (m model) View() string {
 		// Truncate lines that are too long
 		if width > maxContentWidth {
 			// Truncate the line - need to be careful with ANSI codes
-			// Simple approach: truncate and add "..."
 			truncated := ""
 			currentWidth := 0
 			runes := []rune(line)
@@ -5013,7 +5201,10 @@ func (m model) View() string {
 	
 	// Add title as first line of content
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	titleLine := titleStyle.Render("GitHub 🧠 pull")
+	titleLine := titleStyle.Render("✨ GitHub 🧠 pull")
+	if m.paused {
+		titleLine = titleStyle.Render("✨ GitHub 🧠 pull ⏸️  PAUSED")
+	}
 	// Pad title line to match content width
 	titlePadding := maxContentWidth - visibleLength(titleLine)
 	if titlePadding > 0 {
@@ -5036,44 +5227,202 @@ func (m model) View() string {
 
 // Helper formatting functions (return plain strings, box handles borders)
 
-func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, completeStyle, errorStyle lipgloss.Style) string {
+// renderHelpOverlay renders the help overlay screen
+func (m model) renderHelpOverlay() string {
+	helpText := `⌨️  Keyboard Shortcuts
+
+h or ?    Show this help
+p         Pause/Resume sync
+s         Toggle stats view (compact ↔ detailed)
+d         Toggle activity log (compact ↔ detailed)
+c         Copy stats to clipboard
+r         Force refresh display
+q         Quit (Ctrl+C also works)
+
+Press any key to dismiss`
+
+	// Create boxed help with borders
+	helpStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("12")).
+		Padding(1, 2).
+		Align(lipgloss.Left)
+	
+	return "\n\n" + helpStyle.Render(helpText) + "\n\n"
+}
+
+// formatItemLine formats a single item status line with enhanced icons
+func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, completeStyle, errorStyle lipgloss.Style, paused bool) string {
 	var icon string
 	var style lipgloss.Style
 	var text string
 
+	// Use different icons per item type
+	var itemIcon string
+	switch state.name {
+	case "repositories":
+		itemIcon = "📦"
+	case "discussions":
+		itemIcon = "💬"
+	case "issues":
+		itemIcon = "🐛"
+	case "pull-requests":
+		itemIcon = "🔀"
+	default:
+		itemIcon = "📋"
+	}
+	
 	displayName := capitalize(state.name)
 
 	if state.failed {
 		icon = "❌"
 		style = errorStyle
 		if state.count > 0 {
-			text = fmt.Sprintf("%s: %s (errors)", displayName, formatNumber(state.count))
+			text = fmt.Sprintf("%s: %s          ⚠️  Errors encountered", displayName, formatNumber(state.count))
 		} else {
 			text = displayName
 		}
 	} else if state.completed {
 		icon = "✅"
 		style = completeStyle
-		text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+		text = fmt.Sprintf("%s: %s         🎊 Complete!", displayName, formatNumber(state.count))
 	} else if state.active {
-		icon = spinnerView
+		if paused {
+			icon = "⏸️ "
+		} else {
+			icon = spinnerView
+		}
 		style = activeStyle
 		if state.count > 0 {
-			text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
+			// Add rate and ETA if available
+			rateStr := ""
+			etaStr := ""
+			if state.rate > 0 {
+				rateStr = fmt.Sprintf("📈 ~%.0f/s", state.rate)
+			}
+			if state.eta > 0 {
+				etaStr = fmt.Sprintf("⏱️  ETA %s", formatDuration(state.eta))
+			}
+			text = fmt.Sprintf("%s: %s          %s     %s", displayName, formatNumber(state.count), rateStr, etaStr)
 		} else {
 			text = displayName
 		}
 	} else if !state.enabled {
 		icon = "🔕"
 		style = dimStyle
-		text = displayName
+		text = fmt.Sprintf("%s           (skipped)", displayName)
 	} else {
-		icon = "📋"
+		icon = itemIcon
 		style = dimStyle
 		text = displayName
 	}
 
 	return style.Render(icon + " " + text)
+}
+
+// formatProgressLine renders a progress bar for an item
+func formatProgressLine(state itemState, dimStyle lipgloss.Style) string {
+	if !state.enabled {
+		return dimStyle.Render("     " + strings.Repeat("░", 40) + "  0%")
+	}
+	
+	percent := int(state.progress * 100)
+	percentStr := fmt.Sprintf("%3d%%", percent)
+	
+	// Render the progress bar
+	barView := state.progressBar.ViewAs(state.progress)
+	return "     " + barView + "  " + percentStr
+}
+
+// formatStatsPanel renders the stats panel with boxed layout
+func formatStatsPanel(m model, headerStyle, completeStyle, errorStyle, dimStyle lipgloss.Style) []string {
+	var lines []string
+	
+	// Top border
+	lines = append(lines, "┌─────────────────────────────────────────────────────────┐")
+	
+	// API Status line
+	apiText := fmt.Sprintf("  📊 API Status   ✅ %s   ⚡ %s   ❌ %s", 
+		formatNumber(m.apiSuccess), formatNumber(m.apiWarning), formatNumber(m.apiErrors))
+	lines = append(lines, apiText + strings.Repeat(" ", 60-len(apiText))+"│")
+	
+	// Rate Limit line with visual bar
+	rateLimitLine := formatRateLimitBar(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, completeStyle, errorStyle, dimStyle)
+	lines = append(lines, rateLimitLine)
+	
+	// Elapsed time
+	elapsedStr := formatDuration(m.elapsed)
+	elapsedLine := fmt.Sprintf("  ⏱️  Elapsed      %s", elapsedStr)
+	lines = append(lines, elapsedLine + strings.Repeat(" ", 60-len(elapsedLine))+"│")
+	
+	// Bottom border
+	lines = append(lines, "└─────────────────────────────────────────────────────────┘")
+	
+	return lines
+}
+
+// formatRateLimitBar renders rate limit with visual progress bar
+func formatRateLimitBar(used, limit int, resetTime time.Time, completeStyle, errorStyle, dimStyle lipgloss.Style) string {
+	if limit <= 0 {
+		return "  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░ 100%               │"
+	}
+	
+	remaining := limit - used
+	percentage := float64(remaining) / float64(limit) * 100
+	
+	// Color based on percentage
+	var barStyle lipgloss.Style
+	if percentage > 70 {
+		barStyle = completeStyle // Green
+	} else if percentage > 30 {
+		barStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // Yellow
+	} else {
+		barStyle = errorStyle // Red
+	}
+	
+	// Create visual bar (15 characters)
+	barLen := int(percentage / 100 * 15)
+	if barLen > 15 {
+		barLen = 15
+	}
+	bar := strings.Repeat("▓", barLen) + strings.Repeat("░", 15-barLen)
+	
+	resetStr := formatTimeRemaining(resetTime)
+	percentStr := fmt.Sprintf("%.0f%%", percentage)
+	
+	// Warning if low
+	warning := ""
+	if percentage < 30 {
+		warning = " │ ⚠️  "
+	} else {
+		warning = " │ "
+	}
+	
+	line := fmt.Sprintf("  🚦 Rate Limit   %s %s%sresets %s", 
+		barStyle.Render(bar), percentStr, warning, resetStr)
+	
+	return line + strings.Repeat(" ", 60-visibleLength(line)) + "│"
+}
+
+// formatDuration formats a duration in human-readable format
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	} else if d < time.Hour {
+		minutes := int(d.Minutes())
+		seconds := int(d.Seconds()) % 60
+		if seconds > 0 {
+			return fmt.Sprintf("%dm %ds", minutes, seconds)
+		}
+		return fmt.Sprintf("%dm", minutes)
+	} else {
+		hours := int(d.Hours())
+		minutes := int(d.Minutes()) % 60
+		if minutes > 0 {
+			return fmt.Sprintf("%dh %dm", hours, minutes)
+		}
+		return fmt.Sprintf("%dh", hours)
+	}
 }
 
 func formatAPIStatusLine(success, warning, errors int, headerStyle, completeStyle, errorStyle lipgloss.Style) string {
