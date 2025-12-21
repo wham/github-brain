@@ -5235,7 +5235,6 @@ h or ?    Show this help
 p         Pause/Resume sync
 s         Toggle stats view (compact ↔ detailed)
 d         Toggle activity log (compact ↔ detailed)
-c         Copy stats to clipboard
 r         Force refresh display
 q         Quit (Ctrl+C also works)
 
@@ -5336,6 +5335,7 @@ func formatProgressLine(state itemState, dimStyle lipgloss.Style) string {
 
 // formatStatsPanel renders the stats panel with boxed layout
 func formatStatsPanel(m model, headerStyle, completeStyle, errorStyle, dimStyle lipgloss.Style) []string {
+	const statsPanelWidth = 59 // Width inside the box borders
 	var lines []string
 	
 	// Top border
@@ -5344,16 +5344,24 @@ func formatStatsPanel(m model, headerStyle, completeStyle, errorStyle, dimStyle 
 	// API Status line
 	apiText := fmt.Sprintf("  📊 API Status   ✅ %s   ⚡ %s   ❌ %s", 
 		formatNumber(m.apiSuccess), formatNumber(m.apiWarning), formatNumber(m.apiErrors))
-	lines = append(lines, apiText + strings.Repeat(" ", 60-len(apiText))+"│")
+	apiPadding := statsPanelWidth - visibleLength(apiText)
+	if apiPadding < 0 {
+		apiPadding = 0
+	}
+	lines = append(lines, apiText + strings.Repeat(" ", apiPadding)+"│")
 	
 	// Rate Limit line with visual bar
-	rateLimitLine := formatRateLimitBar(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, completeStyle, errorStyle, dimStyle)
+	rateLimitLine := formatRateLimitBar(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, completeStyle, errorStyle, dimStyle, statsPanelWidth)
 	lines = append(lines, rateLimitLine)
 	
 	// Elapsed time
 	elapsedStr := formatDuration(m.elapsed)
 	elapsedLine := fmt.Sprintf("  ⏱️  Elapsed      %s", elapsedStr)
-	lines = append(lines, elapsedLine + strings.Repeat(" ", 60-len(elapsedLine))+"│")
+	elapsedPadding := statsPanelWidth - visibleLength(elapsedLine)
+	if elapsedPadding < 0 {
+		elapsedPadding = 0
+	}
+	lines = append(lines, elapsedLine + strings.Repeat(" ", elapsedPadding)+"│")
 	
 	// Bottom border
 	lines = append(lines, "└─────────────────────────────────────────────────────────┘")
@@ -5362,9 +5370,14 @@ func formatStatsPanel(m model, headerStyle, completeStyle, errorStyle, dimStyle 
 }
 
 // formatRateLimitBar renders rate limit with visual progress bar
-func formatRateLimitBar(used, limit int, resetTime time.Time, completeStyle, errorStyle, dimStyle lipgloss.Style) string {
+func formatRateLimitBar(used, limit int, resetTime time.Time, completeStyle, errorStyle, dimStyle lipgloss.Style, panelWidth int) string {
 	if limit <= 0 {
-		return "  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░ 100%               │"
+		line := "  🚦 Rate Limit   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░ 100%"
+		padding := panelWidth - visibleLength(line)
+		if padding < 0 {
+			padding = 0
+		}
+		return line + strings.Repeat(" ", padding) + "│"
 	}
 	
 	remaining := limit - used
@@ -5401,7 +5414,11 @@ func formatRateLimitBar(used, limit int, resetTime time.Time, completeStyle, err
 	line := fmt.Sprintf("  🚦 Rate Limit   %s %s%sresets %s", 
 		barStyle.Render(bar), percentStr, warning, resetStr)
 	
-	return line + strings.Repeat(" ", 60-visibleLength(line)) + "│"
+	padding := panelWidth - visibleLength(line)
+	if padding < 0 {
+		padding = 0
+	}
+	return line + strings.Repeat(" ", padding) + "│"
 }
 
 // formatDuration formats a duration in human-readable format
