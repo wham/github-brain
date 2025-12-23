@@ -2,8 +2,16 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# Lint the code (non-blocking in development)
+echo "Running linter..."
+if command -v golangci-lint &> /dev/null; then
+    golangci-lint run --timeout=5m || echo "Warning: Linter found issues (non-blocking in development)"
+else
+    echo "Warning: golangci-lint not found, skipping linting"
+fi
+
 # Build with FTS5 support enabled
-CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -gcflags="all=-N -l" -o ./build/github-brain .
+CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" CGO_LDFLAGS="-lm" go build -gcflags="all=-N -l" -o ./build/github-brain .
 
 # Set home directory to checkout directory
 CHECKOUT_DIR="$(pwd)"
