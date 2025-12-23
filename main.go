@@ -466,7 +466,7 @@ func visibleLength(s string) int {
 		if runes[i] == '\033' && i+1 < len(runes) && runes[i+1] == '[' {
 			// Skip CSI sequence: ESC [ ... (terminated by a letter)
 			i += 2
-			for i < len(runes) && !((runes[i] >= 'A' && runes[i] <= 'Z') || (runes[i] >= 'a' && runes[i] <= 'z')) {
+			for i < len(runes) && (runes[i] < 'A' || runes[i] > 'Z') && (runes[i] < 'a' || runes[i] > 'z') {
 				i++
 			}
 			i++ // Skip the terminating letter
@@ -933,12 +933,16 @@ func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error)
 	}
 
 	// Check if database file exists and if schema version matches
-	var needsRecreation bool = true
+	needsRecreation := true
 	if _, err := os.Stat(dbPath); err == nil {
 		// Database exists, check schema version
 		tempDB, err := sql.Open("sqlite3", dbPath)
 		if err == nil {
-			defer tempDB.Close()
+			defer func() {
+				if closeErr := tempDB.Close(); closeErr != nil {
+					slog.Warn("Failed to close temp database", "error", closeErr)
+				}
+			}()
 			schemaMatches, checkErr := checkSchemaVersion(tempDB, progress)
 			if checkErr != nil {
 				if progress != nil {
@@ -1061,7 +1065,11 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 	if err != nil {
 		slog.Warn("Failed to query user repositories, proceeding with boost=1.0 for all", "error", err)
 	} else {
-		defer rows.Close()
+		defer func() {
+			if closeErr := rows.Close(); closeErr != nil {
+				slog.Warn("Failed to close rows", "error", closeErr)
+			}
+		}()
 		for rows.Next() {
 			var repo string
 			if err := rows.Scan(&repo); err == nil {
@@ -1287,7 +1295,11 @@ func (db *DB) GetRepositories() ([]Repository, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query repositories: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 
 	var repositories []Repository
 	for rows.Next() {
@@ -1443,7 +1455,11 @@ func (db *DB) GetDiscussions(repository string, fromDate time.Time, toDate time.
 	if err != nil {
 		return nil, fmt.Errorf("failed to query discussions: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 
 	var discussions []Discussion
 	for rows.Next() {
@@ -1501,7 +1517,11 @@ func (db *DB) GetIssues(repository string, createdFromDate time.Time, createdToD
 	if err != nil {
 		return nil, fmt.Errorf("failed to query issues: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 
 	var issues []Issue
 	for rows.Next() {
@@ -1566,7 +1586,11 @@ func (db *DB) GetPullRequests(repository string, createdFromDate time.Time, crea
 	if err != nil {
 		return nil, fmt.Errorf("failed to query pull requests: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 
 	var pullRequests []PullRequest
 	for rows.Next() {
@@ -3337,7 +3361,11 @@ func (db *DB) GetDiscussionsByRepository(repositoryName string) ([]Discussion, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to query discussions: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 
 	var discussions []Discussion
 	for rows.Next() {
@@ -3506,7 +3534,11 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		slog.Error("FTS search query failed", "sql", query, "search_table", "search", "fts_query", ftsQuery, "error", err)
 		return nil, fmt.Errorf("FTS search failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("Failed to close rows", "error", closeErr)
+		}
+	}()
 	
 	var results []SearchResult
 	for rows.Next() {
@@ -3838,7 +3870,7 @@ func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Li
 					}
 				}
 				if !found {
-					return nil, nil, fmt.Errorf("Invalid fields: %s\n\nUse one of the available fields: %s", field, strings.Join(validFields, ", "))
+					return nil, nil, fmt.Errorf("invalid fields: %s\n\nUse one of the available fields: %s", field, strings.Join(validFields, ", "))
 				}
 			}
 		}
@@ -4358,7 +4390,11 @@ func main() {
 			logErrorAndReturn(progress, "Error: Failed to initialize database: %v", err)
 			return
 		}
-		defer db.Close()
+		defer func() {
+			if closeErr := db.Close(); closeErr != nil {
+				slog.Error("Failed to close database", "error", closeErr)
+			}
+		}()
 
 		// Acquire lock to prevent concurrent pull operations
 		if err := db.LockPull(); err != nil {
@@ -4539,7 +4575,11 @@ func main() {
 			slog.Error("Failed to initialize database", "error", err)
 			os.Exit(1)
 		}
-		defer db.Close()
+		defer func() {
+			if closeErr := db.Close(); closeErr != nil {
+				slog.Error("Failed to close database", "error", closeErr)
+			}
+		}()
 
 		if err := RunMCPServer(db); err != nil {
 			slog.Error("MCP server error", "error", err)
@@ -5498,7 +5538,11 @@ func requestDeviceCode() (*DeviceCodeResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			slog.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -5547,7 +5591,9 @@ func pollForAccessToken(deviceCode *DeviceCodeResponse) (accessToken string, err
 		}
 
 		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			slog.Warn("Failed to close response body", "error", closeErr)
+		}
 		if err != nil {
 			continue
 		}
