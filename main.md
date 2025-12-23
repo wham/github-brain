@@ -1163,6 +1163,26 @@ Download the appropriate archive for your platform from [releases](https://githu
 curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz | tar xz
 ```
 
+## Code Quality
+
+### Linting
+
+Use **golangci-lint** with default configuration for code quality checks.
+
+**Running the linter:**
+```bash
+# Standalone
+golangci-lint run --timeout=5m
+
+# Integrated with build (via scripts/run)
+./scripts/run [command]
+```
+
+**CI Integration:**
+- Linting runs automatically on all PRs via `.github/workflows/build.yml`
+- Build fails if linter finds issues (blocking)
+- In local development (`scripts/run`), linting runs but is non-blocking to allow rapid iteration
+
 ### Release Model
 
 Coded in `.github/workflow/release.yml` and `.github/workflow/build.yml`.
