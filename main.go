@@ -4618,12 +4618,14 @@ type ProgressInterface interface {
 // UIProgress implements the ProgressInterface using Bubble Tea for rendering
 type UIProgress struct {
 	program *tea.Program
+	done    chan struct{} // Closed when Run() completes
 }
 
 // NewUIProgress creates a new Bubble Tea-based progress indicator
 func NewUIProgress(message string) *UIProgress {
 	return &UIProgress{
 		program: nil, // Will be initialized in Start()
+		done:    make(chan struct{}),
 	}
 }
 
@@ -4645,6 +4647,7 @@ func (p *UIProgress) InitItems(config *Config) {
 	
 	// Start the program in a goroutine
 	go func() {
+		defer close(p.done)
 		if _, err := p.program.Run(); err != nil {
 			slog.Error("Error running Bubble Tea program", "error", err)
 		}
@@ -4658,6 +4661,7 @@ func (p *UIProgress) InitItems(config *Config) {
 func (p *UIProgress) Stop() {
 	if p.program != nil {
 		p.program.Quit()
+		<-p.done // Wait for Run() to complete to ensure terminal is restored
 	}
 }
 

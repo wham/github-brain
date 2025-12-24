@@ -40,6 +40,11 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - No manual ANSI escape codes or cursor management
   - No Console struct needed - Bubble Tea handles everything
   - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
+- **Graceful shutdown:**
+  - `UIProgress` has a `done` channel to track when `Run()` completes
+  - The goroutine running `Run()` closes the `done` channel when finished
+  - `Stop()` calls `Quit()` then waits on the `done` channel before returning
+  - This ensures alternate screen mode is properly exited and terminal state is restored
 - **Playful enhancements:**
   - Animated spinner using `bubbles/spinner` with Dot style
   - Smooth color transitions for status changes (pending → active → complete)
@@ -1170,6 +1175,7 @@ curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-bra
 Use **golangci-lint** with default configuration for code quality checks.
 
 **Running the linter:**
+
 ```bash
 # Standalone
 golangci-lint run --timeout=5m
@@ -1179,6 +1185,7 @@ golangci-lint run --timeout=5m
 ```
 
 **CI Integration:**
+
 - Linting runs automatically on all PRs via `.github/workflows/build.yml`
 - Build fails if linter finds issues (blocking)
 - In local development (`scripts/run`), linting runs but is non-blocking to allow rapid iteration
