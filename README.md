@@ -31,19 +31,17 @@ Or use `npx github-brain` to run without installing globally.
 ## Usage
 
 ```sh
-github-brain <command> [<args>]
+github-brain
 ```
 
-**Workflow:**
+Launches the interactive TUI where you can:
 
-1. Use `login` to authenticate with GitHub (or set `GITHUB_TOKEN` manually)
-2. Use `pull` to populate the local database
-3. Use `mcp` to start the MCP server
+1. **Login** - Authenticate with GitHub
+2. **Pull** - Populate the local database with GitHub data
 
-Re-run `pull` anytime to update the database with new GitHub data.
+Re-run pull anytime to update the database with new GitHub data.
 
-Each command has its own arguments. Some can be set via environment variables. The app will also load environment variables from a `.env` file in the GitHub Brain's home directory - `~/.github-brain` by default.
-You can change the home directory with the `-m` argument available for all commands.
+The app loads environment variables from a `.env` file in the GitHub Brain's home directory - `~/.github-brain` by default.
 
 <details>
     <summary>Example .env file</summary>
@@ -53,41 +51,9 @@ You can change the home directory with the `-m` argument available for all comma
 
 </details>
 
-### `login`
-
-Opens your browser to authorize _GitHub Brain_ app and stores resulting `GITHUB_TOKEN` in the `.env` file.
-Optionally, you can also specify `ORGANIZATION` to store in the same file.
-
-Example:
-
-```sh
-github-brain login
-```
-
 | Argument | Description                                |
 | :------- | :----------------------------------------- |
 | `-m`     | Home directory. Default: `~/.github-brain` |
-
-### `pull`
-
-Populate the local database with GitHub data.
-
-Example:
-
-```sh
-github-brain pull -o my-org
-```
-
-The first run may take a while. Subsequent runs are faster, fetching only new data.
-
-| Argument | Variable                | Description                                                                                                                            |
-| :------- | :---------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-|          | `GITHUB_TOKEN`          | Your GitHub token. Use `login` command or create a [personal token](https://github.com/settings/personal-access-tokens). **Required.** |
-| `-o`     | `ORGANIZATION`          | The GitHub organization to pull data from. **Required.**                                                                               |
-| `-m`     |                         | Home directory. Default: `~/.github-brain`                                                                                             |
-| `-i`     |                         | Pull only selected entities: `repositories`, `discussions`, `issues`, `pull-requests` (comma-separated).                               |
-| `-f`     |                         | Remove all data before pulling. With `-i`, removes only specified items.                                                               |
-| `-e`     | `EXCLUDED_REPOSITORIES` | Repositories to exclude (comma-separated). Useful for large repos not relevant to your analysis.                                       |
 
 <details>
     <summary>Personal access token scopes</summary>
@@ -100,20 +66,18 @@ The first run may take a while. Subsequent runs are faster, fetching only new da
 
 </details>
 
-### `mcp`
+## MCP Server
 
-Start the MCP server using the local database.
-
-Example:
+Start the MCP server using the local database:
 
 ```sh
-github-brain mcp -o my-org
+github-brain mcp
 ```
 
-| Argument | Variable       | Description                                 |
-| :------- | :------------- | :------------------------------------------ |
-| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**                                                           |
-| `-m`     |                | Home directory. Default: `~/.github-brain`                                                   |
+| Argument | Variable       | Description                                |
+| :------- | :------------- | :----------------------------------------- |
+| `-o`     | `ORGANIZATION` | GitHub organization. **Required.**         |
+| `-m`     |                | Home directory. Default: `~/.github-brain` |
 
 ### Additional Arguments
 
