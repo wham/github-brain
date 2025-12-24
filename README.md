@@ -79,16 +79,6 @@ github-brain mcp
 | `-o`     | `ORGANIZATION` | GitHub organization. **Required.**         |
 | `-m`     |                | Home directory. Default: `~/.github-brain` |
 
-### Additional Arguments
-
-**Version:**
-
-```sh
-github-brain --version
-```
-
-Displays the current version (commit hash and build date).
-
 ## MCP Configuration
 
 ### Claude

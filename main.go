@@ -4238,13 +4238,6 @@ func parseHeaderInt(headers http.Header, key string) (int, bool) {
 }
 
 func main() {
-	// Handle --version flag before any other processing
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Printf("github-brain %s (%s)\n", Version, BuildDate)
-		os.Exit(0)
-		return
-	}
-
 	// Parse home directory early to load .env from the correct location
 	homeDir := os.Getenv("HOME")
 	if homeDir == "" {
@@ -4283,7 +4276,7 @@ func main() {
 		fmt.Printf("Usage: %s [-m <home>]\n", os.Args[0])
 		fmt.Printf("       %s mcp [-m <home>] [-o <organization>]\n\n", os.Args[0])
 		fmt.Println("Running without arguments starts the interactive TUI.")
-		fmt.Println("\nCommands:")
+		fmt.Println("\nSubcommands:")
 		fmt.Println("  mcp    Start the MCP server")
 		fmt.Println("\nOptions:")
 		fmt.Println("  -m     Home directory (default: ~/.github-brain)")
@@ -5104,6 +5097,10 @@ func (m mainMenuModel) View() string {
 
 	// Help text
 	b.WriteString(dimStyle.Render("  Press Enter to select, q to quit") + "\n")
+	b.WriteString("\n")
+
+	// Version
+	b.WriteString(dimStyle.Render(fmt.Sprintf("  %s (%s)", Version, BuildDate)) + "\n")
 	b.WriteString("\n")
 
 	// Calculate box width
