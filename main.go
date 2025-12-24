@@ -4272,271 +4272,31 @@ func main() {
 	envPath := homeDir + "/.env"
 	_ = godotenv.Load(envPath)
 
-	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" {
-		fmt.Printf("Usage: %s <command> [<args>]\n\n", os.Args[0])
-		fmt.Println("Commands:")
-		fmt.Println("  login  Authenticate with GitHub")
-		fmt.Println("  pull   Pull GitHub repositories and discussions")
-		fmt.Println("  mcp    Start the MCP server")
-		fmt.Println("\nFor command-specific help, use:")
-		fmt.Println("  login -h\n  pull -h\n  mcp -h")
-		os.Exit(0)
+	// Check if a command is specified
+	cmd := ""
+	if len(os.Args) > 1 && os.Args[1] != "-m" && os.Args[1] != "-h" && os.Args[1] != "--help" {
+		cmd = os.Args[1]
 	}
 
-	cmd := os.Args[1]
+	// Handle help flag
+	if len(os.Args) > 1 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		fmt.Printf("Usage: %s [-m <home>]\n", os.Args[0])
+		fmt.Printf("       %s mcp [-m <home>] [-o <organization>]\n\n", os.Args[0])
+		fmt.Println("Running without arguments starts the interactive TUI.")
+		fmt.Println("\nCommands:")
+		fmt.Println("  mcp    Start the MCP server")
+		fmt.Println("\nOptions:")
+		fmt.Println("  -m     Home directory (default: ~/.github-brain)")
+		os.Exit(0)
+	}
 
 	switch cmd {
-	case "login":
-		args := os.Args[2:]
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: login [-m <home_dir>]")
-				fmt.Println("Options:")
-				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
-				os.Exit(0)
-			}
-		}
-
-		if err := RunLogin(homeDir); err != nil {
-			slog.Error("Login failed", "error", err)
+	case "":
+		// No command - start the main TUI
+		if err := RunMainTUI(homeDir); err != nil {
+			slog.Error("TUI error", "error", err)
 			os.Exit(1)
 		}
-
-	case "pull":
-		// Load configuration from CLI args and environment variables first
-		args := os.Args[2:]
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-h" || args[i] == "--help" {
-				fmt.Println("Usage: pull -o <organization> [-m <home_dir>] [-i repositories,discussions,issues,pull-requests] [-e excluded_repos] [-f]")
-				fmt.Println("Options:")
-				fmt.Println("  -o    GitHub organization (or set ORGANIZATION)")
-				fmt.Println("  -m    Home directory (default: ~/.github-brain)")
-				fmt.Println("  -i    Items to pull (default: all)")
-				fmt.Println("  -e    Excluded repositories (comma-separated)")
-				fmt.Println("  -f    Force: clear data before pulling")
-				fmt.Println("\nAuthentication: Run 'login' first or set GITHUB_TOKEN environment variable.")
-				os.Exit(0)
-			}
-		}
-
-		config := LoadConfig(args)
-		
-		// Initialize progress display FIRST - before any other operations  
-		progress := NewUIProgress("Initializing GitHub offline MCP server...")
-		progress.Start()
-		defer progress.Stop()
-		
-		// Set up slog to route to Bubble Tea UI
-		slog.SetDefault(slog.New(NewBubbleTeaHandler(progress.program)))
-		
-		slog.Info("Configuration loaded successfully")
-		
-		// Continue with the original logic
-		
-		if config.GithubToken == "" {
-			logErrorAndReturn(progress, "Error: GitHub token is required. Run 'github-brain login' or set GITHUB_TOKEN environment variable.")
-			return
-		}
-		if config.Organization == "" {
-			logErrorAndReturn(progress, "Error: Organization is required. Use -o or set ORGANIZATION environment variable.")
-			return
-		}
-
-		// Default pull all items if nothing specified
-		if len(config.Items) == 0 {
-			config.Items = []string{"repositories", "discussions", "issues", "pull-requests"}
-		}
-		
-		// Initialize the items display now that we have config with items set
-		progress.InitItems(config)
-
-		// Validate items
-		validItems := map[string]bool{
-			"repositories":  true,
-			"discussions":   true,
-			"issues":        true,
-			"pull-requests": true,
-		}
-		for _, item := range config.Items {
-			if !validItems[item] {
-				logErrorAndReturn(progress, "Error: Invalid item: %s. Valid items are: repositories, discussions, issues, pull-requests", item)
-				return
-			}
-		}
-
-		// Check if we should pull each item type (convert to map for efficient lookup)
-		itemsMap := make(map[string]bool)
-		for _, item := range config.Items {
-			itemsMap[item] = true
-		}
-		pullRepositories := itemsMap["repositories"]
-		pullDiscussions := itemsMap["discussions"]
-		pullIssues := itemsMap["issues"]
-		pullPullRequests := itemsMap["pull-requests"]
-
-		// Create GitHub Brain home directory if it doesn't exist
-		if _, err := os.Stat(config.HomeDir); os.IsNotExist(err) {
-			progress.Log("Creating GitHub Brain home directory: %s", config.HomeDir)
-			if err := os.MkdirAll(config.HomeDir, 0755); err != nil {
-				logErrorAndReturn(progress, "Error: Failed to create home directory: %v", err)
-				return
-			}
-		}
-
-		// Initialize database
-		progress.Log("Initializing database at path: %s", getDBPath(config.DBDir, config.Organization))
-		db, err := InitDB(config.DBDir, config.Organization, progress)
-		if err != nil {
-			logErrorAndReturn(progress, "Error: Failed to initialize database: %v", err)
-			return
-		}
-		defer func() {
-			if closeErr := db.Close(); closeErr != nil {
-				slog.Error("Failed to close database", "error", closeErr)
-			}
-		}()
-
-		// Acquire lock to prevent concurrent pull operations
-		if err := db.LockPull(); err != nil {
-			logErrorAndReturn(progress, "Error: Failed to acquire lock: %v", err)
-			return
-		}
-
-		// Start lock renewal in background
-		renewDone := make(chan struct{})
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ticker.C:
-					if err := db.RenewPullLock(); err != nil {
-						slog.Warn("Failed to renew lock", "error", err)
-					}
-				case <-renewDone:
-					return
-				}
-			}
-		}()
-
-		// Ensure unlock on exit
-		defer func() {
-			close(renewDone)
-			if err := db.UnlockPull(); err != nil {
-				slog.Warn("Failed to release lock", "error", err)
-			}
-		}()
-
-		progress.UpdateMessage("Initializing GitHub client...")
-
-		// Create GitHub clients with custom transport to capture headers
-		ctx := context.Background()
-		ts := oauth2.StaticTokenSource(
-			&oauth2.Token{AccessToken: config.GithubToken},
-		)
-		tc := oauth2.NewClient(ctx, ts)
-		
-		// Wrap the transport to capture response headers and status codes
-		tc.Transport = &CustomTransport{
-			wrapped: tc.Transport,
-		}
-		
-		graphqlClient := githubv4.NewClient(tc)
-
-		// Initialize progress display with all items
-		progress.Log("GitHub client initialized, starting data operations")
-		
-	// Fetch current user (always runs, even when using -i)
-	progress.Log("Fetching current authenticated user...")
-	var currentUser struct {
-		Viewer struct {
-			Login string
-		}
-	}
-	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
-		// GraphQL error - decrement success counter and increment error counter
-		// since GraphQL returns HTTP 200 even for errors
-		statusMutex.Lock()
-		if statusCounters.Success2XX > 0 {
-			statusCounters.Success2XX--
-		}
-		statusCounters.Error4XX++
-		statusMutex.Unlock()
-		
-		// Even on error, update UI with any rate limit info we captured
-		updateProgressStatus(progress)
-		
-		progress.Log("Error: Failed to fetch current user: %v", err)
-		progress.Log("Please run 'login' again to re-authenticate")
-		exitAfterDelay(progress)
-	}
-	currentUsername := currentUser.Viewer.Login
-	progress.Log("Authenticated as user: %s", currentUsername)
-	
-	// Update UI with rate limit info from the user query response
-	updateProgressStatus(progress)
-	
-	// Clear data if Force flag is set
-	if err := ClearData(db, config, progress); err != nil {
-		handleFatalError(progress, "Error: Failed to clear data: %v", err)
-	}
-
-	// No longer deleting data from other organizations - keeping all data
-	// This ensures backward compatibility with existing databases
-
-	// Pull repositories if requested
-	if pullRepositories {
-		if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
-			progress.MarkItemFailed("repositories", err.Error())
-			handleFatalError(progress, "Failed to pull repositories: %v", err)
-		}
-	}
-
-	// Pull discussions if requested
-	if pullDiscussions {
-		checkPreviousFailures(progress, "discussions")
-		if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
-			handlePullItemError(progress, "discussions", err)
-		}
-	}
-
-	// Pull issues if requested
-	if pullIssues {
-		checkPreviousFailures(progress, "issues")
-		if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
-			handlePullItemError(progress, "issues", err)
-		}
-	}
-
-	// Pull pull requests if requested
-	if pullPullRequests {
-		checkPreviousFailures(progress, "pull requests")
-		progress.Log("Starting pull requests operation")
-		progress.Log("About to call PullPullRequests")
-		if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
-			handlePullItemError(progress, "pull-requests", err)
-		}
-	}
-
-		// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
-		progress.UpdateMessage("Updating search index...")
-		progress.Log("Starting search FTS5 table rebuild...")
-		if err := db.PopulateSearchTable(currentUsername, progress); err != nil {
-			progress.Log("❌ Warning: Failed to populate search table: %v", err)
-			// Continue despite search table error - don't fail the entire operation
-		}
-
-		// Final status update through Progress system
-		progress.UpdateMessage("Successfully pulled GitHub data")
-		
-		// Give time for final display update to render
-		time.Sleep(200 * time.Millisecond)
-		
-		progress.Stop()
-		
-		// Exit successfully after pull operation
-		os.Exit(0)
 
 	case "mcp":
 		args := os.Args[2:]
@@ -5057,7 +4817,7 @@ func (m model) View() string {
 	
 	// Add title as first line of content
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	titleLine := titleStyle.Render("GitHub 🧠 pull")
+	titleLine := titleStyle.Render("GitHub 🧠 Pull")
 	// Pad title line to match content width
 	titlePadding := maxContentWidth - visibleLength(titleLine)
 	if titlePadding > 0 {
@@ -5149,6 +4909,668 @@ func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
 		return "     " + timestamp + " " + errorStyle.Render(message)
 	}
 	return "     " + timestamp + " " + message
+}
+
+// ============================================================================
+// Main TUI Implementation (Interactive Menu)
+// ============================================================================
+
+// mainMenuModel is the Bubble Tea model for the main interactive menu
+type mainMenuModel struct {
+	homeDir      string
+	choices      []menuChoice
+	cursor       int
+	status       string // "Not logged in", "Logged in as @user", etc.
+	username     string
+	organization string
+	width        int
+	height       int
+	borderColors []lipgloss.AdaptiveColor
+	colorIndex   int
+	quitting     bool
+	runLogin     bool
+	runPull      bool
+	checkingAuth bool
+}
+
+type menuChoice struct {
+	name        string
+	description string
+}
+
+// Message types for main menu
+type (
+	mainMenuTickMsg    time.Time
+	authCheckResultMsg struct {
+		loggedIn     bool
+		username     string
+		organization string
+	}
+)
+
+func newMainMenuModel(homeDir string) mainMenuModel {
+	return mainMenuModel{
+		homeDir: homeDir,
+		choices: []menuChoice{
+			{name: "Login", description: "Authenticate with GitHub"},
+			{name: "Pull", description: "Sync GitHub data to local database"},
+			{name: "Quit", description: "Exit"},
+		},
+		cursor:       0,
+		status:       "Checking authentication...",
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+		checkingAuth: true,
+	}
+}
+
+func (m mainMenuModel) Init() tea.Cmd {
+	return tea.Batch(
+		mainMenuTickCmd(),
+		checkAuthCmd(m.homeDir),
+	)
+}
+
+func mainMenuTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return mainMenuTickMsg(t)
+	})
+}
+
+func checkAuthCmd(homeDir string) tea.Cmd {
+	return func() tea.Msg {
+		// Check if we have a token
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" {
+			return authCheckResultMsg{loggedIn: false}
+		}
+
+		// Verify the token is still valid
+		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		httpClient := oauth2.NewClient(context.Background(), src)
+		client := githubv4.NewClient(httpClient)
+
+		var query struct {
+			Viewer struct {
+				Login string
+			}
+		}
+
+		if err := client.Query(context.Background(), &query, nil); err != nil {
+			return authCheckResultMsg{loggedIn: false}
+		}
+
+		org := os.Getenv("ORGANIZATION")
+		return authCheckResultMsg{
+			loggedIn:     true,
+			username:     query.Viewer.Login,
+			organization: org,
+		}
+	}
+}
+
+func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.quitting = true
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		case "enter":
+			switch m.choices[m.cursor].name {
+			case "Login":
+				m.runLogin = true
+				return m, tea.Quit
+			case "Pull":
+				m.runPull = true
+				return m, tea.Quit
+			case "Quit":
+				m.quitting = true
+				return m, tea.Quit
+			}
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case mainMenuTickMsg:
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, mainMenuTickCmd()
+
+	case authCheckResultMsg:
+		m.checkingAuth = false
+		if msg.loggedIn {
+			if msg.organization != "" {
+				m.status = fmt.Sprintf("Logged in as @%s (%s)", msg.username, msg.organization)
+			} else {
+				m.status = fmt.Sprintf("Logged in as @%s", msg.username)
+			}
+			m.username = msg.username
+			m.organization = msg.organization
+			// Move cursor to Pull after successful login check
+			m.cursor = 1
+		} else {
+			m.status = "Not logged in"
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m mainMenuModel) View() string {
+	borderColor := m.borderColors[m.colorIndex]
+
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+
+	b.WriteString(titleStyle.Render(" GitHub 🧠") + "\n")
+	b.WriteString("\n")
+
+	// Menu items
+	for i, choice := range m.choices {
+		cursor := "  "
+		style := dimStyle
+		if m.cursor == i {
+			cursor = "> "
+			style = selectedStyle
+		}
+		line := fmt.Sprintf("%s%-8s %s", cursor, choice.name, choice.description)
+		b.WriteString(style.Render(line) + "\n")
+	}
+
+	b.WriteString("\n")
+
+	// Status line
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	b.WriteString(statusStyle.Render(fmt.Sprintf("  Status: %s", m.status)) + "\n")
+
+	b.WriteString("\n")
+
+	// Help text
+	b.WriteString(dimStyle.Render("  Press Enter to select, q to quit") + "\n")
+	b.WriteString("\n")
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	return borderStyle.Render(b.String())
+}
+
+// RunMainTUI runs the main interactive TUI
+func RunMainTUI(homeDir string) error {
+	// Ensure home directory exists
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		return fmt.Errorf("failed to create home directory: %w", err)
+	}
+
+	for {
+		m := newMainMenuModel(homeDir)
+		p := tea.NewProgram(m, tea.WithAltScreen())
+
+		finalModel, err := p.Run()
+		if err != nil {
+			return fmt.Errorf("UI error: %w", err)
+		}
+
+		mm, ok := finalModel.(mainMenuModel)
+		if !ok {
+			return fmt.Errorf("unexpected model type")
+		}
+
+		if mm.quitting {
+			return nil
+		}
+
+		if mm.runLogin {
+			if err := RunLogin(homeDir); err != nil {
+				// Log error but continue to menu
+				slog.Error("Login failed", "error", err)
+			}
+			// Reload .env after login
+			envPath := homeDir + "/.env"
+			_ = godotenv.Load(envPath)
+			continue
+		}
+
+		if mm.runPull {
+			if err := runPullOperation(homeDir); err != nil {
+				// Error already handled in runPullOperation
+				slog.Error("Pull failed", "error", err)
+			}
+			// Reload .env after pull (in case organization was set)
+			envPath := homeDir + "/.env"
+			_ = godotenv.Load(envPath)
+			continue
+		}
+	}
+}
+
+// runPullOperation runs the pull operation from the TUI
+func runPullOperation(homeDir string) error {
+	// Check for token
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		// Need to prompt for login first
+		fmt.Println("Please login first.")
+		return fmt.Errorf("not logged in")
+	}
+
+	// Check for organization - prompt if not set
+	organization := os.Getenv("ORGANIZATION")
+	if organization == "" {
+		// Prompt for organization using a simple TUI
+		org, err := promptForOrganization(homeDir)
+		if err != nil {
+			return err
+		}
+		if org == "" {
+			return fmt.Errorf("organization is required")
+		}
+		organization = org
+		// Save organization to .env
+		if err := saveOrganizationToEnv(homeDir, organization); err != nil {
+			return fmt.Errorf("failed to save organization: %w", err)
+		}
+		// Reload env
+		envPath := homeDir + "/.env"
+		_ = godotenv.Load(envPath)
+	}
+
+	// Build config
+	config := &Config{
+		Organization:         organization,
+		GithubToken:          token,
+		HomeDir:              homeDir,
+		DBDir:                homeDir + "/db",
+		Items:                []string{"repositories", "discussions", "issues", "pull-requests"},
+		Force:                false,
+		ExcludedRepositories: parseExcludedRepositories(os.Getenv("EXCLUDED_REPOSITORIES")),
+	}
+
+	// Initialize progress display
+	progress := NewUIProgress("Initializing GitHub offline MCP server...")
+	progress.InitItems(config)
+
+	// Set up slog to route to Bubble Tea UI
+	slog.SetDefault(slog.New(NewBubbleTeaHandler(progress.program)))
+
+	slog.Info("Configuration loaded successfully")
+
+	// Create GitHub Brain home directory if it doesn't exist
+	if _, err := os.Stat(config.HomeDir); os.IsNotExist(err) {
+		progress.Log("Creating GitHub Brain home directory: %s", config.HomeDir)
+		if err := os.MkdirAll(config.HomeDir, 0755); err != nil {
+			logErrorAndReturn(progress, "Error: Failed to create home directory: %v", err)
+			return err
+		}
+	}
+
+	// Initialize database
+	progress.Log("Initializing database at path: %s", getDBPath(config.DBDir, config.Organization))
+	db, err := InitDB(config.DBDir, config.Organization, progress)
+	if err != nil {
+		logErrorAndReturn(progress, "Error: Failed to initialize database: %v", err)
+		return err
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			slog.Error("Failed to close database", "error", closeErr)
+		}
+	}()
+
+	// Acquire lock to prevent concurrent pull operations
+	if err := db.LockPull(); err != nil {
+		logErrorAndReturn(progress, "Error: Failed to acquire lock: %v", err)
+		return err
+	}
+
+	// Start lock renewal in background
+	renewDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := db.RenewPullLock(); err != nil {
+					slog.Warn("Failed to renew lock", "error", err)
+				}
+			case <-renewDone:
+				return
+			}
+		}
+	}()
+
+	// Ensure unlock on exit
+	defer func() {
+		close(renewDone)
+		if err := db.UnlockPull(); err != nil {
+			slog.Warn("Failed to release lock", "error", err)
+		}
+	}()
+
+	progress.UpdateMessage("Initializing GitHub client...")
+
+	// Create GitHub clients with custom transport to capture headers
+	ctx := context.Background()
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: config.GithubToken},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+
+	// Wrap the transport to capture response headers and status codes
+	tc.Transport = &CustomTransport{
+		wrapped: tc.Transport,
+	}
+
+	graphqlClient := githubv4.NewClient(tc)
+
+	// Initialize progress display with all items
+	progress.Log("GitHub client initialized, starting data operations")
+
+	// Fetch current user
+	progress.Log("Fetching current authenticated user...")
+	var currentUser struct {
+		Viewer struct {
+			Login string
+		}
+	}
+	if err := graphqlClient.Query(ctx, &currentUser, nil); err != nil {
+		// GraphQL error - decrement success counter and increment error counter
+		statusMutex.Lock()
+		if statusCounters.Success2XX > 0 {
+			statusCounters.Success2XX--
+		}
+		statusCounters.Error4XX++
+		statusMutex.Unlock()
+
+		updateProgressStatus(progress)
+
+		progress.Log("Error: Failed to fetch current user: %v", err)
+		progress.Log("Please run 'login' again to re-authenticate")
+		exitAfterDelay(progress)
+		return err
+	}
+	currentUsername := currentUser.Viewer.Login
+	progress.Log("Authenticated as user: %s", currentUsername)
+
+	// Update UI with rate limit info from the user query response
+	updateProgressStatus(progress)
+
+	// Pull repositories
+	if err := PullRepositories(ctx, graphqlClient, db, config, progress); err != nil {
+		progress.MarkItemFailed("repositories", err.Error())
+		handleFatalError(progress, "Failed to pull repositories: %v", err)
+		return err
+	}
+
+	// Pull discussions
+	checkPreviousFailures(progress, "discussions")
+	if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
+		handlePullItemError(progress, "discussions", err)
+	}
+
+	// Pull issues
+	checkPreviousFailures(progress, "issues")
+	if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
+		handlePullItemError(progress, "issues", err)
+	}
+
+	// Pull pull requests
+	checkPreviousFailures(progress, "pull requests")
+	progress.Log("Starting pull requests operation")
+	if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
+		handlePullItemError(progress, "pull-requests", err)
+	}
+
+	// Truncate search FTS5 table and repopulate it
+	progress.UpdateMessage("Updating search index...")
+	progress.Log("Starting search FTS5 table rebuild...")
+	if err := db.PopulateSearchTable(currentUsername, progress); err != nil {
+		progress.Log("❌ Warning: Failed to populate search table: %v", err)
+	}
+
+	// Final status update
+	progress.UpdateMessage("Successfully pulled GitHub data")
+
+	// Show "Press any key to continue..."
+	progress.Log("✅ Pull complete! Press any key to continue...")
+	
+	// Give time for final display update to render
+	time.Sleep(200 * time.Millisecond)
+
+	// Wait for keypress before returning to menu
+	waitForKeypress(progress)
+
+	progress.Stop()
+
+	return nil
+}
+
+// waitForKeypress sends a message to wait for user input before continuing
+func waitForKeypress(progress *UIProgress) {
+	// The progress UI will handle showing "Press any key to continue..."
+	// We just need to wait a bit and then stop
+	time.Sleep(2 * time.Second)
+}
+
+// promptForOrganization shows a TUI prompt for the organization
+func promptForOrganization(homeDir string) (string, error) {
+	m := newOrgPromptModel()
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return "", fmt.Errorf("UI error: %w", err)
+	}
+
+	om, ok := finalModel.(orgPromptModel)
+	if !ok {
+		return "", fmt.Errorf("unexpected model type")
+	}
+
+	if om.cancelled {
+		return "", fmt.Errorf("cancelled")
+	}
+
+	return om.organization, nil
+}
+
+// orgPromptModel is the model for organization input prompt
+type orgPromptModel struct {
+	textInput    textinput.Model
+	organization string
+	cancelled    bool
+	width        int
+	height       int
+	borderColors []lipgloss.AdaptiveColor
+	colorIndex   int
+}
+
+type orgPromptTickMsg time.Time
+
+func newOrgPromptModel() orgPromptModel {
+	ti := textinput.New()
+	ti.Placeholder = "my-org"
+	ti.CharLimit = 100
+	ti.Width = 30
+	ti.Prompt = "> "
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	ti.Focus()
+
+	return orgPromptModel{
+		textInput:    ti,
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+	}
+}
+
+func (m orgPromptModel) Init() tea.Cmd {
+	return tea.Batch(
+		textinput.Blink,
+		tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return orgPromptTickMsg(t)
+		}),
+	)
+}
+
+func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "esc":
+			m.cancelled = true
+			return m, tea.Quit
+		case "enter":
+			m.organization = strings.TrimSpace(m.textInput.Value())
+			return m, tea.Quit
+		}
+		m.textInput, cmd = m.textInput.Update(msg)
+		return m, cmd
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case orgPromptTickMsg:
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return orgPromptTickMsg(t)
+		})
+	}
+
+	m.textInput, cmd = m.textInput.Update(msg)
+	return m, cmd
+}
+
+func (m orgPromptModel) View() string {
+	borderColor := m.borderColors[m.colorIndex]
+
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	b.WriteString(titleStyle.Render(" GitHub 🧠 Pull") + "\n")
+	b.WriteString("\n")
+	b.WriteString("  Enter your GitHub organization:\n")
+	b.WriteString("  " + m.textInput.View() + "\n")
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
+	b.WriteString("\n")
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	return borderStyle.Render(b.String())
+}
+
+// saveOrganizationToEnv saves the organization to .env file
+func saveOrganizationToEnv(homeDir string, organization string) error {
+	envPath := homeDir + "/.env"
+
+	// Read existing .env content
+	existingContent, err := os.ReadFile(envPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	orgLine := fmt.Sprintf("ORGANIZATION=%s", organization)
+
+	if len(existingContent) == 0 {
+		return os.WriteFile(envPath, []byte(orgLine+"\n"), 0600)
+	}
+
+	// Process existing content
+	lines := strings.Split(string(existingContent), "\n")
+	orgFound := false
+
+	for i, line := range lines {
+		if strings.HasPrefix(line, "ORGANIZATION=") {
+			lines[i] = orgLine
+			orgFound = true
+		}
+	}
+
+	if !orgFound {
+		lines = append(lines, orgLine)
+	}
+
+	// Clean up empty lines at the end
+	var cleanLines []string
+	for _, line := range lines {
+		if line != "" || len(cleanLines) == 0 {
+			cleanLines = append(cleanLines, line)
+		}
+	}
+	for len(cleanLines) > 0 && cleanLines[len(cleanLines)-1] == "" {
+		cleanLines = cleanLines[:len(cleanLines)-1]
+	}
+
+	newContent := strings.Join(cleanLines, "\n")
+	if !strings.HasSuffix(newContent, "\n") {
+		newContent += "\n"
+	}
+
+	return os.WriteFile(envPath, []byte(newContent), 0600)
+}
+
+// parseExcludedRepositories parses a comma-separated list of excluded repositories
+func parseExcludedRepositories(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // ============================================================================
@@ -5431,8 +5853,7 @@ func (m loginModel) renderSuccessView() string {
 	}
 	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
-	b.WriteString("  You can now run:\n")
-	b.WriteString("    github-brain pull\n")
+	b.WriteString("  Press any key to continue...\n")
 	b.WriteString("\n")
 
 	return b.String()
