@@ -6,21 +6,96 @@ Keep the app in one file `main.go`.
 
 ## CLI
 
-Implement CLI from [Usage](README.md#usage) section. Follow exact argument/variable names. Support only `login`, `pull`, and `mcp` commands.
+Running `github-brain` without arguments starts the main interactive TUI. The only subcommand is `mcp` which starts the MCP server.
+
+```
+github-brain [-m <home>]      # Start interactive TUI
+github-brain mcp [args]       # Start MCP server
+github-brain --version        # Show version
+```
 
 If the GitHub Brain home directory doesn't exist, create it.
 
 Concurrency control:
 
-- Prevent concurrent `pull` commands using database lock
+- Prevent concurrent `pull` operations using database lock
 - Return error if `pull` already running
 - Lock renewal: 1-second intervals
 - Lock expiration: 5 seconds
 - Release the lock when `pull` finishes
-- Other commands (`mcp`) can run concurrently
+- `mcp` command can run concurrently
 
 Use RFC3339 date format consistently.
 Use https://pkg.go.dev/log/slog for logging (`slog.Info`, `slog.Error`). Do not use `fmt.Println` or `log.Println`.
+
+## Main TUI
+
+When `github-brain` is run without arguments, display an interactive menu:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  GitHub 🧠                                                      │
+│                                                                │
+│  > Login     Authenticate with GitHub                          │
+│    Pull      Sync GitHub data to local database                │
+│    Quit      Exit                                              │
+│                                                                │
+│  Status: Not logged in                                         │
+│                                                                │
+│  Press Enter to select, q to quit                              │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+After successful login:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  GitHub 🧠                                                      │
+│                                                                │
+│    Login     Authenticate with GitHub                          │
+│  > Pull      Sync GitHub data to local database                │
+│    Quit      Exit                                              │
+│                                                                │
+│  Status: Logged in as @wham (my-org)                           │
+│                                                                │
+│  Press Enter to select, q to quit                              │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+### Menu Navigation
+
+- Use arrow keys (↑/↓) or j/k to navigate
+- Press Enter to select
+- Press q or Ctrl+C to quit
+- Highlight current selection with `>`
+
+### Menu Items
+
+1. **Login** - Runs the login flow (see [login](#login) section)
+2. **Pull** - Runs the pull operation (see [pull](#pull) section)
+3. **Quit** - Exit the application
+
+### Status Line
+
+Display current authentication status:
+
+- `Not logged in` - No GITHUB_TOKEN in .env
+- `Logged in as @username` - Token exists and is valid
+- `Logged in as @username (org)` - Token and organization configured
+
+Check token validity on startup by making a GraphQL query for `viewer { login }`.
+
+### Flow
+
+1. On startup, check if GITHUB_TOKEN exists and is valid
+2. Show menu with appropriate status
+3. When user selects Login, run the login flow
+4. After login completes, return to menu with updated status
+5. When user selects Pull, prompt for organization if not set, then run pull
+6. After pull completes, return to menu
+7. When user selects Quit, exit cleanly
 
 ### Bubble Tea Integration
 
@@ -31,7 +106,8 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - `github.com/charmbracelet/lipgloss` - Styling and layout
   - `github.com/charmbracelet/bubbles/spinner` - Built-in animated spinners
 - **Architecture:**
-  - Bubble Tea Model holds UI state (item counts, status, logs)
+  - Main menu is the root Bubble Tea model
+  - Login and Pull are sub-views that take over the screen temporarily
   - Background goroutines send messages to update UI via `tea.Program.Send()`
   - Framework handles all cursor positioning, screen clearing, and render batching
   - Window resize events handled automatically via `tea.WindowSizeMsg`
@@ -40,6 +116,11 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - No manual ANSI escape codes or cursor management
   - No Console struct needed - Bubble Tea handles everything
   - Messages sent to model via typed message structs (e.g., `itemUpdateMsg`, `logMsg`)
+- **Graceful shutdown:**
+  - `UIProgress` has a `done` channel to track when `Run()` completes
+  - The goroutine running `Run()` closes the `done` channel when finished
+  - `Stop()` calls `Quit()` then waits on the `done` channel before returning
+  - This ensures alternate screen mode is properly exited and terminal state is restored
 - **Playful enhancements:**
   - Animated spinner using `bubbles/spinner` with Dot style
   - Smooth color transitions for status changes (pending → active → complete)
@@ -131,6 +212,7 @@ The app uses a registered OAuth App for authentication:
    ```
 
 7. Save tokens (and organization if provided) to `.env` file:
+
    ```
    ╭────────────────────────────────────────────────────────────────╮
    │  GitHub 🧠 Login                                               │
@@ -141,11 +223,12 @@ The app uses a registered OAuth App for authentication:
    │  Organization: my-org                                          │
    │  Saved to: ~/.github-brain/.env                                │
    │                                                                │
-   │  You can now run:                                              │
-   │    github-brain pull                                           │
+   │  Press any key to continue...                                  │
    │                                                                │
    ╰────────────────────────────────────────────────────────────────╯
    ```
+
+8. Return to main menu after key press.
 
 ### Token Storage
 
@@ -176,21 +259,31 @@ OAuth App tokens are long-lived and do not expire unless revoked.
 
 ## pull
 
+Accessed from the main menu. Before starting pull:
+
+1. Check if `ORGANIZATION` is set in environment/`.env`
+2. If not set, prompt user to enter organization name (similar to login flow)
+3. Save organization to `.env` if entered
+4. Proceed with pull operation
+
+Config resolution:
+
+- `Organization`: From `.env` or prompted (required)
+- `GithubToken`: From `.env` (required - redirect to login if missing)
+- `HomeDir`: GitHub Brain home directory (default: `~/.github-brain`)
+- `DBDir`: SQLite database path, constructed as `<HomeDir>/db`
+- `ExcludedRepositories`: From `EXCLUDED_REPOSITORIES` env var (comma-separated, optional)
+
+Operation:
+
 - Verify no concurrent `pull` execution
 - Measure GraphQL request rate every second. Adjust `/` spin speed based on rate
-- Resolve CLI arguments and environment variables into `Config` struct:
-  - `Organization`: Organization name (required)
-  - `GithubToken`: GitHub API token (required)
-  - `HomeDir`: GitHub Brain home directory (default: `~/.github-brain`)
-  - `DBDir`: SQLite database path, constructed as `<HomeDir>/db`
-  - `Items`: Comma-separated list to pull (default: empty - pull all)
-  - `Force`: Remove all data before pulling (default: false)
-  - `ExcludedRepositories`: Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests (default: empty)
-- Use `Config` struct consistently, avoid multiple environment variable reads
 - If `Config.Force` is set, remove all data from database before pulling. If `Config.Items` is set, only remove specified items
 - Pull items: Repositories, Discussions, Issues, Pull Requests
+- Always pull all items (no selective sync from TUI)
 - Maintain console output showing selected items and status
 - Use `log/slog` custom logger for last 5 log messages with timestamps in console output
+- On completion or error, show "Press any key to continue..." and return to main menu
 
 ### Console Rendering with Bubble Tea
 
@@ -202,11 +295,11 @@ Bubble Tea handles all rendering automatically:
 - Smooth animations with `tea.Tick`
 - Background goroutines send messages to update UI via channels
 
-Console at the beginning of the `pull` command - all items selected:
+Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  GitHub 🧠 Pull                                                 │
 │                                                                │
 │  📋 Repositories                                               │
 │  📋 Discussions                                                │
@@ -226,35 +319,11 @@ Console at the beginning of the `pull` command - all items selected:
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
-Console at the beginning of the `pull` command - `-i repositories`:
-
-```
-╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
-│                                                                │
-│  📋 Repositories                                               │
-│  🔕 Discussions                                                │
-│  🔕 Issues                                                     │
-│  🔕 Pull-requests                                              │
-│                                                                │
-│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
-│  🚀 Rate Limit    ? / ? used, resets ?                        │
-│                                                                │
-│  💬 Activity                                                   │
-│     21:37:12 🎯 Starting selective sync...                    │
-│     21:37:13 📦 Clearing existing repositories...             │
-│                                                                │
-│                                                                │
-│                                                                │
-│                                                                │
-╰────────────────────────────────────────────────────────────────╯
-```
-
 Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  GitHub 🧠 Pull                                                 │
 │                                                                │
 │  ⠋ Repositories: 1,247                                        │
 │  📋 Discussions                                                │
@@ -278,7 +347,7 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  GitHub 🧠 Pull                                                 │
 │                                                                │
 │  ✅ Repositories: 2,847                                        │
 │  ⠙ Discussions: 156                                           │
@@ -302,7 +371,7 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 pull                                                 │
+│  GitHub 🧠 Pull                                                 │
 │                                                                │
 │  ✅ Repositories: 2,847                                        │
 │  ❌ Discussions: 156 (errors)                                  │
@@ -324,8 +393,7 @@ Console when an error occurs:
 
 ### Console Icons
 
-- 📋 = Pending (enabled but not started)
-- 🔕 = Disabled (not in `-i` selection)
+- 📋 = Pending (not started)
 - ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ = Spinner (active item, bright blue)
 - ✅ = Completed (bright green)
 - ❌ = Failed (bright red)
@@ -1170,6 +1238,7 @@ curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-bra
 Use **golangci-lint** with default configuration for code quality checks.
 
 **Running the linter:**
+
 ```bash
 # Standalone
 golangci-lint run --timeout=5m
@@ -1179,6 +1248,7 @@ golangci-lint run --timeout=5m
 ```
 
 **CI Integration:**
+
 - Linting runs automatically on all PRs via `.github/workflows/build.yml`
 - Build fails if linter finds issues (blocking)
 - In local development (`scripts/run`), linting runs but is non-blocking to allow rapid iteration
