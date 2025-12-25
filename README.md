@@ -26,7 +26,13 @@ GitHub Brain is [programmed in Markdown](https://github.blog/ai-and-ml/generativ
 npm i -g github-brain
 ```
 
-Or use `npx github-brain` to run without installing globally.
+Rerun to update. `sudo` may be required on some systems.
+
+Alternatively use `npx` to run without installing globally and needing `sudo`.
+
+```sh
+npx github-brain@latest
+```
 
 ## Usage
 
