@@ -4921,7 +4921,7 @@ type mainMenuModel struct {
 	borderColors []lipgloss.AdaptiveColor
 	colorIndex   int
 	quitting     bool
-	runLogin     bool
+	runSetup     bool
 	runPull      bool
 	checkingAuth bool
 }
@@ -4945,7 +4945,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{name: "Login", description: "Authenticate with GitHub"},
+			{name: "Setup", description: "Configure authentication and settings"},
 			{name: "Pull", description: "Sync GitHub data to local database"},
 			{name: "Quit", description: "Exit"},
 		},
@@ -5021,8 +5021,8 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			switch m.choices[m.cursor].name {
-			case "Login":
-				m.runLogin = true
+			case "Setup":
+				m.runSetup = true
 				return m, tea.Quit
 			case "Pull":
 				m.runPull = true
@@ -5047,15 +5047,19 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.loggedIn {
 			if msg.organization != "" {
 				m.status = fmt.Sprintf("Logged in as @%s (%s)", msg.username, msg.organization)
+				// Move cursor to Pull only if logged in AND organization configured
+				m.cursor = 1
 			} else {
 				m.status = fmt.Sprintf("Logged in as @%s", msg.username)
+				// Stay on Setup if organization not configured
+				m.cursor = 0
 			}
 			m.username = msg.username
 			m.organization = msg.organization
-			// Move cursor to Pull after successful login check
-			m.cursor = 1
 		} else {
 			m.status = "Not logged in"
+			// Default to Setup if not logged in
+			m.cursor = 0
 		}
 		return m, nil
 	}
@@ -5083,7 +5087,7 @@ func (m mainMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%-8s %s", cursor, choice.name, choice.description)
+		line := fmt.Sprintf("%s%-10s %s", cursor, choice.name, choice.description)
 		b.WriteString(style.Render(line) + "\n")
 	}
 
@@ -5144,12 +5148,12 @@ func RunMainTUI(homeDir string) error {
 			return nil
 		}
 
-		if mm.runLogin {
-			if err := RunLogin(homeDir); err != nil {
+		if mm.runSetup {
+			if err := RunSetupMenu(homeDir); err != nil {
 				// Log error but continue to menu
-				slog.Error("Login failed", "error", err)
+				slog.Error("Setup failed", "error", err)
 			}
-			// Reload .env after login
+			// Reload .env after setup
 			envPath := homeDir + "/.env"
 			_ = godotenv.Load(envPath)
 			continue
@@ -5782,9 +5786,9 @@ func (m loginModel) renderWaitingView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  🔐 GitHub Authentication\n")
+	b.WriteString("  🔐 GitHub Authentication (OAuth)\n")
 	b.WriteString("\n")
 
 	if m.userCode == "" {
@@ -5900,6 +5904,527 @@ func RunLogin(homeDir string) error {
 			return fmt.Errorf("%s", lm.errorMsg)
 		}
 		if lm.status != "success" {
+			return fmt.Errorf("login cancelled")
+		}
+	}
+
+	return nil
+}
+
+// ============================================================================
+// Setup Menu Implementation
+// ============================================================================
+
+// setupMenuModel is the Bubble Tea model for the setup submenu
+type setupMenuModel struct {
+	homeDir      string
+	choices      []menuChoice
+	cursor       int
+	width        int
+	height       int
+	borderColors []lipgloss.AdaptiveColor
+	colorIndex   int
+	quitting     bool
+	runOAuth     bool
+	runPAT       bool
+	openConfig   bool
+	goBack       bool
+}
+
+// Message types for setup menu
+type setupMenuTickMsg time.Time
+
+func newSetupMenuModel(homeDir string) setupMenuModel {
+	return setupMenuModel{
+		homeDir: homeDir,
+		choices: []menuChoice{
+			{name: "Login with GitHub (OAuth)", description: ""},
+			{name: "Login with Personal Access Token", description: ""},
+			{name: "Open configuration file", description: ""},
+			{name: "← Back", description: ""},
+		},
+		cursor:       0,
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+	}
+}
+
+func (m setupMenuModel) Init() tea.Cmd {
+	return setupMenuTickCmd()
+}
+
+func setupMenuTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return setupMenuTickMsg(t)
+	})
+}
+
+func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.quitting = true
+			return m, tea.Quit
+		case "esc":
+			m.goBack = true
+			return m, tea.Quit
+		case "up", "k":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "j":
+			if m.cursor < len(m.choices)-1 {
+				m.cursor++
+			}
+		case "enter":
+			switch m.cursor {
+			case 0: // OAuth Login
+				m.runOAuth = true
+				return m, tea.Quit
+			case 1: // PAT Login
+				m.runPAT = true
+				return m, tea.Quit
+			case 2: // Open config
+				m.openConfig = true
+				return m, tea.Quit
+			case 3: // Back
+				m.goBack = true
+				return m, tea.Quit
+			}
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case setupMenuTickMsg:
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, setupMenuTickCmd()
+	}
+
+	return m, nil
+}
+
+func (m setupMenuModel) View() string {
+	borderColor := m.borderColors[m.colorIndex]
+
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Setup") + "\n")
+	b.WriteString("\n")
+
+	// Menu items
+	for i, choice := range m.choices {
+		cursor := "  "
+		style := dimStyle
+		if m.cursor == i {
+			cursor = "> "
+			style = selectedStyle
+		}
+		b.WriteString(style.Render(fmt.Sprintf("%s%s", cursor, choice.name)) + "\n")
+	}
+
+	b.WriteString("\n")
+
+	// Help text
+	b.WriteString(dimStyle.Render("  Press Enter to select, Esc to go back") + "\n")
+	b.WriteString("\n")
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	return borderStyle.Render(b.String())
+}
+
+// RunSetupMenu runs the setup submenu
+func RunSetupMenu(homeDir string) error {
+	for {
+		m := newSetupMenuModel(homeDir)
+		p := tea.NewProgram(m, tea.WithAltScreen())
+
+		finalModel, err := p.Run()
+		if err != nil {
+			return fmt.Errorf("UI error: %w", err)
+		}
+
+		sm, ok := finalModel.(setupMenuModel)
+		if !ok {
+			return fmt.Errorf("unexpected model type")
+		}
+
+		if sm.quitting || sm.goBack {
+			return nil
+		}
+
+		if sm.runOAuth {
+			if err := RunLogin(homeDir); err != nil {
+				slog.Error("OAuth login failed", "error", err)
+			}
+			// Reload .env after login
+			envPath := homeDir + "/.env"
+			_ = godotenv.Load(envPath)
+			return nil // Return to main menu after login
+		}
+
+		if sm.runPAT {
+			if err := RunPATLogin(homeDir); err != nil {
+				slog.Error("PAT login failed", "error", err)
+			}
+			// Reload .env after login
+			envPath := homeDir + "/.env"
+			_ = godotenv.Load(envPath)
+			return nil // Return to main menu after login
+		}
+
+		if sm.openConfig {
+			if err := openConfigFile(homeDir); err != nil {
+				slog.Error("Failed to open config file", "error", err)
+			}
+			// Continue showing setup menu after opening config
+			continue
+		}
+	}
+}
+
+// openConfigFile opens the .env file in the default editor
+func openConfigFile(homeDir string) error {
+	envPath := homeDir + "/.env"
+
+	// Create the file if it doesn't exist
+	if _, err := os.Stat(envPath); os.IsNotExist(err) {
+		if err := os.WriteFile(envPath, []byte(""), 0600); err != nil {
+			return fmt.Errorf("failed to create config file: %w", err)
+		}
+	}
+
+	// Open with default editor based on OS
+	return browser.OpenFile(envPath)
+}
+
+// ============================================================================
+// PAT Login Implementation
+// ============================================================================
+
+// patLoginModel is the Bubble Tea model for the PAT login UI
+type patLoginModel struct {
+	textInput    textinput.Model
+	orgInput     textinput.Model
+	status       string // "token_input", "org_input", "success", "error"
+	errorMsg     string
+	username     string
+	token        string
+	organization string
+	homeDir      string
+	width        int
+	height       int
+	borderColors []lipgloss.AdaptiveColor
+	colorIndex   int
+	done         bool
+}
+
+// PAT login message types
+type (
+	patLoginTickMsg    time.Time
+	patTokenVerifiedMsg struct {
+		username string
+		token    string
+	}
+	patOrgSubmittedMsg struct{}
+)
+
+func newPATLoginModel(homeDir string) patLoginModel {
+	ti := textinput.New()
+	ti.Placeholder = "github_pat_..."
+	ti.CharLimit = 200
+	ti.Width = 50
+	ti.Prompt = "> "
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	ti.EchoMode = textinput.EchoPassword
+	ti.EchoCharacter = '•'
+	ti.Focus()
+
+	oi := textinput.New()
+	oi.Placeholder = "my-org"
+	oi.CharLimit = 100
+	oi.Width = 30
+	oi.Prompt = "> "
+	oi.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+
+	return patLoginModel{
+		textInput:    ti,
+		orgInput:     oi,
+		status:       "token_input",
+		homeDir:      homeDir,
+		width:        80,
+		height:       24,
+		borderColors: gradientColors,
+		colorIndex:   0,
+	}
+}
+
+func (m patLoginModel) Init() tea.Cmd {
+	return tea.Batch(
+		textinput.Blink,
+		patLoginTickCmd(),
+		openPATCreationPage(),
+	)
+}
+
+func patLoginTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return patLoginTickMsg(t)
+	})
+}
+
+func openPATCreationPage() tea.Cmd {
+	return func() tea.Msg {
+		// Open browser to pre-filled PAT creation page
+		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read"
+		_ = browser.OpenURL(patURL)
+		return nil
+	}
+}
+
+func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			m.done = true
+			return m, tea.Quit
+		case "esc":
+			m.done = true
+			return m, tea.Quit
+		case "enter":
+			if m.status == "token_input" {
+				token := strings.TrimSpace(m.textInput.Value())
+				if token == "" {
+					return m, nil
+				}
+				m.token = token
+				// Verify token in background
+				return m, verifyPATToken(token)
+			}
+			if m.status == "org_input" {
+				m.organization = strings.TrimSpace(m.orgInput.Value())
+				return m, func() tea.Msg { return patOrgSubmittedMsg{} }
+			}
+		}
+		// Pass key messages to textinput
+		if m.status == "token_input" {
+			m.textInput, cmd = m.textInput.Update(msg)
+			return m, cmd
+		}
+		if m.status == "org_input" {
+			m.orgInput, cmd = m.orgInput.Update(msg)
+			return m, cmd
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
+	case patLoginTickMsg:
+		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
+		return m, patLoginTickCmd()
+
+	case patTokenVerifiedMsg:
+		m.status = "org_input"
+		m.username = msg.username
+		m.token = msg.token
+		m.orgInput.Focus()
+		return m, textinput.Blink
+
+	case patOrgSubmittedMsg:
+		// Save token and organization to .env
+		if err := saveTokenToEnv(m.homeDir, m.token, m.organization); err != nil {
+			m.status = "error"
+			m.errorMsg = fmt.Sprintf("failed to save token: %v", err)
+			m.done = true
+			return m, nil
+		}
+		m.status = "success"
+		m.done = true
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return tea.Quit()
+		})
+
+	case loginErrorMsg:
+		m.status = "error"
+		m.errorMsg = msg.err.Error()
+		m.done = true
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func verifyPATToken(token string) tea.Cmd {
+	return func() tea.Msg {
+		username, err := verifyTokenAndGetUsername(token)
+		if err != nil {
+			return loginErrorMsg{err: fmt.Errorf("invalid token: %w", err)}
+		}
+		return patTokenVerifiedMsg{username: username, token: token}
+	}
+}
+
+func (m patLoginModel) View() string {
+	borderColor := m.borderColors[m.colorIndex]
+
+	var content string
+
+	switch m.status {
+	case "token_input":
+		content = m.renderTokenInputView()
+	case "org_input":
+		content = m.renderOrgInputView()
+	case "success":
+		content = m.renderSuccessView()
+	case "error":
+		content = m.renderErrorView()
+	}
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	return borderStyle.Render(content)
+}
+
+func (m patLoginModel) renderTokenInputView() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString("\n")
+	b.WriteString("  🔑 Personal Access Token\n")
+	b.WriteString("\n")
+	b.WriteString("  1. Create a token at github.com (opened in browser)\n")
+	b.WriteString("\n")
+	b.WriteString("  2. Paste your token here:\n")
+	b.WriteString("  " + m.textInput.View() + "\n")
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m patLoginModel) renderOrgInputView() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString("\n")
+	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
+	b.WriteString("\n")
+	b.WriteString("  Enter your GitHub organization (optional):\n")
+	b.WriteString("  " + m.orgInput.View() + "\n")
+	b.WriteString("\n")
+	b.WriteString("  Press Enter to skip, or type organization name\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m patLoginModel) renderSuccessView() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString("\n")
+	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
+	if m.organization != "" {
+		b.WriteString(fmt.Sprintf("  Organization: %s\n", m.organization))
+	}
+	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
+	b.WriteString("\n")
+	b.WriteString("  Press any key to continue...\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m patLoginModel) renderErrorView() string {
+	var b strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+
+	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString("\n")
+	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
+	b.WriteString("\n")
+	b.WriteString("  Please try again.\n")
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// RunPATLogin runs the PAT login flow
+func RunPATLogin(homeDir string) error {
+	// Ensure home directory exists
+	if err := os.MkdirAll(homeDir, 0755); err != nil {
+		return fmt.Errorf("failed to create home directory: %w", err)
+	}
+
+	// Create the Bubble Tea model
+	m := newPATLoginModel(homeDir)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	// Run the Bubble Tea program
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("UI error: %w", err)
+	}
+
+	// Check if login was successful
+	if pm, ok := finalModel.(patLoginModel); ok {
+		if pm.status == "error" {
+			return fmt.Errorf("%s", pm.errorMsg)
+		}
+		if pm.status != "success" {
 			return fmt.Errorf("login cancelled")
 		}
 	}

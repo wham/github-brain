@@ -11,7 +11,6 @@ Running `github-brain` without arguments starts the main interactive TUI. The on
 ```
 github-brain [-m <home>]      # Start interactive TUI
 github-brain mcp [args]       # Start MCP server
-github-brain --version        # Show version
 ```
 
 If the GitHub Brain home directory doesn't exist, create it.
@@ -36,7 +35,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 ╭────────────────────────────────────────────────────────────────╮
 │  GitHub 🧠                                                      │
 │                                                                │
-│  > Login     Authenticate with GitHub                          │
+│  > Setup     Configure authentication and settings             │
 │    Pull      Sync GitHub data to local database                │
 │    Quit      Exit                                              │
 │                                                                │
@@ -44,22 +43,26 @@ When `github-brain` is run without arguments, display an interactive menu:
 │                                                                │
 │  Press Enter to select, q to quit                              │
 │                                                                │
+│  dev (unknown)                                                 │
+│                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
-After successful login:
+After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
 │  GitHub 🧠                                                      │
 │                                                                │
-│    Login     Authenticate with GitHub                          │
+│    Setup     Configure authentication and settings             │
 │  > Pull      Sync GitHub data to local database                │
 │    Quit      Exit                                              │
 │                                                                │
 │  Status: Logged in as @wham (my-org)                           │
 │                                                                │
 │  Press Enter to select, q to quit                              │
+│                                                                │
+│  dev (unknown)                                                 │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -68,21 +71,27 @@ After successful login:
 
 - Use arrow keys (↑/↓) or j/k to navigate
 - Press Enter to select
+- Press Esc to go back (in submenus)
 - Press q or Ctrl+C to quit
 - Highlight current selection with `>`
 
 ### Menu Items
 
-1. **Login** - Runs the login flow (see [login](#login) section)
+1. **Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
 2. **Pull** - Runs the pull operation (see [pull](#pull) section)
 3. **Quit** - Exit the application
+
+### Default Selection
+
+- If user is logged in AND organization is configured → default to **Pull**
+- Otherwise → default to **Setup**
 
 ### Status Line
 
 Display current authentication status:
 
 - `Not logged in` - No GITHUB_TOKEN in .env
-- `Logged in as @username` - Token exists and is valid
+- `Logged in as @username` - Token exists and is valid, but no organization
 - `Logged in as @username (org)` - Token and organization configured
 
 Check token validity on startup by making a GraphQL query for `viewer { login }`.
@@ -90,12 +99,45 @@ Check token validity on startup by making a GraphQL query for `viewer { login }`
 ### Flow
 
 1. On startup, check if GITHUB_TOKEN exists and is valid
-2. Show menu with appropriate status
-3. When user selects Login, run the login flow
-4. After login completes, return to menu with updated status
-5. When user selects Pull, prompt for organization if not set, then run pull
-6. After pull completes, return to menu
-7. When user selects Quit, exit cleanly
+2. Show menu with appropriate status and default selection
+3. When user selects Setup, show the setup submenu
+4. When user selects Pull, prompt for organization if not set, then run pull
+5. After pull completes, return to menu
+6. When user selects Quit, exit cleanly
+
+## Setup Menu
+
+The Setup submenu provides authentication and configuration options:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│  GitHub 🧠 Setup                                                │
+│                                                                │
+│  > Login with GitHub (OAuth)                                   │
+│    Login with Personal Access Token                            │
+│    Open configuration file                                     │
+│    ← Back                                                      │
+│                                                                │
+│  Press Enter to select, Esc to go back                         │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+### Setup Menu Items
+
+1. **Login with GitHub (OAuth)** - Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
+2. **Login with Personal Access Token** - Manually enter a PAT (see [PAT Login](#pat-login) section)
+3. **Open configuration file** - Opens `.env` file in default editor
+4. **← Back** - Return to main menu
+
+### Open Configuration File
+
+Opens the `.env` file located at `{HomeDir}/.env` using the system default editor:
+
+- Use `open` command on macOS
+- Use `xdg-open` command on Linux
+- Create the file if it doesn't exist (empty file)
+- Show brief message and return to setup menu
 
 ### Bubble Tea Integration
 
@@ -128,7 +170,7 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - Gradient animated borders (purple → blue → cyan) updated every second
   - Right-aligned comma-formatted counters
 
-## login
+## OAuth Login
 
 Interactive GitHub authentication using OAuth Device Flow. Stores the resulting token in the `.env` file.
 
@@ -163,7 +205,7 @@ The app uses a registered OAuth App for authentication:
    ╭────────────────────────────────────────────────────────────────╮
    │  GitHub 🧠 Login                                               │
    │                                                                │
-   │  🔐 GitHub Authentication                                      │
+   │  🔐 GitHub Authentication (OAuth)                              │
    │                                                                │
    │  1. Opening browser to: github.com/login/device                │
    │                                                                │
@@ -229,6 +271,44 @@ The app uses a registered OAuth App for authentication:
    ```
 
 8. Return to main menu after key press.
+
+## PAT Login
+
+Manual authentication using a Personal Access Token (PAT). Useful when OAuth flow is not available or when using fine-grained tokens.
+
+### PAT Flow
+
+1. Open browser to pre-filled PAT creation page:
+
+   ```
+   https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read
+   ```
+
+2. Display token input screen:
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │  GitHub 🧠 Login                                               │
+   │                                                                │
+   │  🔑 Personal Access Token                                      │
+   │                                                                │
+   │  1. Create a token at github.com (opened in browser)           │
+   │                                                                │
+   │  2. Paste your token here:                                     │
+   │  > github_pat_█                                                │
+   │                                                                │
+   │  Press Enter to continue, Esc to cancel                        │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+3. Verify the token by calling `viewer { login }` GraphQL query
+
+4. On success, prompt for organization (same as OAuth flow)
+
+5. Save token and organization to `.env` file
+
+6. Return to main menu
 
 ### Token Storage
 

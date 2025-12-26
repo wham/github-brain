@@ -42,7 +42,10 @@ github-brain
 
 Launches the interactive TUI where you can:
 
-1. **Login** - Authenticate with GitHub
+1. **Setup** - Configure authentication and settings
+   - Login with GitHub (OAuth) - Recommended for most users
+   - Login with Personal Access Token - For fine-grained tokens or when OAuth is unavailable
+   - Open configuration file - Edit `.env` directly
 2. **Pull** - Populate the local database with GitHub data
 
 Re-run pull anytime to update the database with new GitHub data.
