@@ -167,7 +167,6 @@ Use **Bubble Tea** framework (https://github.com/charmbracelet/bubbletea) for te
   - Animated spinner using `bubbles/spinner` with Dot style
   - Smooth color transitions for status changes (pending → active → complete)
   - Celebration emojis at milestones (✨ at 1000+ items, 🎉 at 5000+)
-  - Gradient animated borders (purple → blue → cyan) updated every second
   - Right-aligned comma-formatted counters
 
 ## OAuth Login
@@ -480,7 +479,7 @@ Console when an error occurs:
 
 ### Layout
 
-- Gradient animated borders (purple → blue → cyan) updated every second
+- Purple border color (#874BFD light / #7D56F4 dark)
 - Responsive width: `max(76, terminalWidth - 4)`
 - Box expands to full terminal width
 - Numbers formatted with commas: `1,247`
@@ -503,7 +502,7 @@ Console when an error occurs:
 - Use standard lipgloss borders - no custom border painting or string manipulation
 - Rounded borders (╭╮╰╯) styled with `lipgloss.RoundedBorder()`
 - Title rendered as bold text inside the box, not embedded in border
-- Border colors animated via `tickMsg` sent every second
+- Static purple border color (#874BFD light / #7D56F4 dark)
 - Responsive width: `max(64, terminalWidth - 4)`
 
 **Spinners:**
@@ -532,7 +531,7 @@ Console when an error occurs:
 
 **Color Scheme:**
 
-- Purple/blue gradient for borders (via `borderColors` array)
+- Purple border color (#874BFD light / #7D56F4 dark)
 - Bright blue (#12) for active items
 - Bright green (#10) for completed ✅
 - Dim gray (#240) for skipped 🔕

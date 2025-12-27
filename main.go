@@ -62,15 +62,8 @@ var (
 	statusMutex    sync.Mutex
 )
 
-// gradientColors defines the color gradient for UI borders (purple → blue → cyan)
-var gradientColors = []lipgloss.AdaptiveColor{
-	{Light: "#874BFD", Dark: "#7D56F4"}, // Purple
-	{Light: "#7D56F4", Dark: "#6B4FD8"}, // Purple-blue
-	{Light: "#5B4FE0", Dark: "#5948C8"}, // Blue-purple
-	{Light: "#4F7BD8", Dark: "#4B6FD0"}, // Blue
-	{Light: "#48A8D8", Dark: "#45A0D0"}, // Cyan-blue
-	{Light: "#48D8D0", Dark: "#45D0C8"}, // Cyan
-}
+// borderColor defines the static purple color for UI borders
+var borderColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
 
 // Removed ConsoleHandler - not needed with Bubble Tea
 
@@ -4492,8 +4485,7 @@ func (p *UIProgress) UpdateRequestRate(requestsPerSecond int) {
 
 // Message types for Bubble Tea updates
 type (
-	tickMsg          time.Time
-	itemUpdateMsg    struct {
+	itemUpdateMsg struct {
 		item  string
 		count int
 	}
@@ -4543,8 +4535,6 @@ type model struct {
 	rateLimitReset time.Time
 	width          int
 	height         int
-	borderColors   []lipgloss.AdaptiveColor
-	colorIndex     int
 }
 
 // logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
@@ -4573,30 +4563,18 @@ func newModel(enabledItems map[string]bool) model {
 	}
 
 	return model{
-		items:        items,
-		itemOrder:    itemOrder,
-		spinner:      s,
-		logs:         make([]logEntry, 0, 5),
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		items:     items,
+		itemOrder: itemOrder,
+		spinner:   s,
+		logs:      make([]logEntry, 0, 5),
+		width:     80,
+		height:    24,
 	}
 }
 
 // Init initializes the Bubble Tea model
 func (m model) Init() tea.Cmd {
-	return tea.Batch(
-		m.spinner.Tick,
-		tickCmd(),
-	)
-}
-
-// tickCmd returns a command that ticks every second for border animation
-func tickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg(t)
-	})
+	return m.spinner.Tick
 }
 
 // Update handles messages and updates the model
@@ -4614,11 +4592,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-
-	case tickMsg:
-		// Rotate border color
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, tickCmd()
 
 	case itemUpdateMsg:
 		if state, exists := m.items[msg.item]; exists {
@@ -4706,7 +4679,6 @@ func (m *model) addLog(message string) {
 // View renders the UI
 func (m model) View() string {
 	// Define colors and styles
-	borderColor := m.borderColors[m.colorIndex]
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	activeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))  // Bright blue
 	completeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // Bright green
@@ -4918,8 +4890,6 @@ type mainMenuModel struct {
 	organization string
 	width        int
 	height       int
-	borderColors []lipgloss.AdaptiveColor
-	colorIndex   int
 	quitting     bool
 	runSetup     bool
 	runPull      bool
@@ -4932,14 +4902,11 @@ type menuChoice struct {
 }
 
 // Message types for main menu
-type (
-	mainMenuTickMsg    time.Time
-	authCheckResultMsg struct {
-		loggedIn     bool
-		username     string
-		organization string
-	}
-)
+type authCheckResultMsg struct {
+	loggedIn     bool
+	username     string
+	organization string
+}
 
 func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
@@ -4953,23 +4920,12 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 		status:       "Checking authentication...",
 		width:        80,
 		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
 		checkingAuth: true,
 	}
 }
 
 func (m mainMenuModel) Init() tea.Cmd {
-	return tea.Batch(
-		mainMenuTickCmd(),
-		checkAuthCmd(m.homeDir),
-	)
-}
-
-func mainMenuTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return mainMenuTickMsg(t)
-	})
+	return checkAuthCmd(m.homeDir)
 }
 
 func checkAuthCmd(homeDir string) tea.Cmd {
@@ -5038,10 +4994,6 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
-	case mainMenuTickMsg:
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, mainMenuTickCmd()
-
 	case authCheckResultMsg:
 		m.checkingAuth = false
 		if msg.loggedIn {
@@ -5068,8 +5020,6 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m mainMenuModel) View() string {
-	borderColor := m.borderColors[m.colorIndex]
-
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
@@ -5411,11 +5361,7 @@ type orgPromptModel struct {
 	cancelled    bool
 	width        int
 	height       int
-	borderColors []lipgloss.AdaptiveColor
-	colorIndex   int
 }
-
-type orgPromptTickMsg time.Time
 
 func newOrgPromptModel() orgPromptModel {
 	ti := textinput.New()
@@ -5427,21 +5373,14 @@ func newOrgPromptModel() orgPromptModel {
 	ti.Focus()
 
 	return orgPromptModel{
-		textInput:    ti,
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		textInput: ti,
+		width:     80,
+		height:    24,
 	}
 }
 
 func (m orgPromptModel) Init() tea.Cmd {
-	return tea.Batch(
-		textinput.Blink,
-		tea.Tick(time.Second, func(t time.Time) tea.Msg {
-			return orgPromptTickMsg(t)
-		}),
-	)
+	return textinput.Blink
 }
 
 func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -5464,12 +5403,6 @@ func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-
-	case orgPromptTickMsg:
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
-			return orgPromptTickMsg(t)
-		})
 	}
 
 	m.textInput, cmd = m.textInput.Update(msg)
@@ -5477,7 +5410,6 @@ func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m orgPromptModel) View() string {
-	borderColor := m.borderColors[m.colorIndex]
 
 	var b strings.Builder
 
@@ -5610,14 +5542,11 @@ type loginModel struct {
 	homeDir         string
 	width           int
 	height          int
-	borderColors    []lipgloss.AdaptiveColor
-	colorIndex      int
 	done            bool
 }
 
 // Login message types
 type (
-	loginTickMsg       time.Time
 	loginSuccessMsg    struct{}
 	loginErrorMsg      struct{ err error }
 	loginDeviceCodeMsg struct {
@@ -5644,28 +5573,17 @@ func newLoginModel(homeDir string) loginModel {
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	return loginModel{
-		spinner:      s,
-		textInput:    ti,
-		status:       "waiting",
-		homeDir:      homeDir,
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		spinner:   s,
+		textInput: ti,
+		status:    "waiting",
+		homeDir:   homeDir,
+		width:     80,
+		height:    24,
 	}
 }
 
 func (m loginModel) Init() tea.Cmd {
-	return tea.Batch(
-		m.spinner.Tick,
-		loginTickCmd(),
-	)
-}
-
-func loginTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return loginTickMsg(t)
-	})
+	return m.spinner.Tick
 }
 
 func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -5693,10 +5611,6 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-
-	case loginTickMsg:
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, loginTickCmd()
 
 	case loginDeviceCodeMsg:
 		m.userCode = msg.userCode
@@ -5745,8 +5659,6 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m loginModel) View() string {
-	borderColor := m.borderColors[m.colorIndex]
-
 	var content string
 
 	switch m.status {
@@ -5917,22 +5829,17 @@ func RunLogin(homeDir string) error {
 
 // setupMenuModel is the Bubble Tea model for the setup submenu
 type setupMenuModel struct {
-	homeDir      string
-	choices      []menuChoice
-	cursor       int
-	width        int
-	height       int
-	borderColors []lipgloss.AdaptiveColor
-	colorIndex   int
-	quitting     bool
-	runOAuth     bool
-	runPAT       bool
-	openConfig   bool
-	goBack       bool
+	homeDir    string
+	choices    []menuChoice
+	cursor     int
+	width      int
+	height     int
+	quitting   bool
+	runOAuth   bool
+	runPAT     bool
+	openConfig bool
+	goBack     bool
 }
-
-// Message types for setup menu
-type setupMenuTickMsg time.Time
 
 func newSetupMenuModel(homeDir string) setupMenuModel {
 	return setupMenuModel{
@@ -5943,22 +5850,14 @@ func newSetupMenuModel(homeDir string) setupMenuModel {
 			{name: "Open configuration file", description: ""},
 			{name: "← Back", description: ""},
 		},
-		cursor:       0,
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		cursor: 0,
+		width:  80,
+		height: 24,
 	}
 }
 
 func (m setupMenuModel) Init() tea.Cmd {
-	return setupMenuTickCmd()
-}
-
-func setupMenuTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return setupMenuTickMsg(t)
-	})
+	return nil
 }
 
 func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -6000,18 +5899,12 @@ func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
-
-	case setupMenuTickMsg:
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, setupMenuTickCmd()
 	}
 
 	return m, nil
 }
 
 func (m setupMenuModel) View() string {
-	borderColor := m.borderColors[m.colorIndex]
-
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
@@ -6135,14 +6028,11 @@ type patLoginModel struct {
 	homeDir      string
 	width        int
 	height       int
-	borderColors []lipgloss.AdaptiveColor
-	colorIndex   int
 	done         bool
 }
 
 // PAT login message types
 type (
-	patLoginTickMsg    time.Time
 	patTokenVerifiedMsg struct {
 		username string
 		token    string
@@ -6169,29 +6059,20 @@ func newPATLoginModel(homeDir string) patLoginModel {
 	oi.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	return patLoginModel{
-		textInput:    ti,
-		orgInput:     oi,
-		status:       "token_input",
-		homeDir:      homeDir,
-		width:        80,
-		height:       24,
-		borderColors: gradientColors,
-		colorIndex:   0,
+		textInput: ti,
+		orgInput:  oi,
+		status:    "token_input",
+		homeDir:   homeDir,
+		width:     80,
+		height:    24,
 	}
 }
 
 func (m patLoginModel) Init() tea.Cmd {
 	return tea.Batch(
 		textinput.Blink,
-		patLoginTickCmd(),
 		openPATCreationPage(),
 	)
-}
-
-func patLoginTickCmd() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return patLoginTickMsg(t)
-	})
 }
 
 func openPATCreationPage() tea.Cmd {
@@ -6245,10 +6126,6 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
-	case patLoginTickMsg:
-		m.colorIndex = (m.colorIndex + 1) % len(m.borderColors)
-		return m, patLoginTickCmd()
-
 	case patTokenVerifiedMsg:
 		m.status = "org_input"
 		m.username = msg.username
@@ -6291,8 +6168,6 @@ func verifyPATToken(token string) tea.Cmd {
 }
 
 func (m patLoginModel) View() string {
-	borderColor := m.borderColors[m.colorIndex]
-
 	var content string
 
 	switch m.status {
