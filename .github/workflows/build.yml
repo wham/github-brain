@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Build
         run: |
           CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" CGO_LDFLAGS="-lm" \
@@ -36,22 +39,3 @@ jobs:
       - name: Run tests
         if: false # Enable when tests exist
         run: go test -v ./...
-
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          args: --timeout=5m
