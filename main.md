@@ -1315,13 +1315,13 @@ curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-bra
 
 ### Linting
 
-Use **golangci-lint** with default configuration for code quality checks.
+Use **go vet** for code quality checks.
 
-**Running the linter:**
+**Running go vet:**
 
 ```bash
 # Standalone
-golangci-lint run
+go vet ./...
 
 # Integrated with build (via scripts/run)
 ./scripts/run [command]
@@ -1329,9 +1329,9 @@ golangci-lint run
 
 **CI Integration:**
 
-- Linting runs automatically on all PRs via `.github/workflows/build.yml`
-- Build fails if linter finds issues (blocking)
-- In local development (`scripts/run`), linting runs but is non-blocking to allow rapid iteration
+- `go vet` runs automatically on all PRs via `.github/workflows/build.yml`
+- Build fails if `go vet` finds issues (blocking)
+- In local development (`scripts/run`), `go vet` runs but is non-blocking to allow rapid iteration
 
 ### Release Model
 
