@@ -5026,7 +5026,7 @@ func (m mainMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠") + "\n")
+	b.WriteString(titleStyle.Render("GitHub 🧠") + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5045,16 +5045,16 @@ func (m mainMenuModel) View() string {
 
 	// Status line
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	b.WriteString(statusStyle.Render(fmt.Sprintf("  Status: %s", m.status)) + "\n")
+	b.WriteString(statusStyle.Render(fmt.Sprintf("Status: %s", m.status)) + "\n")
 
 	b.WriteString("\n")
 
 	// Help text
-	b.WriteString(dimStyle.Render("  Press Enter to select, q to quit") + "\n")
+	b.WriteString(dimStyle.Render("Press Enter to select, q to quit") + "\n")
 	b.WriteString("\n")
 
 	// Version
-	b.WriteString(dimStyle.Render(fmt.Sprintf("  %s (%s)", Version, BuildDate)) + "\n")
+	b.WriteString(dimStyle.Render(fmt.Sprintf("%s (%s)", Version, BuildDate)) + "\n")
 	b.WriteString("\n")
 
 	// Calculate box width
