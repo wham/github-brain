@@ -26,7 +26,13 @@ GitHub Brain is [programmed in Markdown](https://github.blog/ai-and-ml/generativ
 npm i -g github-brain
 ```
 
-Or use `npx github-brain` to run without installing globally.
+Rerun to update. `sudo` may be required on some systems.
+
+Alternatively use `npx` to run without installing globally and needing `sudo`.
+
+```sh
+npx github-brain@latest
+```
 
 ## Usage
 
@@ -36,7 +42,10 @@ github-brain
 
 Launches the interactive TUI where you can:
 
-1. **Login** - Authenticate with GitHub
+1. **Setup** - Configure authentication and settings
+   - Login with GitHub (OAuth) - Recommended for most users
+   - Login with Personal Access Token - For fine-grained tokens or when OAuth is unavailable
+   - Open configuration file - Edit `.env` directly
 2. **Pull** - Populate the local database with GitHub data
 
 Re-run pull anytime to update the database with new GitHub data.
