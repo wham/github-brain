@@ -4782,7 +4782,7 @@ func (m model) View() string {
 	
 	// Add title as first line of content
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	titleLine := titleStyle.Render("GitHub 🧠 Pull")
+	titleLine := titleStyle.Render("GitHub Brain / 📥 Pull")
 	// Pad title line to match content width
 	titlePadding := maxContentWidth - visibleLength(titleLine)
 	if titlePadding > 0 {
@@ -4897,6 +4897,7 @@ type mainMenuModel struct {
 }
 
 type menuChoice struct {
+	icon        string
 	name        string
 	description string
 }
@@ -4912,9 +4913,9 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{name: "Setup", description: "Configure authentication and settings"},
-			{name: "Pull", description: "Sync GitHub data to local database"},
-			{name: "Quit", description: "Exit"},
+			{icon: "🔧", name: "Setup", description: "Configure authentication and settings"},
+			{icon: "📥", name: "Pull", description: "Sync GitHub data to local database"},
+			{icon: "🚪", name: "Quit", description: "Exit"},
 		},
 		cursor:       0,
 		status:       "Checking authentication...",
@@ -5026,7 +5027,7 @@ func (m mainMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render("GitHub 🧠") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / 🏠 Home") + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5037,8 +5038,14 @@ func (m mainMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%-10s %s", cursor, choice.name, choice.description)
+		line := fmt.Sprintf("%s%s  %s", cursor, choice.icon, choice.name)
+		if choice.description != "" {
+			line += "  " + choice.description
+		}
 		b.WriteString(style.Render(line) + "\n")
+		if i < len(m.choices)-1 {
+			b.WriteString("\n")
+		}
 	}
 
 	b.WriteString("\n")
@@ -5416,7 +5423,7 @@ func (m orgPromptModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Pull") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / 📥 Pull") + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
@@ -5737,9 +5744,9 @@ func (m loginModel) renderOrgInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
+	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization (optional):\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
@@ -5756,9 +5763,9 @@ func (m loginModel) renderSuccessView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
+	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
 	if m.organization != "" {
@@ -5778,9 +5785,9 @@ func (m loginModel) renderErrorView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
-	b.WriteString(titleStyle.Render(" GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
@@ -5845,10 +5852,10 @@ func newSetupMenuModel(homeDir string) setupMenuModel {
 	return setupMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{name: "Login with GitHub (OAuth)", description: ""},
-			{name: "Login with Personal Access Token", description: ""},
-			{name: "Open configuration file", description: ""},
-			{name: "← Back", description: ""},
+			{icon: "🔗", name: "Login with GitHub (OAuth)", description: ""},
+			{icon: "🔑", name: "Login with Personal Access Token", description: ""},
+			{icon: "📄", name: "Open configuration file", description: ""},
+			{icon: "←", name: "Back", description: ""},
 		},
 		cursor: 0,
 		width:  80,
@@ -5911,7 +5918,7 @@ func (m setupMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render("GitHub 🧠 Setup") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5922,7 +5929,11 @@ func (m setupMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		b.WriteString(style.Render(fmt.Sprintf("%s%s", cursor, choice.name)) + "\n")
+		line := fmt.Sprintf("%s%s  %s", cursor, choice.icon, choice.name)
+		b.WriteString(style.Render(line) + "\n")
+		if i < len(m.choices)-1 {
+			b.WriteString("\n")
+		}
 	}
 
 	b.WriteString("\n")
@@ -6202,9 +6213,9 @@ func (m patLoginModel) renderTokenInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  🔑 Personal Access Token\n")
+	b.WriteString("🔑 Personal Access Token\n")
 	b.WriteString("\n")
 	b.WriteString("  1. Create a token at github.com (opened in browser)\n")
 	b.WriteString("\n")
@@ -6223,9 +6234,9 @@ func (m patLoginModel) renderOrgInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
+	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization (optional):\n")
 	b.WriteString("  " + m.orgInput.View() + "\n")
@@ -6242,9 +6253,9 @@ func (m patLoginModel) renderSuccessView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + successStyle.Render("✅ Setup complete!") + "\n")
+	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
 	if m.organization != "" {
@@ -6264,9 +6275,9 @@ func (m patLoginModel) renderErrorView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
 	b.WriteString("\n")
-	b.WriteString("  " + errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
