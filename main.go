@@ -5055,12 +5055,12 @@ func (m mainMenuModel) View() string {
 
 	// Version
 	b.WriteString(dimStyle.Render(fmt.Sprintf("%s (%s)", Version, BuildDate)) + "\n")
-	b.WriteString("\n")
 
-	// Calculate box width
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
+	// Calculate box width: terminal width minus border (2 chars total)
+	// Width() in lipgloss sets width INCLUDING padding but EXCLUDING border
+	boxContentWidth := m.width - 2
+	if boxContentWidth < 60 {
+		boxContentWidth = 60
 	}
 
 	// Create border style
@@ -5068,7 +5068,7 @@ func (m mainMenuModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
 		Padding(0, 1).
-		Width(maxContentWidth)
+		Width(boxContentWidth)
 
 	return borderStyle.Render(b.String())
 }
@@ -5911,7 +5911,7 @@ func (m setupMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Setup") + "\n")
+	b.WriteString(titleStyle.Render("GitHub 🧠 Setup") + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5928,13 +5928,12 @@ func (m setupMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Help text
-	b.WriteString(dimStyle.Render("  Press Enter to select, Esc to go back") + "\n")
-	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("Press Enter to select, Esc to go back") + "\n")
 
-	// Calculate box width
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
+	// Calculate box width: terminal width minus border (2 chars total)
+	boxContentWidth := m.width - 2
+	if boxContentWidth < 60 {
+		boxContentWidth = 60
 	}
 
 	// Create border style
@@ -5942,7 +5941,7 @@ func (m setupMenuModel) View() string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
 		Padding(0, 1).
-		Width(maxContentWidth)
+		Width(boxContentWidth)
 
 	return borderStyle.Render(b.String())
 }
