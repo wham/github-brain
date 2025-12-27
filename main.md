@@ -1321,7 +1321,7 @@ Use **golangci-lint** with default configuration for code quality checks.
 
 ```bash
 # Standalone
-golangci-lint run --timeout=5m
+golangci-lint run
 
 # Integrated with build (via scripts/run)
 ./scripts/run [command]

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 # Lint the code (non-blocking in development)
 echo "Running linter..."
 if command -v golangci-lint &> /dev/null; then
-    golangci-lint run --timeout=5m || echo "Warning: Linter found issues (non-blocking in development)"
+    golangci-lint run || echo "Warning: Linter found issues (non-blocking in development)"
 else
     echo "Warning: golangci-lint not found, skipping linting"
 fi
