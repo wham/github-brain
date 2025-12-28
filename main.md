@@ -33,17 +33,17 @@ When `github-brain` is run without arguments, display an interactive menu:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠                                                      │
+│ GitHub Brain / 🏠 Home                                         │
 │                                                                │
-│  > Setup     Configure authentication and settings             │
-│    Pull      Sync GitHub data to local database                │
-│    Quit      Exit                                              │
+│ > 🔧 Setup  Configure authentication and settings              │
+│   📥 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Exit                                               │
 │                                                                │
-│  Status: Not logged in                                         │
+│ Status: Not logged in                                          │
 │                                                                │
-│  Press Enter to select, q to quit                              │
+│ Press Enter to select, q to quit                               │
 │                                                                │
-│  dev (unknown)                                                 │
+│ dev (unknown)                                                  │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -52,17 +52,17 @@ After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠                                                      │
+│ GitHub Brain / 🏠 Home                                         │
 │                                                                │
-│    Setup     Configure authentication and settings             │
-│  > Pull      Sync GitHub data to local database                │
-│    Quit      Exit                                              │
+│   🔧 Setup  Configure authentication and settings              │
+│ > 📥 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Exit                                               │
 │                                                                │
-│  Status: Logged in as @wham (my-org)                           │
+│ Status: Logged in as @wham (my-org)                            │
 │                                                                │
-│  Press Enter to select, q to quit                              │
+│ Press Enter to select, q to quit                               │
 │                                                                │
-│  dev (unknown)                                                 │
+│ dev (unknown)                                                  │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -77,9 +77,9 @@ After successful login with organization configured:
 
 ### Menu Items
 
-1. **Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-2. **Pull** - Runs the pull operation (see [pull](#pull) section)
-3. **Quit** - Exit the application
+1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
+2. **📥 Pull** - Runs the pull operation (see [pull](#pull) section)
+3. **🚪 Quit** - Exit the application
 
 ### Default Selection
 
@@ -111,23 +111,23 @@ The Setup submenu provides authentication and configuration options:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 Setup                                                │
+│ GitHub Brain / 🔧 Setup                                        │
 │                                                                │
-│  > Login with GitHub (OAuth)                                   │
-│    Login with Personal Access Token                            │
-│    Open configuration file                                     │
-│    ← Back                                                      │
+│ > 🔗 Login with GitHub (OAuth)                                 │
+│   🔑 Login with Personal Access Token                          │
+│   📄 Open configuration file                                   │
+│   ← Back                                                       │
 │                                                                │
-│  Press Enter to select, Esc to go back                         │
+│ Press Enter to select, Esc to go back                          │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
 ### Setup Menu Items
 
-1. **Login with GitHub (OAuth)** - Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
-2. **Login with Personal Access Token** - Manually enter a PAT (see [PAT Login](#pat-login) section)
-3. **Open configuration file** - Opens `.env` file in default editor
+1. **🔗 Login with GitHub (OAuth)** - Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
+2. **🔑 Login with Personal Access Token** - Manually enter a PAT (see [PAT Login](#pat-login) section)
+3. **📄 Open configuration file** - Opens `.env` file in default editor
 4. **← Back** - Return to main menu
 
 ### Open Configuration File
