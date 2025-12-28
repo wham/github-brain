@@ -5038,7 +5038,7 @@ func (m mainMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s  %s", cursor, choice.icon, choice.name)
+		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, choice.name)
 		if choice.description != "" {
 			line += "  " + choice.description
 		}
@@ -5929,7 +5929,7 @@ func (m setupMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s  %s", cursor, choice.icon, choice.name)
+		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, choice.name)
 		b.WriteString(style.Render(line) + "\n")
 		if i < len(m.choices)-1 {
 			b.WriteString("\n")
