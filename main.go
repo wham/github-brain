@@ -4348,7 +4348,7 @@ type ProgressInterface interface {
 	Start()
 	Stop()
 	StopWithPreserve()
-	InitItems(config *Config)
+	InitItems(config *Config, username string)
 	UpdateItemCount(item string, count int)
 	MarkItemCompleted(item string, count int)
 	MarkItemFailed(item string, message string)
@@ -4381,13 +4381,13 @@ func (p *UIProgress) Start() {
 }
 
 // InitItems initializes the items to display based on config
-func (p *UIProgress) InitItems(config *Config) {
+func (p *UIProgress) InitItems(config *Config, username string) {
 	enabledItems := make(map[string]bool)
 	for _, item := range config.Items {
 		enabledItems[item] = true
 	}
 	
-	m := newModel(enabledItems)
+	m := newModel(enabledItems, username, config.Organization)
 	// Use WithAltScreen to run in alternate screen mode (prevents multiple boxes)
 	p.program = tea.NewProgram(m, tea.WithAltScreen())
 	
@@ -4535,6 +4535,8 @@ type model struct {
 	rateLimitReset time.Time
 	width          int
 	height         int
+	username       string
+	organization   string
 }
 
 // logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
@@ -4544,7 +4546,7 @@ type logEntry struct {
 }
 
 // newModel creates a new Bubble Tea model
-func newModel(enabledItems map[string]bool) model {
+func newModel(enabledItems map[string]bool, username, organization string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Bright blue
@@ -4563,11 +4565,13 @@ func newModel(enabledItems map[string]bool) model {
 	}
 
 	return model{
-		items:     items,
-		itemOrder: itemOrder,
-		spinner:   s,
-		logs:      make([]logEntry, 0, 5),
-		width:     80,
+		items:        items,
+		itemOrder:    itemOrder,
+		spinner:      s,
+		logs:         make([]logEntry, 0, 5),
+		width:        80,
+		username:     username,
+		organization: organization,
 		height:    24,
 	}
 }
@@ -4782,12 +4786,27 @@ func (m model) View() string {
 	
 	// Add title as first line of content
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	titleLine := titleStyle.Render("GitHub Brain / 📥 Pull")
-	// Pad title line to match content width
-	titlePadding := maxContentWidth - visibleLength(titleLine)
-	if titlePadding > 0 {
-		titleLine = titleLine + strings.Repeat(" ", titlePadding)
+	leftTitle := "GitHub Brain / 📥 Pull"
+	var rightStatus string
+	if m.username != "" {
+		if m.organization != "" {
+			rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
+		} else {
+			rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
+		}
+	} else {
+		rightStatus = "👤 Not logged in"
 	}
+	
+	// Calculate spacing for title bar
+	leftWidth := visibleLength(leftTitle)
+	rightWidth := visibleLength(rightStatus)
+	spacing := maxContentWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	titleLine := titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
 	contentLines = append([]string{titleLine}, contentLines...)
 	content = strings.Join(contentLines, "\n")
 	
@@ -5027,7 +5046,37 @@ func (m mainMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render("GitHub Brain / 🏠 Home") + "\n")
+	// Calculate box width for title bar
+	boxContentWidth := m.width - 2
+	if boxContentWidth < 60 {
+		boxContentWidth = 60
+	}
+	// Inner width is box content width minus padding (1 on each side)
+	innerWidth := boxContentWidth - 2
+
+	// Build title bar with left and right parts
+	leftTitle := "GitHub Brain / 🏠 Home"
+	var rightStatus string
+	if m.username != "" {
+		if m.organization != "" {
+			rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
+		} else {
+			rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
+		}
+	} else {
+		rightStatus = "👤 Not logged in"
+	}
+
+	// Calculate spacing: innerWidth - leftTitle visual width - rightStatus visual width
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+
+	titleLine := titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	b.WriteString(titleLine + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5050,25 +5099,12 @@ func (m mainMenuModel) View() string {
 
 	b.WriteString("\n")
 
-	// Status line
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-	b.WriteString(statusStyle.Render(fmt.Sprintf("Status: %s", m.status)) + "\n")
-
-	b.WriteString("\n")
-
 	// Help text
 	b.WriteString(dimStyle.Render("Press Enter to select, q to quit") + "\n")
 	b.WriteString("\n")
 
 	// Version
 	b.WriteString(dimStyle.Render(fmt.Sprintf("%s (%s)", Version, BuildDate)) + "\n")
-
-	// Calculate box width: terminal width minus border (2 chars total)
-	// Width() in lipgloss sets width INCLUDING padding but EXCLUDING border
-	boxContentWidth := m.width - 2
-	if boxContentWidth < 60 {
-		boxContentWidth = 60
-	}
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
@@ -5106,7 +5142,7 @@ func RunMainTUI(homeDir string) error {
 		}
 
 		if mm.runSetup {
-			if err := RunSetupMenu(homeDir); err != nil {
+			if err := RunSetupMenu(homeDir, mm.username, mm.organization); err != nil {
 				// Log error but continue to menu
 				slog.Error("Setup failed", "error", err)
 			}
@@ -5117,7 +5153,7 @@ func RunMainTUI(homeDir string) error {
 		}
 
 		if mm.runPull {
-			if err := runPullOperation(homeDir); err != nil {
+			if err := runPullOperation(homeDir, mm.username, mm.organization); err != nil {
 				// Error already handled in runPullOperation
 				slog.Error("Pull failed", "error", err)
 			}
@@ -5130,7 +5166,7 @@ func RunMainTUI(homeDir string) error {
 }
 
 // runPullOperation runs the pull operation from the TUI
-func runPullOperation(homeDir string) error {
+func runPullOperation(homeDir, username, org string) error {
 	// Check for token
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
@@ -5143,14 +5179,15 @@ func runPullOperation(homeDir string) error {
 	organization := os.Getenv("ORGANIZATION")
 	if organization == "" {
 		// Prompt for organization using a simple TUI
-		org, err := promptForOrganization(homeDir)
+		newOrg, err := promptForOrganization(homeDir)
 		if err != nil {
 			return err
 		}
-		if org == "" {
+		if newOrg == "" {
 			return fmt.Errorf("organization is required")
 		}
-		organization = org
+		organization = newOrg
+		org = newOrg // Update the parameter too
 		// Save organization to .env
 		if err := saveOrganizationToEnv(homeDir, organization); err != nil {
 			return fmt.Errorf("failed to save organization: %w", err)
@@ -5173,7 +5210,7 @@ func runPullOperation(homeDir string) error {
 
 	// Initialize progress display
 	progress := NewUIProgress("Initializing GitHub offline MCP server...")
-	progress.InitItems(config)
+	progress.InitItems(config, username)
 
 	// Set up slog to route to Bubble Tea UI
 	slog.SetDefault(slog.New(NewBubbleTeaHandler(progress.program)))
@@ -5705,17 +5742,34 @@ func (m loginModel) renderWaitingView() string {
 	var b strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	b.WriteString(titleStyle.Render("  GitHub 🧠 Login") + "\n")
+	
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := "👤 Not logged in"
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
-	b.WriteString("  🔐 GitHub Authentication (OAuth)\n")
+	b.WriteString("🔐 GitHub Authentication (OAuth)\n")
 	b.WriteString("\n")
 
 	if m.userCode == "" {
-		b.WriteString("  " + m.spinner.View() + " Requesting device code...\n")
+		b.WriteString(m.spinner.View() + " Requesting device code...\n")
 	} else {
-		b.WriteString("  1. Opening browser to: github.com/login/device\n")
+		b.WriteString("1. Opening browser to: github.com/login/device\n")
 		b.WriteString("\n")
-		b.WriteString("  2. Enter this code:\n")
+		b.WriteString("2. Enter this code:\n")
 		b.WriteString("\n")
 		
 		// Code box with margin for alignment
@@ -5724,15 +5778,15 @@ func (m loginModel) renderWaitingView() string {
 			BorderForeground(lipgloss.Color("12")).
 			Padding(0, 3).
 			Bold(true).
-			MarginLeft(5)
+			MarginLeft(3)
 		
 		b.WriteString(codeStyle.Render(m.userCode) + "\n")
 		b.WriteString("\n")
-		b.WriteString("  " + m.spinner.View() + " Waiting for authorization...\n")
+		b.WriteString(m.spinner.View() + " Waiting for authorization...\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString("  Press Ctrl+C to cancel\n")
+	b.WriteString("Press Ctrl+C to cancel\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5744,14 +5798,30 @@ func (m loginModel) renderOrgInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := fmt.Sprintf("👤 @%s (no org)", m.username)
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
 	b.WriteString("\n")
-	b.WriteString("  Enter your GitHub organization (optional):\n")
-	b.WriteString("  " + m.textInput.View() + "\n")
+	b.WriteString("Enter your GitHub organization (optional):\n")
+	b.WriteString(m.textInput.View() + "\n")
 	b.WriteString("\n")
-	b.WriteString("  Press Enter to skip, or type organization name\n")
+	b.WriteString("Press Enter to skip, or type organization name\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5763,17 +5833,38 @@ func (m loginModel) renderSuccessView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	var rightStatus string
+	if m.organization != "" {
+		rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
+	} else {
+		rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
+	}
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
+	b.WriteString(fmt.Sprintf("Logged in as: @%s\n", m.username))
 	if m.organization != "" {
-		b.WriteString(fmt.Sprintf("  Organization: %s\n", m.organization))
+		b.WriteString(fmt.Sprintf("Organization: %s\n", m.organization))
 	}
-	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
+	b.WriteString(fmt.Sprintf("Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
-	b.WriteString("  Press any key to continue...\n")
+	b.WriteString("Press any key to continue...\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5785,13 +5876,29 @@ func (m loginModel) renderErrorView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := "👤 Not logged in"
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
+	b.WriteString(fmt.Sprintf("Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
-	b.WriteString("  Please try again.\n")
+	b.WriteString("Please try again.\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5836,21 +5943,25 @@ func RunLogin(homeDir string) error {
 
 // setupMenuModel is the Bubble Tea model for the setup submenu
 type setupMenuModel struct {
-	homeDir    string
-	choices    []menuChoice
-	cursor     int
-	width      int
-	height     int
-	quitting   bool
-	runOAuth   bool
-	runPAT     bool
-	openConfig bool
-	goBack     bool
+	homeDir      string
+	choices      []menuChoice
+	cursor       int
+	username     string
+	organization string
+	width        int
+	height       int
+	quitting     bool
+	runOAuth     bool
+	runPAT       bool
+	openConfig   bool
+	goBack       bool
 }
 
-func newSetupMenuModel(homeDir string) setupMenuModel {
+func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
 	return setupMenuModel{
-		homeDir: homeDir,
+		homeDir:      homeDir,
+		username:     username,
+		organization: organization,
 		choices: []menuChoice{
 			{icon: "🔗", name: "Login with GitHub (OAuth)", description: ""},
 			{icon: "🔑", name: "Login with Personal Access Token", description: ""},
@@ -5918,7 +6029,37 @@ func (m setupMenuModel) View() string {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate box width for title bar
+	boxContentWidth := m.width - 2
+	if boxContentWidth < 60 {
+		boxContentWidth = 60
+	}
+	// Inner width is box content width minus padding (1 on each side)
+	innerWidth := boxContentWidth - 2
+
+	// Build title bar with left and right parts
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	var rightStatus string
+	if m.username != "" {
+		if m.organization != "" {
+			rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
+		} else {
+			rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
+		}
+	} else {
+		rightStatus = "👤 Not logged in"
+	}
+
+	// Calculate spacing
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+
+	titleLine := titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	b.WriteString(titleLine + "\n")
 	b.WriteString("\n")
 
 	// Menu items
@@ -5941,12 +6082,6 @@ func (m setupMenuModel) View() string {
 	// Help text
 	b.WriteString(dimStyle.Render("Press Enter to select, Esc to go back") + "\n")
 
-	// Calculate box width: terminal width minus border (2 chars total)
-	boxContentWidth := m.width - 2
-	if boxContentWidth < 60 {
-		boxContentWidth = 60
-	}
-
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -5958,9 +6093,9 @@ func (m setupMenuModel) View() string {
 }
 
 // RunSetupMenu runs the setup submenu
-func RunSetupMenu(homeDir string) error {
+func RunSetupMenu(homeDir, username, organization string) error {
 	for {
-		m := newSetupMenuModel(homeDir)
+		m := newSetupMenuModel(homeDir, username, organization)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		finalModel, err := p.Run()
@@ -6213,16 +6348,32 @@ func (m patLoginModel) renderTokenInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := "👤 Not logged in"
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString("🔑 Personal Access Token\n")
 	b.WriteString("\n")
-	b.WriteString("  1. Create a token at github.com (opened in browser)\n")
+	b.WriteString("1. Create a token at github.com (opened in browser)\n")
 	b.WriteString("\n")
-	b.WriteString("  2. Paste your token here:\n")
-	b.WriteString("  " + m.textInput.View() + "\n")
+	b.WriteString("2. Paste your token here:\n")
+	b.WriteString(m.textInput.View() + "\n")
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
+	b.WriteString(dimStyle.Render("Press Enter to continue, Esc to cancel") + "\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -6234,14 +6385,30 @@ func (m patLoginModel) renderOrgInputView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := fmt.Sprintf("👤 @%s (no org)", m.username)
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
 	b.WriteString("\n")
-	b.WriteString("  Enter your GitHub organization (optional):\n")
-	b.WriteString("  " + m.orgInput.View() + "\n")
+	b.WriteString("Enter your GitHub organization (optional):\n")
+	b.WriteString(m.orgInput.View() + "\n")
 	b.WriteString("\n")
-	b.WriteString("  Press Enter to skip, or type organization name\n")
+	b.WriteString("Press Enter to skip, or type organization name\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -6253,17 +6420,38 @@ func (m patLoginModel) renderSuccessView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	successStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	var rightStatus string
+	if m.organization != "" {
+		rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
+	} else {
+		rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
+	}
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Logged in as: @%s\n", m.username))
+	b.WriteString(fmt.Sprintf("Logged in as: @%s\n", m.username))
 	if m.organization != "" {
-		b.WriteString(fmt.Sprintf("  Organization: %s\n", m.organization))
+		b.WriteString(fmt.Sprintf("Organization: %s\n", m.organization))
 	}
-	b.WriteString(fmt.Sprintf("  Saved to: %s/.env\n", m.homeDir))
+	b.WriteString(fmt.Sprintf("Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
-	b.WriteString("  Press any key to continue...\n")
+	b.WriteString("Press any key to continue...\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -6275,13 +6463,29 @@ func (m patLoginModel) renderErrorView() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / ⚙️ Setup") + "\n")
+	// Calculate spacing for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+	
+	leftTitle := "GitHub Brain / 🔧 Setup"
+	rightStatus := "👤 Not logged in"
+	leftWidth := lipgloss.Width(leftTitle)
+	rightWidth := lipgloss.Width(rightStatus)
+	spacing := innerWidth - leftWidth - rightWidth
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	b.WriteString(titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + "\n")
 	b.WriteString("\n")
 	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Error: %s\n", m.errorMsg))
+	b.WriteString(fmt.Sprintf("Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
-	b.WriteString("  Please try again.\n")
+	b.WriteString("Please try again.\n")
 	b.WriteString("\n")
 
 	return b.String()

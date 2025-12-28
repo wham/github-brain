@@ -33,13 +33,28 @@ When `github-brain` is run without arguments, display an interactive menu:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🏠 Home                                         │
+│ GitHub Brain / 🏠 Home                       👤 Not logged in  │
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
 │   📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
-│ Status: Not logged in                                          │
+│ Press Enter to select, q to quit                               │
+│                                                                │
+│ dev (unknown)                                                  │
+│                                                                │
+╰────────────────────────────────────────────────────────────────╯
+```
+
+After login but no organization configured:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│ GitHub Brain / 🏠 Home                 👤 @wham (no org)       │
+│                                                                │
+│ > 🔧 Setup  Configure authentication and settings              │
+│   📥 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, q to quit                               │
 │                                                                │
@@ -52,13 +67,11 @@ After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🏠 Home                                         │
+│ GitHub Brain / 🏠 Home                      👤 @wham (my-org)  │
 │                                                                │
 │   🔧 Setup  Configure authentication and settings              │
 │ > 📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
-│                                                                │
-│ Status: Logged in as @wham (my-org)                            │
 │                                                                │
 │ Press Enter to select, q to quit                               │
 │                                                                │
@@ -66,6 +79,19 @@ After successful login with organization configured:
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
+
+### Title Bar Format
+
+The title bar contains:
+
+- Left side: `GitHub Brain / <emoji> <screen>`
+- Right side: `👤 <status>` (right-aligned)
+
+User status values:
+
+- `👤 Not logged in` - No GITHUB_TOKEN in .env or token invalid
+- `👤 @username (no org)` - Token valid but no organization configured
+- `👤 @username (org)` - Token and organization configured
 
 ### Menu Navigation
 
@@ -86,20 +112,10 @@ After successful login with organization configured:
 - If user is logged in AND organization is configured → default to **Pull**
 - Otherwise → default to **Setup**
 
-### Status Line
-
-Display current authentication status:
-
-- `Not logged in` - No GITHUB_TOKEN in .env
-- `Logged in as @username` - Token exists and is valid, but no organization
-- `Logged in as @username (org)` - Token and organization configured
-
-Check token validity on startup by making a GraphQL query for `viewer { login }`.
-
 ### Flow
 
 1. On startup, check if GITHUB_TOKEN exists and is valid
-2. Show menu with appropriate status and default selection
+2. Show menu with appropriate status in title bar and default selection
 3. When user selects Setup, show the setup submenu
 4. When user selects Pull, prompt for organization if not set, then run pull
 5. After pull completes, return to menu
@@ -111,7 +127,7 @@ The Setup submenu provides authentication and configuration options:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🔧 Setup                                        │
+│ GitHub Brain / 🔧 Setup                      👤 Not logged in  │
 │                                                                │
 │ > 🔗 Login with GitHub (OAuth)                                 │
 │   🔑 Login with Personal Access Token                          │
@@ -378,19 +394,19 @@ Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 Pull                                                 │
+│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
 │                                                                │
-│  📋 Repositories                                               │
-│  📋 Discussions                                                │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│ 📋 Repositories                                                │
+│ 📋 Discussions                                                 │
+│ 📋 Issues                                                      │
+│ 📋 Pull Requests                                               │
 │                                                                │
-│  📊 API Status    ✅ 0   🟡 0   ❌ 0                           │
-│  🚀 Rate Limit    ? / ? used, resets ?                        │
+│ 📊 API Status    ✅ 0   🟡 0   ❌ 0                            │
+│ 🚀 Rate Limit    ? / ? used, resets ?                         │
 │                                                                │
-│  💬 Activity                                                   │
-│     21:37:12 ✨ Summoning data from the cloud...              │
-│     21:37:13 🔍 Fetching current user info                    │
+│ 💬 Activity                                                    │
+│    21:37:12 ✨ Summoning data from the cloud...               │
+│    21:37:13 🔍 Fetching current user info                     │
 │                                                                │
 │                                                                │
 │                                                                │
@@ -402,22 +418,22 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 Pull                                                 │
+│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
 │                                                                │
-│  ⠋ Repositories: 1,247                                        │
-│  📋 Discussions                                                │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│ ⠋ Repositories: 1,247                                         │
+│ 📋 Discussions                                                 │
+│ 📋 Issues                                                      │
+│ 📋 Pull Requests                                               │
 │                                                                │
-│  📊 API Status    ✅ 120   🟡 1   ❌ 2                         │
-│  🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m        │
+│ 📊 API Status    ✅ 120   🟡 1   ❌ 2                          │
+│ 🚀 Rate Limit    1,000 / 5,000 used, resets in 2h 15m         │
 │                                                                │
-│  💬 Activity                                                   │
-│     21:37:54 📦 Wrangling repositories...                     │
-│     21:37:55 📄 Fetching page 12                              │
-│     21:37:56 💾 Processing batch 3 (repos 201-300)            │
-│     21:37:57 ⚡ Rate limit: 89% remaining                     │
-│     21:37:58 ✨ Saved 47 repositories to database             │
+│ 💬 Activity                                                    │
+│    21:37:54 📦 Wrangling repositories...                      │
+│    21:37:55 📄 Fetching page 12                               │
+│    21:37:56 💾 Processing batch 3 (repos 201-300)             │
+│    21:37:57 ⚡ Rate limit: 89% remaining                      │
+│    21:37:58 ✨ Saved 47 repositories to database              │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -426,22 +442,22 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 Pull                                                 │
+│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
 │                                                                │
-│  ✅ Repositories: 2,847                                        │
-│  ⠙ Discussions: 156                                           │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│ ✅ Repositories: 2,847                                         │
+│ ⠙ Discussions: 156                                            │
+│ 📋 Issues                                                      │
+│ 📋 Pull Requests                                               │
 │                                                                │
-│  📊 API Status    ✅ 160   🟡 1   ❌ 2                         │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
+│ 📊 API Status    ✅ 160   🟡 1   ❌ 2                          │
+│ 🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m         │
 │                                                                │
-│  💬 Activity                                                   │
-│     21:41:23 🎉 Repositories completed (2,847 synced)          │
-│     21:41:24 💬 Herding discussions...                         │
-│     21:41:25 📄 Fetching from auth-service                    │
-│     21:41:26 💾 Processing batch 1                             │
-│     21:41:27 ✨ Found 23 new discussions                       │
+│ 💬 Activity                                                    │
+│    21:41:23 🎉 Repositories completed (2,847 synced)           │
+│    21:41:24 💬 Herding discussions...                          │
+│    21:41:25 📄 Fetching from auth-service                     │
+│    21:41:26 💾 Processing batch 1                              │
+│    21:41:27 ✨ Found 23 new discussions                        │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -450,22 +466,22 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│  GitHub 🧠 Pull                                                 │
+│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
 │                                                                │
-│  ✅ Repositories: 2,847                                        │
-│  ❌ Discussions: 156 (errors)                                  │
-│  📋 Issues                                                     │
-│  📋 Pull-requests                                              │
+│ ✅ Repositories: 2,847                                         │
+│ ❌ Discussions: 156 (errors)                                   │
+│ 📋 Issues                                                      │
+│ 📋 Pull Requests                                               │
 │                                                                │
-│  📊 API Status    ✅ 160   🟡 1   ❌ 5                         │
-│  🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m        │
+│ 📊 API Status    ✅ 160   🟡 1   ❌ 5                          │
+│ 🚀 Rate Limit    1,500 / 5,000 used, resets in 1h 45m         │
 │                                                                │
-│  💬 Activity                                                   │
-│     21:42:15 ❌ API Error: Rate limit exceeded                 │
-│     21:42:16 ⏳ Retrying in 30 seconds...                      │
-│     21:42:47 ⚠️  Repository access denied: private-repo        │
-│     21:42:48 ➡️  Continuing with next repository...            │
-│     21:42:49 ❌ Failed to save discussion #4521                │
+│ 💬 Activity                                                    │
+│    21:42:15 ❌ API Error: Rate limit exceeded                  │
+│    21:42:16 ⏳ Retrying in 30 seconds...                       │
+│    21:42:47 ⚠️  Repository access denied: private-repo         │
+│    21:42:48 ➡️  Continuing with next repository...             │
+│    21:42:49 ❌ Failed to save discussion #4521                 │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
