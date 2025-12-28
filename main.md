@@ -39,7 +39,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 │   📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
-│ Press Enter to select, q to quit                               │
+│ Press Enter to select, Ctrl+C to quit                          │
 │                                                                │
 │ dev (unknown)                                                  │
 │                                                                │
@@ -56,7 +56,7 @@ After login but no organization configured:
 │   📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
-│ Press Enter to select, q to quit                               │
+│ Press Enter to select, Ctrl+C to quit                          │
 │                                                                │
 │ dev (unknown)                                                  │
 │                                                                │
@@ -73,7 +73,7 @@ After successful login with organization configured:
 │ > 📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
-│ Press Enter to select, q to quit                               │
+│ Press Enter to select, Ctrl+C to quit                          │
 │                                                                │
 │ dev (unknown)                                                  │
 │                                                                │
@@ -98,7 +98,7 @@ User status values:
 - Use arrow keys (↑/↓) or j/k to navigate
 - Press Enter to select
 - Press Esc to go back (in submenus)
-- Press q or Ctrl+C to quit
+- Press Ctrl+C to quit
 - Highlight current selection with `>`
 
 ### Menu Items

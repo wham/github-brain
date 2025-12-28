@@ -4588,7 +4588,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			return m, tea.Quit
 		}
 
@@ -4984,7 +4984,7 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
 		case "up", "k":
@@ -5100,7 +5100,7 @@ func (m mainMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Help text
-	b.WriteString(dimStyle.Render("Press Enter to select, q to quit") + "\n")
+	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit") + "\n")
 	b.WriteString("\n")
 
 	// Version
@@ -5982,7 +5982,7 @@ func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
 		case "esc":
