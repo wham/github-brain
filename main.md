@@ -33,15 +33,13 @@ When `github-brain` is run without arguments, display an interactive menu:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🏠 Home                       👤 Not logged in  │
+│ GitHub Brain 1.0.0 / 🏠 Home                 👤 Not logged in  │
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
 │   📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
-│ dev (unknown)                                                  │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -50,15 +48,13 @@ After login but no organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🏠 Home                 👤 @wham (no org)       │
+│ GitHub Brain 1.0.0 / 🏠 Home               👤 @wham (no org)   │
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
 │   📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
-│ dev (unknown)                                                  │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -67,15 +63,13 @@ After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🏠 Home                      👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🏠 Home                👤 @wham (my-org)  │
 │                                                                │
 │   🔧 Setup  Configure authentication and settings              │
 │ > 📥 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
-│ dev (unknown)                                                  │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -84,7 +78,7 @@ After successful login with organization configured:
 
 The title bar contains:
 
-- Left side: `GitHub Brain / <emoji> <screen>`
+- Left side: `GitHub Brain <version> / <emoji> <screen>`
 - Right side: `👤 <status>` (right-aligned)
 
 User status values:
@@ -127,7 +121,7 @@ The Setup submenu provides authentication and configuration options:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 🔧 Setup                      👤 Not logged in  │
+│ GitHub Brain 1.0.0 / 🔧 Setup                👤 Not logged in  │
 │                                                                │
 │ > 🔗 Login with GitHub (OAuth)                                 │
 │   🔑 Login with Personal Access Token                          │
@@ -394,7 +388,7 @@ Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ 📋 Repositories                                                │
 │ 📋 Discussions                                                 │
@@ -418,7 +412,7 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ⠋ Repositories: 1,247                                         │
 │ 📋 Discussions                                                 │
@@ -442,7 +436,7 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ⠙ Discussions: 156                                            │
@@ -466,7 +460,7 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain / 📥 Pull                      👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ❌ Discussions: 156 (errors)                                   │

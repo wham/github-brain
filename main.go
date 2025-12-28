@@ -4786,7 +4786,7 @@ func (m model) View() string {
 	
 	// Add title as first line of content
 	titleStyle := lipgloss.NewStyle().Bold(true)
-	leftTitle := "GitHub Brain / 📥 Pull"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)
 	var rightStatus string
 	if m.username != "" {
 		if m.organization != "" {
@@ -5055,7 +5055,7 @@ func (m mainMenuModel) View() string {
 	innerWidth := boxContentWidth - 2
 
 	// Build title bar with left and right parts
-	leftTitle := "GitHub Brain / 🏠 Home"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🏠 Home", Version)
 	var rightStatus string
 	if m.username != "" {
 		if m.organization != "" {
@@ -5101,10 +5101,6 @@ func (m mainMenuModel) View() string {
 
 	// Help text
 	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit") + "\n")
-	b.WriteString("\n")
-
-	// Version
-	b.WriteString(dimStyle.Render(fmt.Sprintf("%s (%s)", Version, BuildDate)) + "\n")
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
@@ -5460,7 +5456,7 @@ func (m orgPromptModel) View() string {
 	titleStyle := lipgloss.NewStyle().Bold(true)
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
-	b.WriteString(titleStyle.Render("GitHub Brain / 📥 Pull") + "\n")
+	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
@@ -5750,7 +5746,7 @@ func (m loginModel) renderWaitingView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := "👤 Not logged in"
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
@@ -5805,7 +5801,7 @@ func (m loginModel) renderOrgInputView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := fmt.Sprintf("👤 @%s (no org)", m.username)
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
@@ -5840,7 +5836,7 @@ func (m loginModel) renderSuccessView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	var rightStatus string
 	if m.organization != "" {
 		rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
@@ -5883,7 +5879,7 @@ func (m loginModel) renderErrorView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := "👤 Not logged in"
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
@@ -6038,7 +6034,7 @@ func (m setupMenuModel) View() string {
 	innerWidth := boxContentWidth - 2
 
 	// Build title bar with left and right parts
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	var rightStatus string
 	if m.username != "" {
 		if m.organization != "" {
@@ -6355,7 +6351,7 @@ func (m patLoginModel) renderTokenInputView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := "👤 Not logged in"
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
@@ -6392,7 +6388,7 @@ func (m patLoginModel) renderOrgInputView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := fmt.Sprintf("👤 @%s (no org)", m.username)
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
@@ -6427,7 +6423,7 @@ func (m patLoginModel) renderSuccessView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	var rightStatus string
 	if m.organization != "" {
 		rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
@@ -6470,7 +6466,7 @@ func (m patLoginModel) renderErrorView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	leftTitle := "GitHub Brain / 🔧 Setup"
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔧 Setup", Version)
 	rightStatus := "👤 Not logged in"
 	leftWidth := lipgloss.Width(leftTitle)
 	rightWidth := lipgloss.Width(rightStatus)
