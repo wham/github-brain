@@ -5100,7 +5100,7 @@ func (m mainMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Help text
-	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit") + "\n")
+	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit"))
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
