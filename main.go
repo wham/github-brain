@@ -5091,20 +5091,18 @@ func (m mainMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Menu items
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
 	for i, choice := range m.choices {
 		cursor := "  "
-		style := dimStyle
+		descStyle := dimStyle
 		if m.cursor == i {
-			cursor = "> "
-			style = selectedStyle
+			cursor = selectorStyle.Render("▶") + " "
+			descStyle = selectedStyle
 		}
 		// Pad name to 5 characters for alignment
 		paddedName := fmt.Sprintf("%-5s", choice.name)
-		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, paddedName)
-		if choice.description != "" {
-			line += "  " + choice.description
-		}
-		b.WriteString(style.Render(line))
+		// Name is always bold (titleStyle), description uses current selection style
+		b.WriteString(fmt.Sprintf("%s%s %s  %s", cursor, choice.icon, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
 		if i < len(m.choices)-1 {
 			b.WriteString("\n\n")
 		}

@@ -35,7 +35,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                                  1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure GitHub username and organization        │
+│ ▶ 🔧 Setup  Configure GitHub username and organization        │
 │   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
@@ -47,7 +47,7 @@ After login but no organization configured:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                 👤 @wham · 1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure GitHub username and organization        │
+│ ▶ 🔧 Setup  Configure GitHub username and organization        │
 │   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
@@ -60,7 +60,7 @@ After successful login with organization configured:
 │ GitHub Brain / 🏠 Home    👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
 │   🔧 Setup  Configure GitHub username and organization        │
-│ > 🔄 Pull   Sync GitHub data to local database                 │
+│ ▶ 🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -84,7 +84,7 @@ Right side components (shown only when available):
 - Press Enter to select
 - Press Esc to go back (in submenus)
 - Press Ctrl+C to quit
-- Highlight current selection with `>`
+- Highlight current selection with `▶` (blue)
 
 ### Menu Items
 
