@@ -5091,7 +5091,9 @@ func (m mainMenuModel) View() string {
 			cursor = "> "
 			style = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, choice.name)
+		// Pad name to 5 characters for alignment
+		paddedName := fmt.Sprintf("%-5s", choice.name)
+		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, paddedName)
 		if choice.description != "" {
 			line += "  " + choice.description
 		}
