@@ -4960,7 +4960,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{icon: "🔧", name: "Setup", description: "Configure authentication and settings"},
+			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
 			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
 		},
@@ -5097,9 +5097,9 @@ func (m mainMenuModel) View() string {
 		if choice.description != "" {
 			line += "  " + choice.description
 		}
-		b.WriteString(style.Render(line) + "\n")
+		b.WriteString(style.Render(line))
 		if i < len(m.choices)-1 {
-			b.WriteString("\n")
+			b.WriteString("\n\n")
 		}
 	}
 
