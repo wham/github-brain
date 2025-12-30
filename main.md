@@ -33,14 +33,11 @@ When `github-brain` is run without arguments, display an interactive menu:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home                 👤 Not logged in  │
+│ GitHub Brain / 🏠 Home                                  1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure authentication and settings              │
-│   📥 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
+│ ▶ 🔧 Setup  Configure GitHub username and organization        │
+│   🔄 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -48,14 +45,11 @@ After login but no organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home               👤 @wham (no org)   │
+│ GitHub Brain / 🏠 Home                 👤 @wham · 1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure authentication and settings              │
-│   📥 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
+│ ▶ 🔧 Setup  Configure GitHub username and organization        │
+│   🔄 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -63,14 +57,11 @@ After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home                👤 @wham (my-org)  │
+│ GitHub Brain / 🏠 Home    👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
-│   🔧 Setup  Configure authentication and settings              │
-│ > 📥 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
-│                                                                │
+│   🔧 Setup  Configure GitHub username and organization        │
+│ ▶ 🔄 Pull   Sync GitHub data to local database                 │
+│   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -78,14 +69,14 @@ After successful login with organization configured:
 
 The title bar contains:
 
-- Left side: `GitHub Brain <version> / <emoji> <screen>`
-- Right side: `👤 <status>` (right-aligned)
+- Left side: `GitHub Brain / <emoji> <screen>`
+- Right side: `👤 @<username> · 🏢 <org> · <version>` (right-aligned, version in dim style)
 
-User status values:
+Right side components (shown only when available):
 
-- `👤 Not logged in` - No GITHUB_TOKEN in .env or token invalid
-- `👤 @username (no org)` - Token valid but no organization configured
-- `👤 @username (org)` - Token and organization configured
+- `👤 @username` - Shown when logged in
+- `🏢 org` - Shown when organization is configured
+- `<version>` - Always shown, in dim style
 
 ### Menu Navigation
 
@@ -93,13 +84,13 @@ User status values:
 - Press Enter to select
 - Press Esc to go back (in submenus)
 - Press Ctrl+C to quit
-- Highlight current selection with `>`
+- Highlight current selection with `▶` (blue)
 
 ### Menu Items
 
 1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-2. **📥 Pull** - Runs the pull operation (see [pull](#pull) section)
-3. **🚪 Quit** - Exit the application
+2. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
+3. **🚪 Quit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
@@ -388,7 +379,7 @@ Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ 📋 Repositories                                                │
 │ 📋 Discussions                                                 │
@@ -412,7 +403,7 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ⠋ Repositories: 1,247                                         │
 │ 📋 Discussions                                                 │
@@ -436,7 +427,7 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ⠙ Discussions: 156                                            │
@@ -460,7 +451,7 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ❌ Discussions: 156 (errors)                                   │
@@ -1317,7 +1308,7 @@ Download the appropriate archive for your platform from [releases](https://githu
 
 ```bash
 # Specific version
-curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz | tar xz
+curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz · tar xz
 ```
 
 ## Code Quality

@@ -76,26 +76,33 @@ var (
 
 // renderTitleBar renders a title bar with left title and right-aligned user status
 func renderTitleBar(screen, username, organization string, innerWidth int) string {
-	leftTitle := fmt.Sprintf("GitHub Brain %s / %s", Version, screen)
-	var rightStatus string
+	leftTitle := fmt.Sprintf("GitHub Brain / %s", screen)
+	
+	// Build right side: @username · 🏢 org · version
+	var rightParts []string
 	if username != "" {
-		if organization != "" {
-			rightStatus = fmt.Sprintf("👤 @%s (%s)", username, organization)
-		} else {
-			rightStatus = fmt.Sprintf("👤 @%s (no org)", username)
-		}
-	} else {
-		rightStatus = "👤 Not logged in"
+		rightParts = append(rightParts, fmt.Sprintf("👤 @%s", username))
+	}
+	if organization != "" {
+		rightParts = append(rightParts, fmt.Sprintf("🏢 %s", organization))
+	}
+	
+	// Join parts with separator
+	rightStatus := strings.Join(rightParts, " · ")
+	if rightStatus != "" {
+		rightStatus += " · "
 	}
 	
 	leftWidth := lipgloss.Width(leftTitle)
-	rightWidth := lipgloss.Width(rightStatus)
+	versionText := Version
+	versionWidth := lipgloss.Width(versionText)
+	rightWidth := lipgloss.Width(rightStatus) + versionWidth
 	spacing := innerWidth - leftWidth - rightWidth
 	if spacing < 1 {
 		spacing = 1
 	}
 	
-	return titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	return titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + dimStyle.Render(versionText)
 }
 
 // Removed ConsoleHandler - not needed with Bubble Tea
@@ -4814,7 +4821,7 @@ func (m model) View() string {
 	}
 	
 	// Add title as first line of content
-	leftTitle := fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)
 	var rightStatus string
 	if m.username != "" {
 		if m.organization != "" {
@@ -4960,9 +4967,9 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{icon: "🔧", name: "Setup", description: "Configure authentication and settings"},
-			{icon: "📥", name: "Pull", description: "Sync GitHub data to local database"},
-			{icon: "🚪", name: "Quit", description: "Exit"},
+			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
+			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
+			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
 		},
 		cursor:       0,
 		status:       "Checking authentication...",
@@ -5084,27 +5091,22 @@ func (m mainMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Menu items
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
 	for i, choice := range m.choices {
 		cursor := "  "
-		style := dimStyle
+		descStyle := dimStyle
 		if m.cursor == i {
-			cursor = "> "
-			style = selectedStyle
+			cursor = selectorStyle.Render("▶") + " "
+			descStyle = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, choice.name)
-		if choice.description != "" {
-			line += "  " + choice.description
-		}
-		b.WriteString(style.Render(line) + "\n")
+		// Pad name to 5 characters for alignment
+		paddedName := fmt.Sprintf("%-5s", choice.name)
+		// Name is always bold (titleStyle), description uses current selection style
+		b.WriteString(fmt.Sprintf("%s%s %s  %s", cursor, choice.icon, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
 		if i < len(m.choices)-1 {
-			b.WriteString("\n")
+			b.WriteString("\n\n")
 		}
 	}
-
-	b.WriteString("\n")
-
-	// Help text
-	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit"))
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
@@ -5457,7 +5459,7 @@ func (m orgPromptModel) View() string {
 
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)) + "\n")
+	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
