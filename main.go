@@ -76,26 +76,33 @@ var (
 
 // renderTitleBar renders a title bar with left title and right-aligned user status
 func renderTitleBar(screen, username, organization string, innerWidth int) string {
-	leftTitle := fmt.Sprintf("GitHub Brain %s / %s", Version, screen)
-	var rightStatus string
+	leftTitle := fmt.Sprintf("GitHub Brain / %s", screen)
+	
+	// Build right side: @username · 🏢 org · version
+	var rightParts []string
 	if username != "" {
-		if organization != "" {
-			rightStatus = fmt.Sprintf("👤 @%s (%s)", username, organization)
-		} else {
-			rightStatus = fmt.Sprintf("👤 @%s (no org)", username)
-		}
-	} else {
-		rightStatus = "👤 Not logged in"
+		rightParts = append(rightParts, fmt.Sprintf("👤 @%s", username))
+	}
+	if organization != "" {
+		rightParts = append(rightParts, fmt.Sprintf("🏢 %s", organization))
+	}
+	
+	// Join parts with separator
+	rightStatus := strings.Join(rightParts, " · ")
+	if rightStatus != "" {
+		rightStatus += " · "
 	}
 	
 	leftWidth := lipgloss.Width(leftTitle)
-	rightWidth := lipgloss.Width(rightStatus)
+	versionText := Version
+	versionWidth := lipgloss.Width(versionText)
+	rightWidth := lipgloss.Width(rightStatus) + versionWidth
 	spacing := innerWidth - leftWidth - rightWidth
 	if spacing < 1 {
 		spacing = 1
 	}
 	
-	return titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	return titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + dimStyle.Render(versionText)
 }
 
 // Removed ConsoleHandler - not needed with Bubble Tea

@@ -33,9 +33,9 @@ When `github-brain` is run without arguments, display an interactive menu:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home                 👤 Not logged in  │
+│ GitHub Brain / 🏠 Home                                  1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure GitHub username and organization              │
+│ > 🔧 Setup  Configure GitHub username and organization        │
 │   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
@@ -45,9 +45,9 @@ After login but no organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home               👤 @wham (no org)   │
+│ GitHub Brain / 🏠 Home                 👤 @wham · 1.0.0  │
 │                                                                │
-│ > 🔧 Setup  Configure GitHub username and organization              │
+│ > 🔧 Setup  Configure GitHub username and organization        │
 │   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
@@ -57,9 +57,9 @@ After successful login with organization configured:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🏠 Home                👤 @wham (my-org)  │
+│ GitHub Brain / 🏠 Home    👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
-│   🔧 Setup  Configure GitHub username and organization              │
+│   🔧 Setup  Configure GitHub username and organization        │
 │ > 🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
@@ -69,14 +69,14 @@ After successful login with organization configured:
 
 The title bar contains:
 
-- Left side: `GitHub Brain <version> / <emoji> <screen>`
-- Right side: `👤 <status>` (right-aligned)
+- Left side: `GitHub Brain / <emoji> <screen>`
+- Right side: `👤 @<username> · 🏢 <org> · <version>` (right-aligned, version in dim style)
 
-User status values:
+Right side components (shown only when available):
 
-- `👤 Not logged in` - No GITHUB_TOKEN in .env or token invalid
-- `👤 @username (no org)` - Token valid but no organization configured
-- `👤 @username (org)` - Token and organization configured
+- `👤 @username` - Shown when logged in
+- `🏢 org` - Shown when organization is configured
+- `<version>` - Always shown, in dim style
 
 ### Menu Navigation
 
@@ -1308,7 +1308,7 @@ Download the appropriate archive for your platform from [releases](https://githu
 
 ```bash
 # Specific version
-curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz | tar xz
+curl -L https://github.com/wham/github-brain/releases/download/v1.2.3/github-brain-darwin-arm64.tar.gz · tar xz
 ```
 
 ## Code Quality
