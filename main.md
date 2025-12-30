@@ -36,7 +36,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 │ GitHub Brain 1.0.0 / 🏠 Home                 👤 Not logged in  │
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
-│   📥 Pull   Sync GitHub data to local database                 │
+│   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
@@ -51,7 +51,7 @@ After login but no organization configured:
 │ GitHub Brain 1.0.0 / 🏠 Home               👤 @wham (no org)   │
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
-│   📥 Pull   Sync GitHub data to local database                 │
+│   🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
@@ -66,7 +66,7 @@ After successful login with organization configured:
 │ GitHub Brain 1.0.0 / 🏠 Home                👤 @wham (my-org)  │
 │                                                                │
 │   🔧 Setup  Configure authentication and settings              │
-│ > 📥 Pull   Sync GitHub data to local database                 │
+│ > 🔄 Pull   Sync GitHub data to local database                 │
 │   🚪 Quit   Exit                                               │
 │                                                                │
 │ Press Enter to select, Ctrl+C to quit                          │
@@ -98,7 +98,7 @@ User status values:
 ### Menu Items
 
 1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-2. **📥 Pull** - Runs the pull operation (see [pull](#pull) section)
+2. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
 3. **🚪 Quit** - Exit the application
 
 ### Default Selection
@@ -388,7 +388,7 @@ Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ 📋 Repositories                                                │
 │ 📋 Discussions                                                 │
@@ -412,7 +412,7 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ⠋ Repositories: 1,247                                         │
 │ 📋 Discussions                                                 │
@@ -436,7 +436,7 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ⠙ Discussions: 156                                            │
@@ -460,7 +460,7 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 📥 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ❌ Discussions: 156 (errors)                                   │

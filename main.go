@@ -4814,7 +4814,7 @@ func (m model) View() string {
 	}
 	
 	// Add title as first line of content
-	leftTitle := fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)
+	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)
 	var rightStatus string
 	if m.username != "" {
 		if m.organization != "" {
@@ -4961,7 +4961,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 		homeDir: homeDir,
 		choices: []menuChoice{
 			{icon: "🔧", name: "Setup", description: "Configure authentication and settings"},
-			{icon: "📥", name: "Pull", description: "Sync GitHub data to local database"},
+			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
 			{icon: "🚪", name: "Quit", description: "Exit"},
 		},
 		cursor:       0,
@@ -5459,7 +5459,7 @@ func (m orgPromptModel) View() string {
 
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 📥 Pull", Version)) + "\n")
+	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
