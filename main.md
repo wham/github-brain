@@ -37,9 +37,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
 │   🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
+│   🚪 Quit   Ctrl+C                                             │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -52,9 +50,7 @@ After login but no organization configured:
 │                                                                │
 │ > 🔧 Setup  Configure authentication and settings              │
 │   🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
+│   🚪 Quit   Ctrl+C                                             │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -67,9 +63,7 @@ After successful login with organization configured:
 │                                                                │
 │   🔧 Setup  Configure authentication and settings              │
 │ > 🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Exit                                               │
-│                                                                │
-│ Press Enter to select, Ctrl+C to quit                          │
+│   🚪 Quit   Ctrl+C                                             │
 │                                                                │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -99,7 +93,7 @@ User status values:
 
 1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
 2. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
-3. **🚪 Quit** - Exit the application
+3. **🚪 Quit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 

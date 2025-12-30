@@ -4962,7 +4962,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 		choices: []menuChoice{
 			{icon: "🔧", name: "Setup", description: "Configure authentication and settings"},
 			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
-			{icon: "🚪", name: "Quit", description: "Exit"},
+			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
 		},
 		cursor:       0,
 		status:       "Checking authentication...",
@@ -5102,11 +5102,6 @@ func (m mainMenuModel) View() string {
 			b.WriteString("\n")
 		}
 	}
-
-	b.WriteString("\n")
-
-	// Help text
-	b.WriteString(dimStyle.Render("Press Enter to select, Ctrl+C to quit"))
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
