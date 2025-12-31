@@ -5554,19 +5554,21 @@ type AccessTokenResponse struct {
 
 // loginModel is the Bubble Tea model for the login UI
 type loginModel struct {
-	spinner         spinner.Model
-	textInput       textinput.Model
-	userCode        string
-	verificationURI string
-	status          string // "waiting", "org_input", "success", "error"
-	errorMsg        string
-	username        string
-	token           string
-	organization    string
-	homeDir         string
-	width           int
-	height          int
-	done            bool
+	spinner          spinner.Model
+	textInput        textinput.Model
+	userCode         string
+	verificationURI  string
+	status           string // "waiting", "org_input", "success", "error"
+	errorMsg         string
+	username         string
+	token            string
+	organization     string
+	homeDir          string
+	width            int
+	height           int
+	done             bool
+	currentUsername  string // current logged-in username for title bar
+	currentOrg       string // current organization for title bar
 }
 
 // Login message types
@@ -5584,7 +5586,7 @@ type (
 	loginOrgSubmittedMsg struct{}
 )
 
-func newLoginModel(homeDir string) loginModel {
+func newLoginModel(homeDir, currentUsername, currentOrg string) loginModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
@@ -5597,12 +5599,14 @@ func newLoginModel(homeDir string) loginModel {
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	return loginModel{
-		spinner:   s,
-		textInput: ti,
-		status:    "waiting",
-		homeDir:   homeDir,
-		width:     80,
-		height:    24,
+		spinner:         s,
+		textInput:       ti,
+		status:          "waiting",
+		homeDir:         homeDir,
+		width:           80,
+		height:          24,
+		currentUsername: currentUsername,
+		currentOrg:      currentOrg,
 	}
 }
 
@@ -5616,7 +5620,7 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "esc":
 			m.done = true
 			return m, tea.Quit
 		case "enter":
@@ -5728,24 +5732,22 @@ func (m loginModel) renderWaitingView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
-	b.WriteString("\n")
-	b.WriteString("🔐 GitHub Authentication (OAuth)\n")
+	b.WriteString(renderTitleBar("🔧 Setup / ✨ Login with code", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 
 	if m.userCode == "" {
 		b.WriteString(m.spinner.View() + " Requesting device code...\n")
 	} else {
-		b.WriteString("1. Opening browser to: github.com/login/device\n")
+		b.WriteString("1. Opening browser to https://github.com/login/device\n")
 		b.WriteString("\n")
 		b.WriteString("2. Enter this code:\n")
 		b.WriteString("\n")
 		
-		// Code box with margin for alignment
+		// Code box with larger padding for emphasis
 		codeStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("12")).
-			Padding(0, 3).
+			Padding(0, 4).
 			Bold(true).
 			MarginLeft(3)
 		
@@ -5755,7 +5757,7 @@ func (m loginModel) renderWaitingView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString("Press Ctrl+C to cancel\n")
+	b.WriteString("Press Esc to cancel\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5833,14 +5835,14 @@ func (m loginModel) renderErrorView() string {
 }
 
 // RunLogin runs the OAuth device flow login
-func RunLogin(homeDir string) error {
+func RunLogin(homeDir, currentUsername, currentOrg string) error {
 	// Ensure home directory exists
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
 	// Create the Bubble Tea model
-	m := newLoginModel(homeDir)
+	m := newLoginModel(homeDir, currentUsername, currentOrg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	// Run the device flow in a goroutine
@@ -6015,7 +6017,7 @@ func RunSetupMenu(homeDir, username, organization string) error {
 		}
 
 		if sm.runOAuth {
-			if err := RunLogin(homeDir); err != nil {
+			if err := RunLogin(homeDir, username, organization); err != nil {
 				slog.Error("OAuth login failed", "error", err)
 			}
 			// Reload .env after login
