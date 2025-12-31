@@ -4771,10 +4771,10 @@ func (m model) View() string {
 		}
 	}
 	
-	// Show "Press enter to continue." if waiting for Enter
+	// Show "Press enter to continue" if waiting for Enter
 	if m.waitingForEnter {
 		lines = append(lines, "")
-		lines = append(lines, dimStyle.Render("Press enter to continue."))
+		lines = append(lines, "Press enter to continue")
 	}
 	
 	// Join all lines
@@ -4966,7 +4966,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 		choices: []menuChoice{
 			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
 			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
-			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
+			{icon: "🚪", name: "Exit", description: "Ctrl+C"},
 		},
 		cursor:       0,
 		status:       "Checking authentication...",
@@ -5035,7 +5035,7 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "Pull":
 				m.runPull = true
 				return m, tea.Quit
-			case "Quit":
+			case "Exit":
 				m.quitting = true
 				return m, tea.Quit
 			}

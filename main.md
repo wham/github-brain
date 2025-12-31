@@ -37,7 +37,7 @@ When `github-brain` is run without arguments, display an interactive menu:
 │                                                                │
 │ ▶ � Pull   Sync GitHub data to local database                 │
 │   🔧 Setup  Configure GitHub username and organization        │
-│   🚪 Quit   Ctrl+C                                             │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -49,7 +49,7 @@ After login but no organization configured:
 │                                                                │
 │ ▶ � Pull   Sync GitHub data to local database                 │
 │   🔧 Setup  Configure GitHub username and organization        │
-│   🚪 Quit   Ctrl+C                                             │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -61,7 +61,7 @@ After successful login with organization configured:
 │                                                                │
 │ ▶ 🔄 Pull   Sync GitHub data to local database                 │
 │   🔧 Setup  Configure GitHub username and organization        │
-│   🚪 Quit   Ctrl+C                                             │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -90,7 +90,7 @@ Right side components (shown only when available):
 
 1. **� Pull** - Runs the pull operation (see [pull](#pull) section)
 2. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-3. **🚪 Quit** - Exit the application (Ctrl+C)
+3. **🚪 Exit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
@@ -102,8 +102,8 @@ Right side components (shown only when available):
 2. Show menu with appropriate status in title bar
 3. When user selects Setup, show the setup submenu
 4. When user selects Pull, prompt for organization if not set, then run pull
-5. After pull completes or fails, show "Press enter to continue." and wait for Enter key, then return to menu
-6. When user selects Quit, exit cleanly
+5. After pull completes or fails, show "Press enter to continue" and wait for Enter key, then return to menu
+6. When user selects Exit, exit cleanly
 
 ## Setup Menu
 
@@ -362,7 +362,7 @@ Operation:
 - Always pull all items (no selective sync from TUI)
 - Maintain console output showing selected items and status
 - Use `log/slog` custom logger for last 10 log messages with timestamps in console output
-- On completion or error, show "Press enter to continue." message and wait for Enter key before returning to main menu
+- On completion or error, show "Press enter to continue" message and wait for Enter key before returning to main menu
 
 ### Console Rendering with Bubble Tea
 
