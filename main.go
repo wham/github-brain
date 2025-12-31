@@ -4609,7 +4609,7 @@ func newModel(enabledItems map[string]bool, username, organization string) model
 		items:        items,
 		itemOrder:    itemOrder,
 		spinner:      s,
-		logs:         make([]logEntry, 0, 5),
+		logs:         make([]logEntry, 0, 10),
 		width:        80,
 		username:     username,
 		organization: organization,
@@ -4725,7 +4725,7 @@ func (m *model) addLog(message string) {
 		message: message,
 	}
 	m.logs = append(m.logs, entry)
-	if len(m.logs) > 5 {
+	if len(m.logs) > 10 {
 		m.logs = m.logs[1:]
 	}
 }
@@ -4763,7 +4763,7 @@ func (m model) View() string {
 	lines = append(lines, headerStyle.Render("💬 Activity"))
 	
 	// Activity log lines
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		if i < len(m.logs) {
 			lines = append(lines, formatLogLine(m.logs[i], errorStyle))
 		} else {

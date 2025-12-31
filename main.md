@@ -362,7 +362,7 @@ Operation:
 - Pull items: Repositories, Discussions, Issues, Pull Requests
 - Always pull all items (no selective sync from TUI)
 - Maintain console output showing selected items and status
-- Use `log/slog` custom logger for last 5 log messages with timestamps in console output
+- Use `log/slog` custom logger for last 10 log messages with timestamps in console output
 - On completion or error, show "Press enter to continue." message and wait for Enter key before returning to main menu
 
 ### Console Rendering with Bubble Tea
