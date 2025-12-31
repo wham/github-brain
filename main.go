@@ -4285,7 +4285,7 @@ func main() {
 	
 	// Load environment variables from home directory
 	envPath := homeDir + "/.env"
-	_ = godotenv.Load(envPath)
+	_ = godotenv.Overload(envPath)
 
 	// Check if a command is specified
 	cmd := ""
@@ -4982,7 +4982,8 @@ func (m mainMenuModel) Init() tea.Cmd {
 
 func checkAuthCmd(homeDir string) tea.Cmd {
 	return func() tea.Msg {
-		// Check if we have a token
+		// Load .env file
+		_ = godotenv.Overload(homeDir + "/.env")
 		token := os.Getenv("GITHUB_TOKEN")
 		if token == "" {
 			return authCheckResultMsg{loggedIn: false}
@@ -5003,11 +5004,10 @@ func checkAuthCmd(homeDir string) tea.Cmd {
 			return authCheckResultMsg{loggedIn: false}
 		}
 
-		org := os.Getenv("ORGANIZATION")
 		return authCheckResultMsg{
 			loggedIn:     true,
 			username:     query.Viewer.Login,
-			organization: org,
+			organization: os.Getenv("ORGANIZATION"),
 		}
 	}
 }
@@ -5145,9 +5145,6 @@ func RunMainTUI(homeDir string) error {
 				// Log error but continue to menu
 				slog.Error("Setup failed", "error", err)
 			}
-			// Reload .env after setup
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			continue
 		}
 
@@ -5156,9 +5153,6 @@ func RunMainTUI(homeDir string) error {
 				// Error already handled in runPullOperation
 				slog.Error("Pull failed", "error", err)
 			}
-			// Reload .env after pull (in case organization was set)
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			continue
 		}
 	}
@@ -5166,7 +5160,8 @@ func RunMainTUI(homeDir string) error {
 
 // runPullOperation runs the pull operation from the TUI
 func runPullOperation(homeDir, username, org string) error {
-	// Check for token
+	// Load .env file
+	_ = godotenv.Overload(homeDir + "/.env")
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
 		// Need to prompt for login first
@@ -5191,11 +5186,8 @@ func runPullOperation(homeDir, username, org string) error {
 		if err := saveOrganizationToEnv(homeDir, organization); err != nil {
 			return fmt.Errorf("failed to save organization: %w", err)
 		}
-		// Reload env
-		envPath := homeDir + "/.env"
-		_ = godotenv.Load(envPath)
 	}
-
+	
 	// Build config
 	config := &Config{
 		Organization:         organization,
@@ -5832,9 +5824,6 @@ func RunLogin(homeDir, currentUsername, currentOrg string) error {
 			return nil // Go back without error
 		}
 		if lm.status == "select_org" {
-			// Reload .env to pick up the saved token
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			// Navigate to Select Organization screen
 			return runSelectOrgWithFlag(homeDir, lm.username, true)
 		}
@@ -6036,9 +6025,6 @@ func RunSetupMenu(homeDir, username, organization string) error {
 				}
 				slog.Error("OAuth login failed", "error", err)
 			}
-			// Reload .env after login
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			return nil // Return to main menu after login
 		}
 
@@ -6049,9 +6035,6 @@ func RunSetupMenu(homeDir, username, organization string) error {
 				}
 				slog.Error("PAT login failed", "error", err)
 			}
-			// Reload .env after login
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			return nil // Return to main menu after login
 		}
 
@@ -6062,10 +6045,10 @@ func RunSetupMenu(homeDir, username, organization string) error {
 				}
 				slog.Error("Select organization failed", "error", err)
 			}
-			// Reload .env after selection
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
-			return nil // Return to main menu after selection
+			// Re-read organization from .env file
+			_ = godotenv.Overload(homeDir + "/.env")
+			organization = os.Getenv("ORGANIZATION")
+			continue // Return to Setup menu
 		}
 
 		if sm.openConfig {
@@ -6156,12 +6139,13 @@ func (m selectOrgModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		textinput.Blink,
-		fetchOrganizations(),
+		fetchOrganizations(m.homeDir),
 	)
 }
 
-func fetchOrganizations() tea.Cmd {
+func fetchOrganizations(homeDir string) tea.Cmd {
 	return func() tea.Msg {
+		_ = godotenv.Overload(homeDir + "/.env")
 		token := os.Getenv("GITHUB_TOKEN")
 		if token == "" {
 			return orgsLoadErrorMsg{err: fmt.Errorf("no GitHub token found")}
@@ -6414,44 +6398,44 @@ func (m selectOrgModel) renderListView() string {
 	} else if len(displayOrgs) > 0 {
 		for i, org := range displayOrgs {
 			cursor := "  "
-			style := dimStyle
+			nameStyle := titleStyle // Bold for main item name
 			if m.cursor == i {
 				cursor = selectorStyle.Render("▶") + " "
-				style = selectedStyle
+				nameStyle = selectedStyle // Blue bold when selected
 			}
-			b.WriteString(cursor + style.Render(org) + "\n")
+			b.WriteString(cursor + nameStyle.Render(org) + "\n")
 		}
 	}
 
 	b.WriteString("\n")
 	
 	// Text input for manual entry (as a selectable item)
-	label := "Or enter manually: "
+	label := "Or enter manually"
 	if len(displayOrgs) == 0 {
-		label = "Enter manually: "
+		label = "Enter manually"
 	}
 	
 	if isInputSelected {
-		// Input is selected - show selector and active input
-		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render(label) + m.textInput.View() + "\n")
+		// Input is selected - show selector, bold label, and active input
+		b.WriteString(selectorStyle.Render("▶") + " " + selectedStyle.Render(label) + "  " + m.textInput.View() + "\n")
 	} else {
-		// Input is not selected - show dimmed
+		// Input is not selected - show dimmed label
 		inputValue := m.textInput.Value()
 		if inputValue == "" {
-			b.WriteString("  " + dimStyle.Render(label) + "\n")
+			b.WriteString("  " + titleStyle.Render(label) + "\n")
 		} else {
-			b.WriteString("  " + dimStyle.Render(label) + inputValue + "\n")
+			b.WriteString("  " + titleStyle.Render(label) + "  " + dimStyle.Render(inputValue) + "\n")
 		}
 	}
 	b.WriteString("\n")
 	
-	// Back menu item (selectable)
+	// Back menu item (selectable) - styled like Setup menu
 	backIndex := inputIndex + 1
 	isBackSelected := m.cursor == backIndex
 	if isBackSelected {
-		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render("←") + "  " + selectedStyle.Render("Back"))
+		b.WriteString(selectorStyle.Render("▶") + " ←  " + selectedStyle.Render("Back") + "  " + selectedStyle.Render("Esc"))
 	} else {
-		b.WriteString("  " + dimStyle.Render("←") + "  " + dimStyle.Render("Back"))
+		b.WriteString("  ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc"))
 	}
 
 	return b.String()
@@ -6825,9 +6809,6 @@ func RunPATLogin(homeDir string) error {
 			return nil // Go back without error
 		}
 		if pm.status == "select_org" {
-			// Reload .env to pick up the saved token
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			// Navigate to Select Organization screen
 			return runSelectOrgWithFlag(homeDir, pm.username, true)
 		}
