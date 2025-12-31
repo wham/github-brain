@@ -4523,6 +4523,15 @@ func (p *UIProgress) UpdateRequestRate(requestsPerSecond int) {
 	// This could be added to the model if desired, but for now we just ignore it
 }
 
+// SignalComplete signals that pull is complete and waits for user to press Enter
+func (p *UIProgress) SignalComplete() {
+	if p.program != nil {
+		p.program.Send(pullCompleteMsg{})
+		// Wait for the program to finish (user presses Enter or Ctrl+C)
+		<-p.done
+	}
+}
+
 // Message types for Bubble Tea updates
 type (
 	itemUpdateMsg struct {
@@ -4549,6 +4558,7 @@ type (
 		limit     int
 		resetTime time.Time
 	}
+	pullCompleteMsg struct{} // Signal that pull is complete and waiting for Enter
 )
 
 // itemState represents the state of a pull item
@@ -4563,20 +4573,21 @@ type itemState struct {
 
 // model is the Bubble Tea model for the pull command UI
 type model struct {
-	items          map[string]itemState
-	itemOrder      []string
-	spinner        spinner.Model
-	logs           []logEntry
-	apiSuccess     int
-	apiWarning     int
-	apiErrors      int
-	rateLimitUsed  int
-	rateLimitMax   int
-	rateLimitReset time.Time
-	width          int
-	height         int
-	username       string
-	organization   string
+	items           map[string]itemState
+	itemOrder       []string
+	spinner         spinner.Model
+	logs            []logEntry
+	apiSuccess      int
+	apiWarning      int
+	apiErrors       int
+	rateLimitUsed   int
+	rateLimitMax    int
+	rateLimitReset  time.Time
+	width           int
+	height          int
+	username        string
+	organization    string
+	waitingForEnter bool // True when pull is complete and waiting for Enter key
 }
 
 // logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
@@ -4630,6 +4641,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			// If waiting for Enter after pull completion, quit
+			if m.waitingForEnter {
+				return m, tea.Quit
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -4700,6 +4716,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rateLimitReset = msg.resetTime
 		return m, nil
 
+	case pullCompleteMsg:
+		m.waitingForEnter = true
+		return m, nil
+
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -4759,6 +4779,12 @@ func (m model) View() string {
 		} else {
 			lines = append(lines, "")
 		}
+	}
+	
+	// Show "Pull completed. Press enter to continue." if waiting for Enter
+	if m.waitingForEnter {
+		lines = append(lines, "")
+		lines = append(lines, successStyle.Render("Pull completed. Press enter to continue."))
 	}
 	
 	// Join all lines
@@ -5336,27 +5362,15 @@ func runPullOperation(homeDir, username, org string) error {
 	}
 
 	// Final status update
-	progress.UpdateMessage("Successfully pulled GitHub data")
-
-	// Show "Press any key to continue..."
-	progress.Log("✅ Pull complete! Press any key to continue...")
+	progress.Log("✅ Pull complete!")
 	
 	// Give time for final display update to render
 	time.Sleep(200 * time.Millisecond)
 
-	// Wait for keypress before returning to menu
-	waitForKeypress(progress)
-
-	progress.Stop()
+	// Signal completion and wait for user to press Enter
+	progress.SignalComplete()
 
 	return nil
-}
-
-// waitForKeypress sends a message to wait for user input before continuing
-func waitForKeypress(progress *UIProgress) {
-	// The progress UI will handle showing "Press any key to continue..."
-	// We just need to wait a bit and then stop
-	time.Sleep(2 * time.Second)
 }
 
 // promptForOrganization shows a TUI prompt for the organization
