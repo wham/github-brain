@@ -6202,6 +6202,12 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if maxDisplay > 10 {
 		maxDisplay = 10
 	}
+	
+	// Menu items: [orgs...] [enter manually] [back]
+	inputIndex := maxDisplay
+	backIndex := inputIndex + 1
+	isInputSelected := m.cursor == inputIndex
+	isBackSelected := m.cursor == backIndex
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -6219,20 +6225,27 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "ctrl+n":
-			if m.status == "list" && maxDisplay > 0 && m.cursor < maxDisplay-1 {
+			// Can navigate down to backIndex
+			if m.status == "list" && m.cursor < backIndex {
 				m.cursor++
 			}
 		case "enter":
 			if m.status == "list" {
-				var org string
-				inputValue := strings.TrimSpace(m.textInput.Value())
+				if isBackSelected {
+					// Go back
+					m.status = "cancelled"
+					m.done = true
+					return m, tea.Quit
+				}
 				
-				if maxDisplay > 0 && m.cursor < maxDisplay {
+				var org string
+				
+				if isInputSelected {
+					// Use the typed value from text input
+					org = strings.TrimSpace(m.textInput.Value())
+				} else if m.cursor < maxDisplay {
 					// Select from filtered list (displayed items)
 					org = m.filtered[m.cursor]
-				} else if inputValue != "" {
-					// Use the typed value
-					org = inputValue
 				}
 				
 				if org != "" {
@@ -6242,15 +6255,20 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		
-		// Pass other key messages to textinput when in list mode
-		if m.status == "list" {
+		// Pass key messages to textinput only when the input is selected
+		if m.status == "list" && isInputSelected {
 			prevValue := m.textInput.Value()
 			m.textInput, cmd = m.textInput.Update(msg)
 			
-			// If text changed, update filtered list and reset cursor
+			// If text changed, update filtered list (but keep cursor on input)
 			if m.textInput.Value() != prevValue {
 				m.filtered = m.filterOrganizations(m.textInput.Value())
-				m.cursor = 0
+				// Recalculate inputIndex and keep cursor there
+				newMaxDisplay := len(m.filtered)
+				if newMaxDisplay > 10 {
+					newMaxDisplay = 10
+				}
+				m.cursor = newMaxDisplay
 			}
 			return m, cmd
 		}
@@ -6387,6 +6405,10 @@ func (m selectOrgModel) renderListView() string {
 		displayOrgs = displayOrgs[:10]
 	}
 	
+	// The "enter manually" input is at index len(displayOrgs)
+	inputIndex := len(displayOrgs)
+	isInputSelected := m.cursor == inputIndex
+	
 	if len(m.organizations) == 0 {
 		b.WriteString(dimStyle.Render("  No organizations found") + "\n")
 	} else if len(displayOrgs) > 0 {
@@ -6403,17 +6425,34 @@ func (m selectOrgModel) renderListView() string {
 
 	b.WriteString("\n")
 	
-	// Text input for manual entry
-	if len(displayOrgs) > 0 {
-		b.WriteString(dimStyle.Render("  Or enter manually: ") + m.textInput.View() + "\n")
+	// Text input for manual entry (as a selectable item)
+	label := "Or enter manually: "
+	if len(displayOrgs) == 0 {
+		label = "Enter manually: "
+	}
+	
+	if isInputSelected {
+		// Input is selected - show selector and active input
+		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render(label) + m.textInput.View() + "\n")
 	} else {
-		b.WriteString(dimStyle.Render("  Enter manually: ") + m.textInput.View() + "\n")
+		// Input is not selected - show dimmed
+		inputValue := m.textInput.Value()
+		if inputValue == "" {
+			b.WriteString("  " + dimStyle.Render(label) + "\n")
+		} else {
+			b.WriteString("  " + dimStyle.Render(label) + inputValue + "\n")
+		}
 	}
 	b.WriteString("\n")
 	
-	// Back menu item - same format as Setup screen
-	paddedName := fmt.Sprintf("%-4s", "Back")
-	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
+	// Back menu item (selectable)
+	backIndex := inputIndex + 1
+	isBackSelected := m.cursor == backIndex
+	if isBackSelected {
+		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render("←") + "  " + selectedStyle.Render("Back"))
+	} else {
+		b.WriteString("  " + dimStyle.Render("←") + "  " + dimStyle.Render("Back"))
+	}
 
 	return b.String()
 }

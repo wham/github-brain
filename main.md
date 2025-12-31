@@ -379,7 +379,7 @@ Allows user to select or change the organization to sync. This screen is accessi
    }
    ```
 
-2. Display organization selection screen with inline text input (show first 10 matches):
+2. Display organization selection screen with selectable list and text input (show first 10 matches):
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
@@ -389,7 +389,23 @@ Allows user to select or change the organization to sync. This screen is accessi
    │   open-source-org                                              │
    │   another-org                                                  │
    │                                                                │
-   │   Or enter manually: █                                         │
+   │   Or enter manually:                                           │
+   │                                                                │
+   │ ▶ ←  Back  Esc                                                 │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   When "Enter manually" is selected (navigate down past the list):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
+   │                                                                │
+   │   my-company                                                   │
+   │   open-source-org                                              │
+   │   another-org                                                  │
+   │                                                                │
+   │ ▶ Or enter manually: █                                         │
    │                                                                │
    │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
@@ -401,9 +417,9 @@ Allows user to select or change the organization to sync. This screen is accessi
    ╭────────────────────────────────────────────────────────────────╮
    │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
-   │ ▶ my-company                                                   │
+   │   my-company                                                   │
    │                                                                │
-   │   Or enter manually: my█                                       │
+   │ ▶ Or enter manually: my█                                       │
    │                                                                │
    │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
@@ -415,7 +431,7 @@ Allows user to select or change the organization to sync. This screen is accessi
    ╭────────────────────────────────────────────────────────────────╮
    │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
-   │   Enter manually: xyz█                                         │
+   │ ▶ Enter manually: xyz█                                         │
    │                                                                │
    │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
@@ -429,7 +445,7 @@ Allows user to select or change the organization to sync. This screen is accessi
    │                                                                │
    │   No organizations found                                       │
    │                                                                │
-   │   Enter manually: █                                            │
+   │ ▶ Enter manually: █                                            │
    │                                                                │
    │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
@@ -455,9 +471,10 @@ Allows user to select or change the organization to sync. This screen is accessi
 ### Menu Navigation
 
 - Use arrow keys (↑/↓) to navigate organization list (max 10 displayed)
+- Navigate down past the list to select "Enter manually" option
+- Typing only works when "Enter manually" is selected
 - Typing filters from all organizations (up to 100), shows top 10 matches
-- Typing filters the list and populates the text input
-- Press Enter to select highlighted organization, or use text input value if typed
+- Press Enter to select highlighted organization or submit manual entry
 - Press Esc to go back without changing
 
 ### Implementation Notes
