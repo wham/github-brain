@@ -35,9 +35,9 @@ When `github-brain` is run without arguments, display an interactive menu:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                                  1.0.0  │
 │                                                                │
-│ ▶ 🔧 Setup  Configure GitHub username and organization        │
-│   🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Ctrl+C                                             │
+│ ▶ � Pull   Sync GitHub data to local database                 │
+│   🔧 Setup  Configure GitHub username and organization        │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -47,9 +47,9 @@ After login but no organization configured:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                 👤 @wham · 1.0.0  │
 │                                                                │
-│ ▶ 🔧 Setup  Configure GitHub username and organization        │
-│   🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Ctrl+C                                             │
+│ ▶ � Pull   Sync GitHub data to local database                 │
+│   🔧 Setup  Configure GitHub username and organization        │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -59,9 +59,9 @@ After successful login with organization configured:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home    👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
-│   🔧 Setup  Configure GitHub username and organization        │
 │ ▶ 🔄 Pull   Sync GitHub data to local database                 │
-│   🚪 Quit   Ctrl+C                                             │
+│   🔧 Setup  Configure GitHub username and organization        │
+│   🚪 Exit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -88,23 +88,22 @@ Right side components (shown only when available):
 
 ### Menu Items
 
-1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-2. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
-3. **🚪 Quit** - Exit the application (Ctrl+C)
+1. **� Pull** - Runs the pull operation (see [pull](#pull) section)
+2. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
+3. **🚪 Exit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
-- If user is logged in AND organization is configured → default to **Pull**
-- Otherwise → default to **Setup**
+- Always start with **Pull** selected (the first item)
 
 ### Flow
 
 1. On startup, check if GITHUB_TOKEN exists and is valid
-2. Show menu with appropriate status in title bar and default selection
+2. Show menu with appropriate status in title bar
 3. When user selects Setup, show the setup submenu
 4. When user selects Pull, prompt for organization if not set, then run pull
-5. After pull completes, return to menu
-6. When user selects Quit, exit cleanly
+5. After pull completes or fails, show "Press enter to continue" and wait for Enter key, then return to menu
+6. When user selects Exit, exit cleanly
 
 ## Setup Menu
 
@@ -362,8 +361,8 @@ Operation:
 - Pull items: Repositories, Discussions, Issues, Pull Requests
 - Always pull all items (no selective sync from TUI)
 - Maintain console output showing selected items and status
-- Use `log/slog` custom logger for last 5 log messages with timestamps in console output
-- On completion or error, show "Press any key to continue..." and return to main menu
+- Use `log/slog` custom logger for last 10 log messages with timestamps in console output
+- On completion or error, show "Press enter to continue" message and wait for Enter key before returning to main menu
 
 ### Console Rendering with Bubble Tea
 
@@ -379,7 +378,7 @@ Console at the beginning of pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain / 🔄 Pull      👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
 │ 📋 Repositories                                                │
 │ 📋 Discussions                                                 │
@@ -403,7 +402,7 @@ Console during first item pull:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain / 🔄 Pull      👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
 │ ⠋ Repositories: 1,247                                         │
 │ 📋 Discussions                                                 │
@@ -427,7 +426,7 @@ Console when first item completes:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain / 🔄 Pull      👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ⠙ Discussions: 156                                            │
@@ -451,7 +450,7 @@ Console when an error occurs:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🔄 Pull                  👤 @wham (my-org)  │
+│ GitHub Brain / 🔄 Pull      👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
 │ ✅ Repositories: 2,847                                         │
 │ ❌ Discussions: 156 (errors)                                   │

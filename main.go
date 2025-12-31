@@ -4219,34 +4219,23 @@ func RunMCPServer(db *DB) error {
 // logErrorAndReturn logs an error message, waits for display, and returns (for use in main goroutine with defer)
 func logErrorAndReturn(progress ProgressInterface, format string, args ...interface{}) {
 	progress.Log(format, args...)
-	time.Sleep(3 * time.Second)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
-// exitAfterDelay waits for display and exits (for use when errors are already logged)
-func exitAfterDelay(progress ProgressInterface) {
-	time.Sleep(3 * time.Second)
-	progress.Stop()
-	os.Exit(1)
-}
-
-// handleFatalError logs an error and exits gracefully after a delay
+// handleFatalError logs an error and waits for Enter to continue
 func handleFatalError(progress ProgressInterface, format string, args ...interface{}) {
-	logErrorAndReturn(progress, format, args...)
-	progress.Stop()
-	os.Exit(1)
+	progress.Log(format, args...)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
-// handlePullItemError marks an item as failed and exits
+// handlePullItemError marks an item as failed and waits for Enter to continue
 func handlePullItemError(progress ProgressInterface, item string, err error) {
 	progress.MarkItemFailed(item, err.Error())
-	handleFatalError(progress, "Error: %v", err)
-}
-
-// checkPreviousFailures checks if any previous item failed and exits if so
-func checkPreviousFailures(progress ProgressInterface, currentItem string) {
-	if progress.HasAnyFailed() {
-		handleFatalError(progress, "Skipping %s due to previous failures", currentItem)
-	}
+	progress.Log("Error: %v", err)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
 // updateProgressStatus updates the progress UI with current rate limit and API status
@@ -4399,6 +4388,7 @@ type ProgressInterface interface {
 	UpdateAPIStatus(success, warning, errors int)
 	UpdateRateLimit(used, limit int, resetTime time.Time)
 	UpdateRequestRate(requestsPerSecond int)
+	SignalComplete()
 }
 
 // UIProgress implements the ProgressInterface using Bubble Tea for rendering
@@ -4523,6 +4513,15 @@ func (p *UIProgress) UpdateRequestRate(requestsPerSecond int) {
 	// This could be added to the model if desired, but for now we just ignore it
 }
 
+// SignalComplete signals that pull is complete and waits for user to press Enter
+func (p *UIProgress) SignalComplete() {
+	if p.program != nil {
+		p.program.Send(pullCompleteMsg{})
+		// Wait for the program to finish (user presses Enter or Ctrl+C)
+		<-p.done
+	}
+}
+
 // Message types for Bubble Tea updates
 type (
 	itemUpdateMsg struct {
@@ -4549,6 +4548,7 @@ type (
 		limit     int
 		resetTime time.Time
 	}
+	pullCompleteMsg struct{} // Signal that pull is complete and waiting for Enter
 )
 
 // itemState represents the state of a pull item
@@ -4563,20 +4563,21 @@ type itemState struct {
 
 // model is the Bubble Tea model for the pull command UI
 type model struct {
-	items          map[string]itemState
-	itemOrder      []string
-	spinner        spinner.Model
-	logs           []logEntry
-	apiSuccess     int
-	apiWarning     int
-	apiErrors      int
-	rateLimitUsed  int
-	rateLimitMax   int
-	rateLimitReset time.Time
-	width          int
-	height         int
-	username       string
-	organization   string
+	items           map[string]itemState
+	itemOrder       []string
+	spinner         spinner.Model
+	logs            []logEntry
+	apiSuccess      int
+	apiWarning      int
+	apiErrors       int
+	rateLimitUsed   int
+	rateLimitMax    int
+	rateLimitReset  time.Time
+	width           int
+	height          int
+	username        string
+	organization    string
+	waitingForEnter bool // True when pull is complete and waiting for Enter key
 }
 
 // logEntry represents a timestamped log message (renamed from LogEntry to avoid conflict)
@@ -4608,7 +4609,7 @@ func newModel(enabledItems map[string]bool, username, organization string) model
 		items:        items,
 		itemOrder:    itemOrder,
 		spinner:      s,
-		logs:         make([]logEntry, 0, 5),
+		logs:         make([]logEntry, 0, 10),
 		width:        80,
 		username:     username,
 		organization: organization,
@@ -4630,6 +4631,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			// If waiting for Enter after pull completion, quit
+			if m.waitingForEnter {
+				return m, tea.Quit
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -4700,6 +4706,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rateLimitReset = msg.resetTime
 		return m, nil
 
+	case pullCompleteMsg:
+		m.waitingForEnter = true
+		return m, nil
+
 	case spinner.TickMsg:
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -4715,7 +4725,7 @@ func (m *model) addLog(message string) {
 		message: message,
 	}
 	m.logs = append(m.logs, entry)
-	if len(m.logs) > 5 {
+	if len(m.logs) > 10 {
 		m.logs = m.logs[1:]
 	}
 }
@@ -4753,12 +4763,18 @@ func (m model) View() string {
 	lines = append(lines, headerStyle.Render("💬 Activity"))
 	
 	// Activity log lines
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		if i < len(m.logs) {
 			lines = append(lines, formatLogLine(m.logs[i], errorStyle))
 		} else {
 			lines = append(lines, "")
 		}
+	}
+	
+	// Show "Press enter to continue" if waiting for Enter
+	if m.waitingForEnter {
+		lines = append(lines, "")
+		lines = append(lines, "Press enter to continue")
 	}
 	
 	// Join all lines
@@ -4820,28 +4836,9 @@ func (m model) View() string {
 		}
 	}
 	
-	// Add title as first line of content
-	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)
-	var rightStatus string
-	if m.username != "" {
-		if m.organization != "" {
-			rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
-		} else {
-			rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
-		}
-	} else {
-		rightStatus = "👤 Not logged in"
-	}
-	
-	// Calculate spacing for title bar
-	leftWidth := visibleLength(leftTitle)
-	rightWidth := visibleLength(rightStatus)
-	spacing := maxContentWidth - leftWidth - rightWidth
-	if spacing < 1 {
-		spacing = 1
-	}
-	
-	titleLine := titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	// Add title as first line of content using shared renderTitleBar
+	// innerWidth is maxContentWidth minus padding (already accounted for in maxContentWidth)
+	titleLine := renderTitleBar("🔄 Pull", m.username, m.organization, maxContentWidth)
 	contentLines = append([]string{titleLine}, contentLines...)
 	content = strings.Join(contentLines, "\n")
 	
@@ -4925,9 +4922,9 @@ func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
 
 	// Color error messages
 	if strings.Contains(entry.message, "❌") || strings.Contains(entry.message, "Error:") {
-		return "     " + timestamp + " " + errorStyle.Render(message)
+		return timestamp + " " + errorStyle.Render(message)
 	}
-	return "     " + timestamp + " " + message
+	return timestamp + " " + message
 }
 
 // ============================================================================
@@ -4967,9 +4964,9 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
-			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
+			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
+			{icon: "🚪", name: "Exit", description: "Ctrl+C"},
 		},
 		cursor:       0,
 		status:       "Checking authentication...",
@@ -5038,7 +5035,7 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "Pull":
 				m.runPull = true
 				return m, tea.Quit
-			case "Quit":
+			case "Exit":
 				m.quitting = true
 				return m, tea.Quit
 			}
@@ -5054,19 +5051,13 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.loggedIn {
 			if msg.organization != "" {
 				m.status = fmt.Sprintf("Logged in as @%s (%s)", msg.username, msg.organization)
-				// Move cursor to Pull only if logged in AND organization configured
-				m.cursor = 1
 			} else {
 				m.status = fmt.Sprintf("Logged in as @%s", msg.username)
-				// Stay on Setup if organization not configured
-				m.cursor = 0
 			}
 			m.username = msg.username
 			m.organization = msg.organization
 		} else {
 			m.status = "Not logged in"
-			// Default to Setup if not logged in
-			m.cursor = 0
 		}
 		return m, nil
 	}
@@ -5181,7 +5172,7 @@ func runPullOperation(homeDir, username, org string) error {
 	organization := os.Getenv("ORGANIZATION")
 	if organization == "" {
 		// Prompt for organization using a simple TUI
-		newOrg, err := promptForOrganization(homeDir)
+		newOrg, err := promptForOrganization(homeDir, username)
 		if err != nil {
 			return err
 		}
@@ -5310,9 +5301,7 @@ func runPullOperation(homeDir, username, org string) error {
 
 		updateProgressStatus(progress)
 
-		progress.Log("Error: Failed to fetch current user: %v", err)
-		progress.Log("Please run 'login' again to re-authenticate")
-		exitAfterDelay(progress)
+		logErrorAndReturn(progress, "Error: Failed to fetch current user: %v. Please run 'login' again to re-authenticate", err)
 		return err
 	}
 	currentUsername := currentUser.Viewer.Login
@@ -5329,22 +5318,22 @@ func runPullOperation(homeDir, username, org string) error {
 	}
 
 	// Pull discussions
-	checkPreviousFailures(progress, "discussions")
 	if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "discussions", err)
+		return err
 	}
 
 	// Pull issues
-	checkPreviousFailures(progress, "issues")
 	if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "issues", err)
+		return err
 	}
 
 	// Pull pull requests
-	checkPreviousFailures(progress, "pull requests")
 	progress.Log("Starting pull requests operation")
 	if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "pull-requests", err)
+		return err
 	}
 
 	// Truncate search FTS5 table and repopulate it
@@ -5355,32 +5344,20 @@ func runPullOperation(homeDir, username, org string) error {
 	}
 
 	// Final status update
-	progress.UpdateMessage("Successfully pulled GitHub data")
-
-	// Show "Press any key to continue..."
-	progress.Log("✅ Pull complete! Press any key to continue...")
+	progress.Log("✅ Pull complete!")
 	
 	// Give time for final display update to render
 	time.Sleep(200 * time.Millisecond)
 
-	// Wait for keypress before returning to menu
-	waitForKeypress(progress)
-
-	progress.Stop()
+	// Signal completion and wait for user to press Enter
+	progress.SignalComplete()
 
 	return nil
 }
 
-// waitForKeypress sends a message to wait for user input before continuing
-func waitForKeypress(progress *UIProgress) {
-	// The progress UI will handle showing "Press any key to continue..."
-	// We just need to wait a bit and then stop
-	time.Sleep(2 * time.Second)
-}
-
 // promptForOrganization shows a TUI prompt for the organization
-func promptForOrganization(homeDir string) (string, error) {
-	m := newOrgPromptModel()
+func promptForOrganization(homeDir string, username string) (string, error) {
+	m := newOrgPromptModel(username)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
@@ -5404,12 +5381,13 @@ func promptForOrganization(homeDir string) (string, error) {
 type orgPromptModel struct {
 	textInput    textinput.Model
 	organization string
+	username     string
 	cancelled    bool
 	width        int
 	height       int
 }
 
-func newOrgPromptModel() orgPromptModel {
+func newOrgPromptModel(username string) orgPromptModel {
 	ti := textinput.New()
 	ti.Placeholder = "my-org"
 	ti.CharLimit = 100
@@ -5420,6 +5398,7 @@ func newOrgPromptModel() orgPromptModel {
 
 	return orgPromptModel{
 		textInput: ti,
+		username:  username,
 		width:     80,
 		height:    24,
 	}
@@ -5457,21 +5436,23 @@ func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m orgPromptModel) View() string {
 
+	// Calculate box width first so we can use it for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	// Inner width is maxContentWidth minus padding (1 on each side)
+	innerWidth := maxContentWidth - 2
+
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)) + "\n")
+	b.WriteString(renderTitleBar("🔄 Pull", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
 	b.WriteString("\n")
-
-	// Calculate box width
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
-	}
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().

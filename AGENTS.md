@@ -1,4 +1,4 @@
 - The app is coded in Markdown file `main.md` and compiled to Go code using the instructions in `.github/prompts/compile.prompt.md`.
-- When prompted to make changes, start by updating `main.md` and letting me to review the changes before compiling again.
+- IMPORTANT: When prompted to make any changes, start by updating `main.md` and letting me to review the changes before touching the Go code.
 - Everything must fit into a single `main.md` / `main.go` file pair. Avoid creating new files.
 - `README.md` contains usage instructions. Read it to understand how the app should work.
