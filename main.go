@@ -5891,10 +5891,10 @@ func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
 		username:     username,
 		organization: organization,
 		choices: []menuChoice{
-			{icon: "🔗", name: "Login with GitHub (OAuth)", description: ""},
-			{icon: "🔑", name: "Login with Personal Access Token", description: ""},
-			{icon: "📄", name: "Open configuration file", description: ""},
-			{icon: "←", name: "Back", description: ""},
+			{icon: "✨", name: "Login with code", description: "Recommended for organization owners"},
+			{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
+			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
+			{icon: "🔙", name: "Back", description: "Esc"},
 		},
 		cursor: 0,
 		width:  80,
@@ -5966,25 +5966,23 @@ func (m setupMenuModel) View() string {
 	b.WriteString(renderTitleBar("🔧 Setup", m.username, m.organization, innerWidth) + "\n")
 	b.WriteString("\n")
 
-	// Menu items
+	// Menu items - same format as Home screen
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
 	for i, choice := range m.choices {
 		cursor := "  "
-		style := dimStyle
+		descStyle := dimStyle
 		if m.cursor == i {
-			cursor = "> "
-			style = selectedStyle
+			cursor = selectorStyle.Render("▶") + " "
+			descStyle = selectedStyle
 		}
-		line := fmt.Sprintf("%s%s %s", cursor, choice.icon, choice.name)
-		b.WriteString(style.Render(line) + "\n")
+		// Pad name to 15 characters for alignment
+		paddedName := fmt.Sprintf("%-15s", choice.name)
+		// Name is always bold (titleStyle), description uses current selection style
+		b.WriteString(fmt.Sprintf("%s%s %s  %s", cursor, choice.icon, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
 		if i < len(m.choices)-1 {
-			b.WriteString("\n")
+			b.WriteString("\n\n")
 		}
 	}
-
-	b.WriteString("\n")
-
-	// Help text
-	b.WriteString(dimStyle.Render("Press Enter to select, Esc to go back") + "\n")
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().

@@ -111,26 +111,23 @@ The Setup submenu provides authentication and configuration options:
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ GitHub Brain 1.0.0 / 🔧 Setup                👤 Not logged in  │
+│ GitHub Brain / 🔧 Setup                      👤 Not logged in  │
 │                                                                │
-│ > 🔗 Login with GitHub (OAuth)                                 │
-│   🔑 Login with Personal Access Token                          │
-│   📄 Open configuration file                                   │
-│   ← Back                                                       │
-│                                                                │
-│ Press Enter to select, Esc to go back                          │
-│                                                                │
+│ ▶ ✨ Login with code   Recommended for organization owners     │
+│   🔑 Login with PAT    Works without organization ownership    │
+│   📝 Advanced          Edit configuration file                 │
+│   ↩️  Back              Esc                                     │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
 ### Setup Menu Items
 
-1. **🔗 Login with GitHub (OAuth)** - Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
-2. **🔑 Login with Personal Access Token** - Manually enter a PAT (see [PAT Login](#pat-login) section)
-3. **📄 Open configuration file** - Opens `.env` file in default editor
-4. **← Back** - Return to main menu
+1. **✨ Login with code** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
+2. **🔑 Login with PAT** - Works without organization ownership. Manually enter a PAT (see [PAT Login](#pat-login) section)
+3. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
+4. **↩️ Back** - Return to main menu (Esc)
 
-### Open Configuration File
+### Open Configuration File (Advanced)
 
 Opens the `.env` file located at `{HomeDir}/.env` using the system default editor:
 
