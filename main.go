@@ -5136,6 +5136,9 @@ func RunMainTUI(homeDir string) error {
 
 		if mm.runSetup {
 			if err := RunSetupMenu(homeDir, mm.username, mm.organization); err != nil {
+				if err.Error() == "quit" {
+					return nil // Exit app cleanly
+				}
 				// Log error but continue to menu
 				slog.Error("Setup failed", "error", err)
 			}
@@ -5620,7 +5623,12 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
+		case "ctrl+c":
+			m.status = "quit"
+			m.done = true
+			return m, tea.Quit
+		case "esc":
+			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
 		case "enter":
@@ -5732,7 +5740,7 @@ func (m loginModel) renderWaitingView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup / ✨ Login with code", m.currentUsername, m.currentOrg, innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / ✨ Login with device", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 
 	if m.userCode == "" {
@@ -5856,8 +5864,14 @@ func RunLogin(homeDir, currentUsername, currentOrg string) error {
 
 	// Check if login was successful
 	if lm, ok := finalModel.(loginModel); ok {
+		if lm.status == "quit" {
+			return fmt.Errorf("quit")
+		}
 		if lm.status == "error" {
 			return fmt.Errorf("%s", lm.errorMsg)
+		}
+		if lm.status == "cancelled" {
+			return nil // Go back without error
 		}
 		if lm.status != "success" {
 			return fmt.Errorf("login cancelled")
@@ -5893,7 +5907,7 @@ func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
 		username:     username,
 		organization: organization,
 		choices: []menuChoice{
-			{icon: "✨", name: "Login with code", description: "Recommended for organization owners"},
+			{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
 			{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
 			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
 			{icon: "🔙", name: "Back", description: "Esc"},
@@ -6012,12 +6026,19 @@ func RunSetupMenu(homeDir, username, organization string) error {
 			return fmt.Errorf("unexpected model type")
 		}
 
-		if sm.quitting || sm.goBack {
+		if sm.quitting {
+			return fmt.Errorf("quit")
+		}
+		
+		if sm.goBack {
 			return nil
 		}
 
 		if sm.runOAuth {
 			if err := RunLogin(homeDir, username, organization); err != nil {
+				if err.Error() == "quit" {
+					return err // Propagate quit to exit app
+				}
 				slog.Error("OAuth login failed", "error", err)
 			}
 			// Reload .env after login
@@ -6028,6 +6049,9 @@ func RunSetupMenu(homeDir, username, organization string) error {
 
 		if sm.runPAT {
 			if err := RunPATLogin(homeDir); err != nil {
+				if err.Error() == "quit" {
+					return err // Propagate quit to exit app
+				}
 				slog.Error("PAT login failed", "error", err)
 			}
 			// Reload .env after login
@@ -6140,9 +6164,11 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			m.status = "quit"
 			m.done = true
 			return m, tea.Quit
 		case "esc":
+			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
 		case "enter":
@@ -6361,8 +6387,14 @@ func RunPATLogin(homeDir string) error {
 
 	// Check if login was successful
 	if pm, ok := finalModel.(patLoginModel); ok {
+		if pm.status == "quit" {
+			return fmt.Errorf("quit")
+		}
 		if pm.status == "error" {
 			return fmt.Errorf("%s", pm.errorMsg)
+		}
+		if pm.status == "cancelled" {
+			return nil // Go back without error
 		}
 		if pm.status != "success" {
 			return fmt.Errorf("login cancelled")

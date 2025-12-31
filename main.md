@@ -82,8 +82,8 @@ Right side components (shown only when available):
 
 - Use arrow keys (↑/↓) or j/k to navigate
 - Press Enter to select
-- Press Esc to go back (in submenus)
-- Press Ctrl+C to quit
+- Press Esc to go back one screen (in submenus and dialogs)
+- Press Ctrl+C to exit the app from any screen
 - Highlight current selection with `▶` (blue)
 
 ### Menu Items
@@ -113,7 +113,7 @@ The Setup submenu provides authentication and configuration options:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🔧 Setup                      👤 Not logged in  │
 │                                                                │
-│ ▶ ✨ Login with code   Recommended for organization owners     │
+│ ▶ ✨ Login with device   Recommended for organization owners   │
 │   🔑 Login with PAT    Works without organization ownership    │
 │   📝 Advanced          Edit configuration file                 │
 │   ↩️  Back              Esc                                     │
@@ -122,7 +122,7 @@ The Setup submenu provides authentication and configuration options:
 
 ### Setup Menu Items
 
-1. **✨ Login with code** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
+1. **✨ Login with device** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
 2. **🔑 Login with PAT** - Works without organization ownership. Manually enter a PAT (see [PAT Login](#pat-login) section)
 3. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
 4. **↩️ Back** - Return to main menu (Esc)
@@ -199,7 +199,7 @@ The app uses a registered OAuth App for authentication:
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🔧 Setup / ✨ Login with code           1.0.0  │
+   │ GitHub Brain / 🔧 Setup / ✨ Login with device          1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
    │                                                                │
@@ -220,7 +220,7 @@ The app uses a registered OAuth App for authentication:
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🔧 Setup / ✨ Login with code    👤 @wham · 🏢 my-org · 1.0.0  │
+   │ GitHub Brain / 🔧 Setup / ✨ Login with device   👤 @wham · 🏢 my-org · 1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
    │                                                                │
