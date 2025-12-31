@@ -122,12 +122,27 @@ The Setup submenu provides authentication and configuration options:
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
+After login:
+
+```
+╭────────────────────────────────────────────────────────────────╮
+│ GitHub Brain / 🔧 Setup              👤 @wham · 1.0.0  │
+│                                                                │
+│ ▶ ✨ Login with device   Recommended for organization owners   │
+│   🔑 Login with PAT    Works without organization ownership    │
+│   🏢 Select organization  Choose organization to sync          │
+│   📝 Advanced          Edit configuration file                 │
+│   ←  Back              Esc                                     │
+╰────────────────────────────────────────────────────────────────╯
+```
+
 ### Setup Menu Items
 
 1. **✨ Login with device** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
 2. **🔑 Login with PAT** - Works without organization ownership. Manually enter a PAT (see [PAT Login](#pat-login) section)
-3. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
-4. **← Back** - Return to main menu (Esc)
+3. **🏢 Select organization** - Choose organization to sync (see [Select Organization](#select-organization) section). Only shown when logged in
+4. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
+5. **← Back** - Return to main menu (Esc)
 
 ### Open Configuration File (Advanced)
 
@@ -260,23 +275,9 @@ The app uses a registered OAuth App for authentication:
    - `access_denied`: User denied, show error
    - Success: Returns `access_token` (long-lived, does not expire)
 
-6. On success, prompt for organization:
+6. On success, save token to `.env` file and navigate to Select Organization screen (see [Select Organization](#select-organization) section)
 
-   ```
-   ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
-   │                                                                │
-   │  ✅ Successfully authenticated as @wham                        │
-   │                                                                │
-   │  Enter your GitHub organization (optional):                    │
-   │  > my-org█                                                     │
-   │                                                                │
-   │  Press Enter to skip, or type organization name                │
-   │                                                                │
-   ╰────────────────────────────────────────────────────────────────╯
-   ```
-
-7. Save tokens (and organization if provided) to `.env` file:
+7. After organization is selected, show completion screen:
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
@@ -327,11 +328,9 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
 
 3. Verify the token by calling `viewer { login }` GraphQL query
 
-4. On success, prompt for organization (same as OAuth flow)
+4. On success, save token to `.env` file and navigate to Select Organization screen (see [Select Organization](#select-organization) section)
 
-5. Save token and organization to `.env` file
-
-6. Return to main menu
+5. After organization is selected, show completion screen and return to main menu
 
 ### Token Storage
 
@@ -359,6 +358,102 @@ OAuth App tokens are long-lived and do not expire unless revoked.
 - Poll interval: Start with GitHub's `interval` value (usually 5 seconds)
 - Timeout: Code expires after `expires_in` seconds (usually 15 minutes)
 - After saving token, verify it works by fetching `viewer { login }`
+
+## Select Organization
+
+Allows user to select or change the organization to sync. This screen is accessible from the Setup menu (only shown when logged in) and is also shown automatically after successful login with device or PAT.
+
+### Organization Selection Flow
+
+1. On entry, if `GITHUB_TOKEN` is available, fetch user's organizations via GraphQL:
+
+   ```graphql
+   {
+     viewer {
+       organizations(first: 10) {
+         nodes {
+           login
+         }
+       }
+     }
+   }
+   ```
+
+2. Display organization selection screen with inline text input:
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │                                                                │
+   │ ▶ my-company                                                   │
+   │   open-source-org                                              │
+   │   another-org                                                  │
+   │                                                                │
+   │   Or enter manually: █                                         │
+   │                                                                │
+   │ ↑↓ navigate · Enter select · type to filter · Esc back         │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   When typing in the text input (filters list and allows custom entry):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │                                                                │
+   │   my-company                                                   │
+   │                                                                │
+   │   Or enter manually: my█                                       │
+   │                                                                │
+   │ ↑↓ navigate · Enter select · type to filter · Esc back         │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   If no organizations found:
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │                                                                │
+   │   No organizations found                                       │
+   │                                                                │
+   │   Or enter manually: █                                         │
+   │                                                                │
+   │ Enter organization name · Esc back                             │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   While loading organizations (with spinner):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │                                                                │
+   │   ⠋ Loading organizations...                                   │
+   │                                                                │
+   │ Press Esc to cancel                                            │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+3. On selection (from list or text input):
+   - Save `ORGANIZATION` to `.env` file
+   - If accessed from Setup menu, return to Setup menu
+   - If accessed after login flow, continue to completion screen
+
+### Menu Navigation
+
+- Use arrow keys (↑/↓) or j/k to navigate organization list
+- Typing filters the list and populates the text input
+- Press Enter to select highlighted organization, or use text input value if typed
+- Press Esc to go back without changing
+
+### Implementation Notes
+
+- Query organizations only when screen is entered (not cached)
+- Show spinner while loading organizations
+- Handle GraphQL errors gracefully - show "Enter custom name" option if query fails
+- Use `github.com/charmbracelet/bubbles/textinput` for custom organization input
+- Limit to 10 organizations for clean UI display
 
 ## pull
 
