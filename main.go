@@ -4219,34 +4219,23 @@ func RunMCPServer(db *DB) error {
 // logErrorAndReturn logs an error message, waits for display, and returns (for use in main goroutine with defer)
 func logErrorAndReturn(progress ProgressInterface, format string, args ...interface{}) {
 	progress.Log(format, args...)
-	time.Sleep(3 * time.Second)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
-// exitAfterDelay waits for display and exits (for use when errors are already logged)
-func exitAfterDelay(progress ProgressInterface) {
-	time.Sleep(3 * time.Second)
-	progress.Stop()
-	os.Exit(1)
-}
-
-// handleFatalError logs an error and exits gracefully after a delay
+// handleFatalError logs an error and waits for Enter to continue
 func handleFatalError(progress ProgressInterface, format string, args ...interface{}) {
-	logErrorAndReturn(progress, format, args...)
-	progress.Stop()
-	os.Exit(1)
+	progress.Log(format, args...)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
-// handlePullItemError marks an item as failed and exits
+// handlePullItemError marks an item as failed and waits for Enter to continue
 func handlePullItemError(progress ProgressInterface, item string, err error) {
 	progress.MarkItemFailed(item, err.Error())
-	handleFatalError(progress, "Error: %v", err)
-}
-
-// checkPreviousFailures checks if any previous item failed and exits if so
-func checkPreviousFailures(progress ProgressInterface, currentItem string) {
-	if progress.HasAnyFailed() {
-		handleFatalError(progress, "Skipping %s due to previous failures", currentItem)
-	}
+	progress.Log("Error: %v", err)
+	time.Sleep(200 * time.Millisecond)
+	progress.SignalComplete()
 }
 
 // updateProgressStatus updates the progress UI with current rate limit and API status
@@ -4399,6 +4388,7 @@ type ProgressInterface interface {
 	UpdateAPIStatus(success, warning, errors int)
 	UpdateRateLimit(used, limit int, resetTime time.Time)
 	UpdateRequestRate(requestsPerSecond int)
+	SignalComplete()
 }
 
 // UIProgress implements the ProgressInterface using Bubble Tea for rendering
@@ -4781,10 +4771,10 @@ func (m model) View() string {
 		}
 	}
 	
-	// Show "Pull completed. Press enter to continue." if waiting for Enter
+	// Show "Press enter to continue." if waiting for Enter
 	if m.waitingForEnter {
 		lines = append(lines, "")
-		lines = append(lines, successStyle.Render("Pull completed. Press enter to continue."))
+		lines = append(lines, dimStyle.Render("Press enter to continue."))
 	}
 	
 	// Join all lines
@@ -5317,9 +5307,7 @@ func runPullOperation(homeDir, username, org string) error {
 
 		updateProgressStatus(progress)
 
-		progress.Log("Error: Failed to fetch current user: %v", err)
-		progress.Log("Please run 'login' again to re-authenticate")
-		exitAfterDelay(progress)
+		logErrorAndReturn(progress, "Error: Failed to fetch current user: %v. Please run 'login' again to re-authenticate", err)
 		return err
 	}
 	currentUsername := currentUser.Viewer.Login
@@ -5336,22 +5324,22 @@ func runPullOperation(homeDir, username, org string) error {
 	}
 
 	// Pull discussions
-	checkPreviousFailures(progress, "discussions")
 	if err := PullDiscussions(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "discussions", err)
+		return err
 	}
 
 	// Pull issues
-	checkPreviousFailures(progress, "issues")
 	if err := PullIssues(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "issues", err)
+		return err
 	}
 
 	// Pull pull requests
-	checkPreviousFailures(progress, "pull requests")
 	progress.Log("Starting pull requests operation")
 	if err := PullPullRequests(ctx, graphqlClient, db, config, progress); err != nil {
 		handlePullItemError(progress, "pull-requests", err)
+		return err
 	}
 
 	// Truncate search FTS5 table and repopulate it
