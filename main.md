@@ -35,8 +35,8 @@ When `github-brain` is run without arguments, display an interactive menu:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                                  1.0.0  │
 │                                                                │
-│ ▶ 🔧 Setup  Configure GitHub username and organization        │
-│   🔄 Pull   Sync GitHub data to local database                 │
+│ ▶ � Pull   Sync GitHub data to local database                 │
+│   🔧 Setup  Configure GitHub username and organization        │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -47,8 +47,8 @@ After login but no organization configured:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home                 👤 @wham · 1.0.0  │
 │                                                                │
-│ ▶ 🔧 Setup  Configure GitHub username and organization        │
-│   🔄 Pull   Sync GitHub data to local database                 │
+│ ▶ � Pull   Sync GitHub data to local database                 │
+│   🔧 Setup  Configure GitHub username and organization        │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -59,8 +59,8 @@ After successful login with organization configured:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🏠 Home    👤 @wham · 🏢 my-org · 1.0.0  │
 │                                                                │
-│   🔧 Setup  Configure GitHub username and organization        │
 │ ▶ 🔄 Pull   Sync GitHub data to local database                 │
+│   🔧 Setup  Configure GitHub username and organization        │
 │   🚪 Quit   Ctrl+C                                             │
 ╰────────────────────────────────────────────────────────────────╯
 ```
@@ -88,19 +88,18 @@ Right side components (shown only when available):
 
 ### Menu Items
 
-1. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
-2. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
+1. **� Pull** - Runs the pull operation (see [pull](#pull) section)
+2. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
 3. **🚪 Quit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
-- If user is logged in AND organization is configured → default to **Pull**
-- Otherwise → default to **Setup**
+- Always start with **Pull** selected (the first item)
 
 ### Flow
 
 1. On startup, check if GITHUB_TOKEN exists and is valid
-2. Show menu with appropriate status in title bar and default selection
+2. Show menu with appropriate status in title bar
 3. When user selects Setup, show the setup submenu
 4. When user selects Pull, prompt for organization if not set, then run pull
 5. After pull completes or fails, show "Press enter to continue." and wait for Enter key, then return to menu

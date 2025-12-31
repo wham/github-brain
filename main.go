@@ -4964,8 +4964,8 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
-			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🔄", name: "Pull", description: "Sync GitHub data to local database"},
+			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🚪", name: "Quit", description: "Ctrl+C"},
 		},
 		cursor:       0,
@@ -5051,19 +5051,13 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.loggedIn {
 			if msg.organization != "" {
 				m.status = fmt.Sprintf("Logged in as @%s (%s)", msg.username, msg.organization)
-				// Move cursor to Pull only if logged in AND organization configured
-				m.cursor = 1
 			} else {
 				m.status = fmt.Sprintf("Logged in as @%s", msg.username)
-				// Stay on Setup if organization not configured
-				m.cursor = 0
 			}
 			m.username = msg.username
 			m.organization = msg.organization
 		} else {
 			m.status = "Not logged in"
-			// Default to Setup if not logged in
-			m.cursor = 0
 		}
 		return m, nil
 	}
