@@ -204,13 +204,15 @@ The app uses a registered OAuth App for authentication:
    │ GitHub Brain / 🔧 Setup / ✨ Login with device          1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
-   │  2. Grant access to all organizations you are planning to use  │
    │                                                                │
-   │  3. Enter this code:                                           │
+   │  2. Enter this code:                                           │
    │                                                                │
    │     ╭────────────────────╮                                     │
    │     │    F934-7E83       │                                     │
    │     ╰────────────────────╯                                     │
+   │                                                                │
+   │  3. Grant access to the organizations you are planning to use  │
+   │     with GitHub Brain                                          │
    │                                                                │
    │  ⠋ Waiting for authorization...                                │
    │                                                                │
@@ -226,13 +228,15 @@ The app uses a registered OAuth App for authentication:
    │ GitHub Brain / 🔧 Setup / ✨ Login with device   👤 @wham · 🏢 my-org · 1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
-   │  2. Grant access to all organizations you are planning to use  │
    │                                                                │
-   │  3. Enter this code:                                           │
+   │  2. Enter this code:                                           │
    │                                                                │
    │     ╭────────────────────╮                                     │
    │     │    F934-7E83       │                                     │
    │     ╰────────────────────╯                                     │
+   │                                                                │
+   │  3. Grant access to the organizations you are planning to use  │
+   │     with GitHub Brain                                          │
    │                                                                │
    │  ⠋ Waiting for authorization...                                │
    │                                                                │

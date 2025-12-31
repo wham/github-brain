@@ -5755,9 +5755,8 @@ func (m loginModel) renderWaitingView() string {
 		b.WriteString(m.spinner.View() + " Requesting device code...\n")
 	} else {
 		b.WriteString("1. Opening browser to https://github.com/login/device\n")
-		b.WriteString("2. Grant access to all organizations you are planning to use\n")
 		b.WriteString("\n")
-		b.WriteString("3. Enter this code:\n")
+		b.WriteString("2. Enter this code:\n")
 		b.WriteString("\n")
 		
 		// Code box with double border - gold/yellow stands out against purple
@@ -5770,6 +5769,8 @@ func (m loginModel) renderWaitingView() string {
 			MarginLeft(3)
 		
 		b.WriteString(codeStyle.Render(m.userCode) + "\n")
+		b.WriteString("\n")
+		b.WriteString("3. Grant access to the organizations you are planning to use with GitHub Brain\n")
 		b.WriteString("\n")
 		b.WriteString(m.spinner.View() + " Waiting for authorization...\n")
 	}
