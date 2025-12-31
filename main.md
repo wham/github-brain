@@ -370,7 +370,7 @@ Allows user to select or change the organization to sync. This screen is accessi
    ```graphql
    {
      viewer {
-       organizations(first: 100, orderBy: {field: LOGIN, direction: ASC}) {
+       organizations(first: 100, orderBy: { field: LOGIN, direction: ASC }) {
          nodes {
            login
          }
