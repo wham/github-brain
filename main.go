@@ -4932,9 +4932,9 @@ func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
 
 	// Color error messages
 	if strings.Contains(entry.message, "❌") || strings.Contains(entry.message, "Error:") {
-		return "     " + timestamp + " " + errorStyle.Render(message)
+		return timestamp + " " + errorStyle.Render(message)
 	}
-	return "     " + timestamp + " " + message
+	return timestamp + " " + message
 }
 
 // ============================================================================
