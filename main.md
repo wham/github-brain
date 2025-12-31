@@ -116,7 +116,7 @@ The Setup submenu provides authentication and configuration options:
 │ ▶ ✨ Login with device   Recommended for organization owners   │
 │   🔑 Login with PAT    Works without organization ownership    │
 │   📝 Advanced          Edit configuration file                 │
-│   ↩️  Back              Esc                                     │
+│   ←  Back              Esc                                     │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -125,7 +125,7 @@ The Setup submenu provides authentication and configuration options:
 1. **✨ Login with device** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
 2. **🔑 Login with PAT** - Works without organization ownership. Manually enter a PAT (see [PAT Login](#pat-login) section)
 3. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
-4. **↩️ Back** - Return to main menu (Esc)
+4. **← Back** - Return to main menu (Esc)
 
 ### Open Configuration File (Advanced)
 

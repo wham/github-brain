@@ -5910,7 +5910,7 @@ func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
 			{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
 			{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
 			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
-			{icon: "🔙", name: "Back", description: "Esc"},
+			{icon: "←", name: "Back", description: "Esc"},
 		},
 		cursor: 0,
 		width:  80,
@@ -5984,6 +5984,15 @@ func (m setupMenuModel) View() string {
 
 	// Menu items - same format as Home screen
 	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
+	
+	// Find the longest name for alignment
+	maxNameWidth := 0
+	for _, choice := range m.choices {
+		if len(choice.name) > maxNameWidth {
+			maxNameWidth = len(choice.name)
+		}
+	}
+	
 	for i, choice := range m.choices {
 		cursor := "  "
 		descStyle := dimStyle
@@ -5991,10 +6000,12 @@ func (m setupMenuModel) View() string {
 			cursor = selectorStyle.Render("▶") + " "
 			descStyle = selectedStyle
 		}
-		// Pad name to 15 characters for alignment
-		paddedName := fmt.Sprintf("%-15s", choice.name)
+		// Pad icon to 2 characters (emoji width) and name for alignment
+		iconWidth := lipgloss.Width(choice.icon)
+		iconPadding := strings.Repeat(" ", 2-iconWidth)
+		paddedName := fmt.Sprintf("%-*s", maxNameWidth, choice.name)
 		// Name is always bold (titleStyle), description uses current selection style
-		b.WriteString(fmt.Sprintf("%s%s %s  %s", cursor, choice.icon, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
+		b.WriteString(fmt.Sprintf("%s%s%s %s  %s", cursor, choice.icon, iconPadding, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
 		if i < len(m.choices)-1 {
 			b.WriteString("\n\n")
 		}
