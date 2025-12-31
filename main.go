@@ -4960,7 +4960,7 @@ type authCheckResultMsg struct {
 	organization string
 }
 
-func newMainMenuModel(homeDir string) mainMenuModel {
+func newMainMenuModel(homeDir string, cursor int) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
@@ -4968,7 +4968,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🚪", name: "Exit", description: "Ctrl+C"},
 		},
-		cursor:       0,
+		cursor:       cursor,
 		status:       "Checking authentication...",
 		width:        80,
 		height:       24,
@@ -5116,8 +5116,9 @@ func RunMainTUI(homeDir string) error {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
+	cursor := 0 // Remember cursor position across menu returns
 	for {
-		m := newMainMenuModel(homeDir)
+		m := newMainMenuModel(homeDir, cursor)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		finalModel, err := p.Run()
@@ -5129,6 +5130,8 @@ func RunMainTUI(homeDir string) error {
 		if !ok {
 			return fmt.Errorf("unexpected model type")
 		}
+
+		cursor = mm.cursor // Remember cursor position
 
 		if mm.quitting {
 			return nil
@@ -5632,6 +5635,11 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.done = true
 			return m, tea.Quit
 		case "enter":
+			if m.status == "waiting" {
+				m.status = "cancelled"
+				m.done = true
+				return m, tea.Quit
+			}
 			if m.status == "org_input" {
 				m.organization = strings.TrimSpace(m.textInput.Value())
 				return m, func() tea.Msg { return loginOrgSubmittedMsg{} }
@@ -5747,14 +5755,16 @@ func (m loginModel) renderWaitingView() string {
 		b.WriteString(m.spinner.View() + " Requesting device code...\n")
 	} else {
 		b.WriteString("1. Opening browser to https://github.com/login/device\n")
+		b.WriteString("2. Grant access to all organizations you are planning to use\n")
 		b.WriteString("\n")
-		b.WriteString("2. Enter this code:\n")
+		b.WriteString("3. Enter this code:\n")
 		b.WriteString("\n")
 		
-		// Code box with larger padding for emphasis
+		// Code box with double border - gold/yellow stands out against purple
 		codeStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("12")).
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(lipgloss.Color("220")).
+			Foreground(lipgloss.Color("220")).
 			Padding(0, 4).
 			Bold(true).
 			MarginLeft(3)
@@ -5765,8 +5775,12 @@ func (m loginModel) renderWaitingView() string {
 	}
 
 	b.WriteString("\n")
-	b.WriteString("Press Esc to cancel\n")
-	b.WriteString("\n")
+	
+	// Back menu item - always selected, same format as Setup screen
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	paddedName := fmt.Sprintf("%-4s", "Back")
+	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
 	return b.String()
 }
@@ -5901,7 +5915,7 @@ type setupMenuModel struct {
 	goBack       bool
 }
 
-func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
+func newSetupMenuModel(homeDir, username, organization string, cursor int) setupMenuModel {
 	return setupMenuModel{
 		homeDir:      homeDir,
 		username:     username,
@@ -5912,7 +5926,7 @@ func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
 			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
 			{icon: "←", name: "Back", description: "Esc"},
 		},
-		cursor: 0,
+		cursor: cursor,
 		width:  80,
 		height: 24,
 	}
@@ -6023,8 +6037,9 @@ func (m setupMenuModel) View() string {
 
 // RunSetupMenu runs the setup submenu
 func RunSetupMenu(homeDir, username, organization string) error {
+	cursor := 0 // Remember cursor position across menu returns
 	for {
-		m := newSetupMenuModel(homeDir, username, organization)
+		m := newSetupMenuModel(homeDir, username, organization, cursor)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		finalModel, err := p.Run()
@@ -6036,6 +6051,8 @@ func RunSetupMenu(homeDir, username, organization string) error {
 		if !ok {
 			return fmt.Errorf("unexpected model type")
 		}
+
+		cursor = sm.cursor // Remember cursor position
 
 		if sm.quitting {
 			return fmt.Errorf("quit")

@@ -85,16 +85,18 @@ Right side components (shown only when available):
 - Press Esc to go back one screen (in submenus and dialogs)
 - Press Ctrl+C to exit the app from any screen
 - Highlight current selection with `▶` (blue)
+- When going back, remember and restore the previous cursor position
 
 ### Menu Items
 
-1. **� Pull** - Runs the pull operation (see [pull](#pull) section)
+1. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
 2. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
 3. **🚪 Exit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
-- Always start with **Pull** selected (the first item)
+- Start with **Pull** selected on first launch
+- When returning from a submenu, restore the previous selection
 
 ### Flow
 
@@ -202,8 +204,9 @@ The app uses a registered OAuth App for authentication:
    │ GitHub Brain / 🔧 Setup / ✨ Login with device          1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
+   │  2. Grant access to all organizations you are planning to use  │
    │                                                                │
-   │  2. Enter this code:                                           │
+   │  3. Enter this code:                                           │
    │                                                                │
    │     ╭────────────────────╮                                     │
    │     │    F934-7E83       │                                     │
@@ -223,8 +226,9 @@ The app uses a registered OAuth App for authentication:
    │ GitHub Brain / 🔧 Setup / ✨ Login with device   👤 @wham · 🏢 my-org · 1.0.0  │
    │                                                                │
    │  1. Opening browser to https://github.com/login/device         │
+   │  2. Grant access to all organizations you are planning to use  │
    │                                                                │
-   │  2. Enter this code:                                           │
+   │  3. Enter this code:                                           │
    │                                                                │
    │     ╭────────────────────╮                                     │
    │     │    F934-7E83       │                                     │

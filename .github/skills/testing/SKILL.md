@@ -18,9 +18,10 @@ Use this skill:
 
 ## Starting the application
 
-- Run `scripts/run` where the user would normally run `github-brain`
-  - `scripts/run pull` equivalently runs `github-brain pull`
-  - `scripts/run mcp` equivalently runs `github-brain mcp`
+- Run `scripts/run --test` where the user would normally run `github-brain`
+  - `scripts/run --test pull` equivalently runs `github-brain pull`
+  - `scripts/run --test mcp` equivalently runs `github-brain mcp`
+  - The `--test` flag runs `go vet` before building to catch issues early
 - Ensure `.env` files is configured to use the `github-brain-test` organization
 - Use GitHub MCP to add new issue/PRs/discussions as needed for testing
 - Simulate user input: Send key presses, control combinations, or specific commands to the running application.

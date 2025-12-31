@@ -2,9 +2,22 @@
 set -e
 cd "$(dirname "$0")/.."
 
-# Run go vet (non-blocking in development)
-echo "Running go vet..."
-go vet ./... || echo "Warning: go vet found issues (non-blocking in development)"
+# Check for --test flag
+TEST_MODE=false
+ARGS=()
+for arg in "$@"; do
+    if [ "$arg" = "--test" ]; then
+        TEST_MODE=true
+    else
+        ARGS+=("$arg")
+    fi
+done
+
+# Run go vet only in test mode
+if [ "$TEST_MODE" = true ]; then
+    echo "Running go vet..."
+    go vet ./... || echo "Warning: go vet found issues"
+fi
 
 # Build with FTS5 support enabled
 CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" CGO_LDFLAGS="-Wl,-no_warn_duplicate_libraries" go build -gcflags="all=-N -l" -o ./build/github-brain .
@@ -14,7 +27,7 @@ CHECKOUT_DIR="$(pwd)"
 
 # Check if -m flag is already provided
 HAS_M_FLAG=false
-for arg in "$@"; do
+for arg in "${ARGS[@]}"; do
     if [ "$arg" = "-m" ]; then
         HAS_M_FLAG=true
         break
@@ -23,7 +36,7 @@ done
 
 # Add -m flag only if not already provided
 if [ "$HAS_M_FLAG" = false ]; then
-    ./build/github-brain "$@" -m "$CHECKOUT_DIR"
+    ./build/github-brain "${ARGS[@]}" -m "$CHECKOUT_DIR"
 else
-    ./build/github-brain "$@"
+    ./build/github-brain "${ARGS[@]}"
 fi
