@@ -4820,28 +4820,9 @@ func (m model) View() string {
 		}
 	}
 	
-	// Add title as first line of content
-	leftTitle := fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)
-	var rightStatus string
-	if m.username != "" {
-		if m.organization != "" {
-			rightStatus = fmt.Sprintf("👤 @%s (%s)", m.username, m.organization)
-		} else {
-			rightStatus = fmt.Sprintf("👤 @%s (no org)", m.username)
-		}
-	} else {
-		rightStatus = "👤 Not logged in"
-	}
-	
-	// Calculate spacing for title bar
-	leftWidth := visibleLength(leftTitle)
-	rightWidth := visibleLength(rightStatus)
-	spacing := maxContentWidth - leftWidth - rightWidth
-	if spacing < 1 {
-		spacing = 1
-	}
-	
-	titleLine := titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus)
+	// Add title as first line of content using shared renderTitleBar
+	// innerWidth is maxContentWidth minus padding (already accounted for in maxContentWidth)
+	titleLine := renderTitleBar("🔄 Pull", m.username, m.organization, maxContentWidth)
 	contentLines = append([]string{titleLine}, contentLines...)
 	content = strings.Join(contentLines, "\n")
 	
@@ -5181,7 +5162,7 @@ func runPullOperation(homeDir, username, org string) error {
 	organization := os.Getenv("ORGANIZATION")
 	if organization == "" {
 		// Prompt for organization using a simple TUI
-		newOrg, err := promptForOrganization(homeDir)
+		newOrg, err := promptForOrganization(homeDir, username)
 		if err != nil {
 			return err
 		}
@@ -5379,8 +5360,8 @@ func waitForKeypress(progress *UIProgress) {
 }
 
 // promptForOrganization shows a TUI prompt for the organization
-func promptForOrganization(homeDir string) (string, error) {
-	m := newOrgPromptModel()
+func promptForOrganization(homeDir string, username string) (string, error) {
+	m := newOrgPromptModel(username)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
@@ -5404,12 +5385,13 @@ func promptForOrganization(homeDir string) (string, error) {
 type orgPromptModel struct {
 	textInput    textinput.Model
 	organization string
+	username     string
 	cancelled    bool
 	width        int
 	height       int
 }
 
-func newOrgPromptModel() orgPromptModel {
+func newOrgPromptModel(username string) orgPromptModel {
 	ti := textinput.New()
 	ti.Placeholder = "my-org"
 	ti.CharLimit = 100
@@ -5420,6 +5402,7 @@ func newOrgPromptModel() orgPromptModel {
 
 	return orgPromptModel{
 		textInput: ti,
+		username:  username,
 		width:     80,
 		height:    24,
 	}
@@ -5457,21 +5440,23 @@ func (m orgPromptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m orgPromptModel) View() string {
 
+	// Calculate box width first so we can use it for title bar
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	// Inner width is maxContentWidth minus padding (1 on each side)
+	innerWidth := maxContentWidth - 2
+
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render(fmt.Sprintf("GitHub Brain %s / 🔄 Pull", Version)) + "\n")
+	b.WriteString(renderTitleBar("🔄 Pull", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString("  Enter your GitHub organization:\n")
 	b.WriteString("  " + m.textInput.View() + "\n")
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
 	b.WriteString("\n")
-
-	// Calculate box width
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
-	}
 
 	// Create border style
 	borderStyle := lipgloss.NewStyle().
