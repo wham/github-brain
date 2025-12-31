@@ -365,12 +365,12 @@ Allows user to select or change the organization to sync. This screen is accessi
 
 ### Organization Selection Flow
 
-1. On entry, if `GITHUB_TOKEN` is available, fetch user's organizations via GraphQL:
+1. On entry, if `GITHUB_TOKEN` is available, fetch user's organizations via GraphQL (max 100, ordered alphabetically):
 
    ```graphql
    {
      viewer {
-       organizations(first: 10) {
+       organizations(first: 100, orderBy: {field: LOGIN, direction: ASC}) {
          nodes {
            login
          }
@@ -379,11 +379,11 @@ Allows user to select or change the organization to sync. This screen is accessi
    }
    ```
 
-2. Display organization selection screen with inline text input:
+2. Display organization selection screen with inline text input (show first 10 matches):
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
    │ ▶ my-company                                                   │
    │   open-source-org                                              │
@@ -391,21 +391,33 @@ Allows user to select or change the organization to sync. This screen is accessi
    │                                                                │
    │   Or enter manually: █                                         │
    │                                                                │
-   │ ↑↓ navigate · Enter select · type to filter · Esc back         │
+   │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
-   When typing in the text input (filters list and allows custom entry):
+   When typing in the text input (filters from all 100 orgs, shows top 10 matches):
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
-   │   my-company                                                   │
+   │ ▶ my-company                                                   │
    │                                                                │
    │   Or enter manually: my█                                       │
    │                                                                │
-   │ ↑↓ navigate · Enter select · type to filter · Esc back         │
+   │ ▶ ←  Back  Esc                                                 │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   When no matches (shows "Enter manually" instead of "Or enter manually"):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
+   │                                                                │
+   │   Enter manually: xyz█                                         │
+   │                                                                │
+   │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -413,13 +425,13 @@ Allows user to select or change the organization to sync. This screen is accessi
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
    │   No organizations found                                       │
    │                                                                │
-   │   Or enter manually: █                                         │
+   │   Enter manually: █                                            │
    │                                                                │
-   │ Enter organization name · Esc back                             │
+   │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -427,11 +439,11 @@ Allows user to select or change the organization to sync. This screen is accessi
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │ GitHub Brain / 🏢 Select organization     👤 @wham · 1.0.0  │
+   │ GitHub Brain / 🔧 Setup / 🏢 Select organization   👤 @wham · 1.0.0  │
    │                                                                │
    │   ⠋ Loading organizations...                                   │
    │                                                                │
-   │ Press Esc to cancel                                            │
+   │ ▶ ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -442,7 +454,8 @@ Allows user to select or change the organization to sync. This screen is accessi
 
 ### Menu Navigation
 
-- Use arrow keys (↑/↓) or j/k to navigate organization list
+- Use arrow keys (↑/↓) to navigate organization list (max 10 displayed)
+- Typing filters from all organizations (up to 100), shows top 10 matches
 - Typing filters the list and populates the text input
 - Press Enter to select highlighted organization, or use text input value if typed
 - Press Esc to go back without changing

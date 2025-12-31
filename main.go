@@ -6177,7 +6177,7 @@ func fetchOrganizations() tea.Cmd {
 					Nodes []struct {
 						Login string
 					}
-				} `graphql:"organizations(first: 10)"`
+				} `graphql:"organizations(first: 100, orderBy: {field: LOGIN, direction: ASC})"`
 			}
 		}
 
@@ -6197,6 +6197,12 @@ func fetchOrganizations() tea.Cmd {
 func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// Calculate max display count (10 or fewer)
+	maxDisplay := len(m.filtered)
+	if maxDisplay > 10 {
+		maxDisplay = 10
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -6213,7 +6219,7 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "ctrl+n":
-			if m.status == "list" && len(m.filtered) > 0 && m.cursor < len(m.filtered)-1 {
+			if m.status == "list" && maxDisplay > 0 && m.cursor < maxDisplay-1 {
 				m.cursor++
 			}
 		case "enter":
@@ -6221,8 +6227,8 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var org string
 				inputValue := strings.TrimSpace(m.textInput.Value())
 				
-				if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-					// Select from filtered list
+				if maxDisplay > 0 && m.cursor < maxDisplay {
+					// Select from filtered list (displayed items)
 					org = m.filtered[m.cursor]
 				} else if inputValue != "" {
 					// Use the typed value
@@ -6346,11 +6352,16 @@ func (m selectOrgModel) renderLoadingView() string {
 	}
 	innerWidth := maxContentWidth - 2
 
-	b.WriteString(renderTitleBar("🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(m.spinner.View() + " Loading organizations...\n")
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Press Esc to cancel") + "\n")
+	
+	// Back menu item
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	paddedName := fmt.Sprintf("%-4s", "Back")
+	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
 	return b.String()
 }
@@ -6364,19 +6375,22 @@ func (m selectOrgModel) renderListView() string {
 	}
 	innerWidth := maxContentWidth - 2
 
-	b.WriteString(renderTitleBar("🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 
 	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
-	// Show filtered organizations
-	if len(m.filtered) == 0 && len(m.organizations) == 0 {
+	// Show filtered organizations (max 10)
+	displayOrgs := m.filtered
+	if len(displayOrgs) > 10 {
+		displayOrgs = displayOrgs[:10]
+	}
+	
+	if len(m.organizations) == 0 {
 		b.WriteString(dimStyle.Render("  No organizations found") + "\n")
-	} else if len(m.filtered) == 0 {
-		b.WriteString(dimStyle.Render("  No matches") + "\n")
-	} else {
-		for i, org := range m.filtered {
+	} else if len(displayOrgs) > 0 {
+		for i, org := range displayOrgs {
 			cursor := "  "
 			style := dimStyle
 			if m.cursor == i {
@@ -6390,15 +6404,16 @@ func (m selectOrgModel) renderListView() string {
 	b.WriteString("\n")
 	
 	// Text input for manual entry
-	b.WriteString(dimStyle.Render("  Or enter manually: ") + m.textInput.View() + "\n")
+	if len(displayOrgs) > 0 {
+		b.WriteString(dimStyle.Render("  Or enter manually: ") + m.textInput.View() + "\n")
+	} else {
+		b.WriteString(dimStyle.Render("  Enter manually: ") + m.textInput.View() + "\n")
+	}
 	b.WriteString("\n")
 	
-	// Help text
-	if len(m.filtered) > 0 {
-		b.WriteString(dimStyle.Render("↑↓ navigate · Enter select · type to filter · Esc back") + "\n")
-	} else {
-		b.WriteString(dimStyle.Render("Enter organization name · Esc back") + "\n")
-	}
+	// Back menu item - same format as Setup screen
+	paddedName := fmt.Sprintf("%-4s", "Back")
+	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
 	return b.String()
 }
@@ -6412,7 +6427,7 @@ func (m selectOrgModel) renderErrorView() string {
 	}
 	innerWidth := maxContentWidth - 2
 
-	b.WriteString(renderTitleBar("🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(errorStyle.Render("❌ Error") + "\n")
 	b.WriteString("\n")
@@ -6431,7 +6446,7 @@ func (m selectOrgModel) renderSuccessView() string {
 	}
 	innerWidth := maxContentWidth - 2
 
-	b.WriteString(renderTitleBar("🏢 Select organization", m.username, m.selectedOrg, innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, m.selectedOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render("✅ Organization saved!") + "\n")
 	b.WriteString("\n")
