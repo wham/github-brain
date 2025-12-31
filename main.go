@@ -4960,7 +4960,7 @@ type authCheckResultMsg struct {
 	organization string
 }
 
-func newMainMenuModel(homeDir string) mainMenuModel {
+func newMainMenuModel(homeDir string, cursor int) mainMenuModel {
 	return mainMenuModel{
 		homeDir: homeDir,
 		choices: []menuChoice{
@@ -4968,7 +4968,7 @@ func newMainMenuModel(homeDir string) mainMenuModel {
 			{icon: "🔧", name: "Setup", description: "Configure GitHub username and organization"},
 			{icon: "🚪", name: "Exit", description: "Ctrl+C"},
 		},
-		cursor:       0,
+		cursor:       cursor,
 		status:       "Checking authentication...",
 		width:        80,
 		height:       24,
@@ -5116,8 +5116,9 @@ func RunMainTUI(homeDir string) error {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
+	cursor := 0 // Remember cursor position across menu returns
 	for {
-		m := newMainMenuModel(homeDir)
+		m := newMainMenuModel(homeDir, cursor)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		finalModel, err := p.Run()
@@ -5130,12 +5131,17 @@ func RunMainTUI(homeDir string) error {
 			return fmt.Errorf("unexpected model type")
 		}
 
+		cursor = mm.cursor // Remember cursor position
+
 		if mm.quitting {
 			return nil
 		}
 
 		if mm.runSetup {
 			if err := RunSetupMenu(homeDir, mm.username, mm.organization); err != nil {
+				if err.Error() == "quit" {
+					return nil // Exit app cleanly
+				}
 				// Log error but continue to menu
 				slog.Error("Setup failed", "error", err)
 			}
@@ -5554,19 +5560,21 @@ type AccessTokenResponse struct {
 
 // loginModel is the Bubble Tea model for the login UI
 type loginModel struct {
-	spinner         spinner.Model
-	textInput       textinput.Model
-	userCode        string
-	verificationURI string
-	status          string // "waiting", "org_input", "success", "error"
-	errorMsg        string
-	username        string
-	token           string
-	organization    string
-	homeDir         string
-	width           int
-	height          int
-	done            bool
+	spinner          spinner.Model
+	textInput        textinput.Model
+	userCode         string
+	verificationURI  string
+	status           string // "waiting", "org_input", "success", "error"
+	errorMsg         string
+	username         string
+	token            string
+	organization     string
+	homeDir          string
+	width            int
+	height           int
+	done             bool
+	currentUsername  string // current logged-in username for title bar
+	currentOrg       string // current organization for title bar
 }
 
 // Login message types
@@ -5584,7 +5592,7 @@ type (
 	loginOrgSubmittedMsg struct{}
 )
 
-func newLoginModel(homeDir string) loginModel {
+func newLoginModel(homeDir, currentUsername, currentOrg string) loginModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
@@ -5597,12 +5605,14 @@ func newLoginModel(homeDir string) loginModel {
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
 	return loginModel{
-		spinner:   s,
-		textInput: ti,
-		status:    "waiting",
-		homeDir:   homeDir,
-		width:     80,
-		height:    24,
+		spinner:         s,
+		textInput:       ti,
+		status:          "waiting",
+		homeDir:         homeDir,
+		width:           80,
+		height:          24,
+		currentUsername: currentUsername,
+		currentOrg:      currentOrg,
 	}
 }
 
@@ -5617,9 +5627,19 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			m.status = "quit"
+			m.done = true
+			return m, tea.Quit
+		case "esc":
+			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
 		case "enter":
+			if m.status == "waiting" {
+				m.status = "cancelled"
+				m.done = true
+				return m, tea.Quit
+			}
 			if m.status == "org_input" {
 				m.organization = strings.TrimSpace(m.textInput.Value())
 				return m, func() tea.Msg { return loginOrgSubmittedMsg{} }
@@ -5728,35 +5748,40 @@ func (m loginModel) renderWaitingView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
-	b.WriteString("\n")
-	b.WriteString("🔐 GitHub Authentication (OAuth)\n")
+	b.WriteString(renderTitleBar("🔧 Setup / ✨ Login with device", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 
 	if m.userCode == "" {
 		b.WriteString(m.spinner.View() + " Requesting device code...\n")
 	} else {
-		b.WriteString("1. Opening browser to: github.com/login/device\n")
+		b.WriteString("1. Opening browser to https://github.com/login/device\n")
 		b.WriteString("\n")
 		b.WriteString("2. Enter this code:\n")
 		b.WriteString("\n")
 		
-		// Code box with margin for alignment
+		// Code box with double border - gold/yellow stands out against purple
 		codeStyle := lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("12")).
-			Padding(0, 3).
+			Border(lipgloss.DoubleBorder()).
+			BorderForeground(lipgloss.Color("220")).
+			Foreground(lipgloss.Color("220")).
+			Padding(0, 4).
 			Bold(true).
 			MarginLeft(3)
 		
 		b.WriteString(codeStyle.Render(m.userCode) + "\n")
 		b.WriteString("\n")
+		b.WriteString("3. Grant access to the organizations you are planning to use with GitHub Brain\n")
+		b.WriteString("\n")
 		b.WriteString(m.spinner.View() + " Waiting for authorization...\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString("Press Ctrl+C to cancel\n")
-	b.WriteString("\n")
+	
+	// Back menu item - always selected, same format as Setup screen
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	paddedName := fmt.Sprintf("%-4s", "Back")
+	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
 	return b.String()
 }
@@ -5833,14 +5858,14 @@ func (m loginModel) renderErrorView() string {
 }
 
 // RunLogin runs the OAuth device flow login
-func RunLogin(homeDir string) error {
+func RunLogin(homeDir, currentUsername, currentOrg string) error {
 	// Ensure home directory exists
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
 	// Create the Bubble Tea model
-	m := newLoginModel(homeDir)
+	m := newLoginModel(homeDir, currentUsername, currentOrg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	// Run the device flow in a goroutine
@@ -5854,8 +5879,14 @@ func RunLogin(homeDir string) error {
 
 	// Check if login was successful
 	if lm, ok := finalModel.(loginModel); ok {
+		if lm.status == "quit" {
+			return fmt.Errorf("quit")
+		}
 		if lm.status == "error" {
 			return fmt.Errorf("%s", lm.errorMsg)
+		}
+		if lm.status == "cancelled" {
+			return nil // Go back without error
 		}
 		if lm.status != "success" {
 			return fmt.Errorf("login cancelled")
@@ -5885,18 +5916,18 @@ type setupMenuModel struct {
 	goBack       bool
 }
 
-func newSetupMenuModel(homeDir, username, organization string) setupMenuModel {
+func newSetupMenuModel(homeDir, username, organization string, cursor int) setupMenuModel {
 	return setupMenuModel{
 		homeDir:      homeDir,
 		username:     username,
 		organization: organization,
 		choices: []menuChoice{
-			{icon: "✨", name: "Login with code", description: "Recommended for organization owners"},
+			{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
 			{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
 			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
-			{icon: "🔙", name: "Back", description: "Esc"},
+			{icon: "←", name: "Back", description: "Esc"},
 		},
-		cursor: 0,
+		cursor: cursor,
 		width:  80,
 		height: 24,
 	}
@@ -5968,6 +5999,15 @@ func (m setupMenuModel) View() string {
 
 	// Menu items - same format as Home screen
 	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
+	
+	// Find the longest name for alignment
+	maxNameWidth := 0
+	for _, choice := range m.choices {
+		if len(choice.name) > maxNameWidth {
+			maxNameWidth = len(choice.name)
+		}
+	}
+	
 	for i, choice := range m.choices {
 		cursor := "  "
 		descStyle := dimStyle
@@ -5975,10 +6015,12 @@ func (m setupMenuModel) View() string {
 			cursor = selectorStyle.Render("▶") + " "
 			descStyle = selectedStyle
 		}
-		// Pad name to 15 characters for alignment
-		paddedName := fmt.Sprintf("%-15s", choice.name)
+		// Pad icon to 2 characters (emoji width) and name for alignment
+		iconWidth := lipgloss.Width(choice.icon)
+		iconPadding := strings.Repeat(" ", 2-iconWidth)
+		paddedName := fmt.Sprintf("%-*s", maxNameWidth, choice.name)
 		// Name is always bold (titleStyle), description uses current selection style
-		b.WriteString(fmt.Sprintf("%s%s %s  %s", cursor, choice.icon, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
+		b.WriteString(fmt.Sprintf("%s%s%s %s  %s", cursor, choice.icon, iconPadding, titleStyle.Render(paddedName), descStyle.Render(choice.description)))
 		if i < len(m.choices)-1 {
 			b.WriteString("\n\n")
 		}
@@ -5996,8 +6038,9 @@ func (m setupMenuModel) View() string {
 
 // RunSetupMenu runs the setup submenu
 func RunSetupMenu(homeDir, username, organization string) error {
+	cursor := 0 // Remember cursor position across menu returns
 	for {
-		m := newSetupMenuModel(homeDir, username, organization)
+		m := newSetupMenuModel(homeDir, username, organization, cursor)
 		p := tea.NewProgram(m, tea.WithAltScreen())
 
 		finalModel, err := p.Run()
@@ -6010,12 +6053,21 @@ func RunSetupMenu(homeDir, username, organization string) error {
 			return fmt.Errorf("unexpected model type")
 		}
 
-		if sm.quitting || sm.goBack {
+		cursor = sm.cursor // Remember cursor position
+
+		if sm.quitting {
+			return fmt.Errorf("quit")
+		}
+		
+		if sm.goBack {
 			return nil
 		}
 
 		if sm.runOAuth {
-			if err := RunLogin(homeDir); err != nil {
+			if err := RunLogin(homeDir, username, organization); err != nil {
+				if err.Error() == "quit" {
+					return err // Propagate quit to exit app
+				}
 				slog.Error("OAuth login failed", "error", err)
 			}
 			// Reload .env after login
@@ -6026,6 +6078,9 @@ func RunSetupMenu(homeDir, username, organization string) error {
 
 		if sm.runPAT {
 			if err := RunPATLogin(homeDir); err != nil {
+				if err.Error() == "quit" {
+					return err // Propagate quit to exit app
+				}
 				slog.Error("PAT login failed", "error", err)
 			}
 			// Reload .env after login
@@ -6138,9 +6193,11 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			m.status = "quit"
 			m.done = true
 			return m, tea.Quit
 		case "esc":
+			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
 		case "enter":
@@ -6359,8 +6416,14 @@ func RunPATLogin(homeDir string) error {
 
 	// Check if login was successful
 	if pm, ok := finalModel.(patLoginModel); ok {
+		if pm.status == "quit" {
+			return fmt.Errorf("quit")
+		}
 		if pm.status == "error" {
 			return fmt.Errorf("%s", pm.errorMsg)
+		}
+		if pm.status == "cancelled" {
+			return nil // Go back without error
 		}
 		if pm.status != "success" {
 			return fmt.Errorf("login cancelled")

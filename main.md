@@ -82,19 +82,21 @@ Right side components (shown only when available):
 
 - Use arrow keys (↑/↓) or j/k to navigate
 - Press Enter to select
-- Press Esc to go back (in submenus)
-- Press Ctrl+C to quit
+- Press Esc to go back one screen (in submenus and dialogs)
+- Press Ctrl+C to exit the app from any screen
 - Highlight current selection with `▶` (blue)
+- When going back, remember and restore the previous cursor position
 
 ### Menu Items
 
-1. **� Pull** - Runs the pull operation (see [pull](#pull) section)
+1. **🔄 Pull** - Runs the pull operation (see [pull](#pull) section)
 2. **🔧 Setup** - Opens the setup submenu (see [Setup Menu](#setup-menu) section)
 3. **🚪 Exit** - Exit the application (Ctrl+C)
 
 ### Default Selection
 
-- Always start with **Pull** selected (the first item)
+- Start with **Pull** selected on first launch
+- When returning from a submenu, restore the previous selection
 
 ### Flow
 
@@ -113,19 +115,19 @@ The Setup submenu provides authentication and configuration options:
 ╭────────────────────────────────────────────────────────────────╮
 │ GitHub Brain / 🔧 Setup                      👤 Not logged in  │
 │                                                                │
-│ ▶ ✨ Login with code   Recommended for organization owners     │
+│ ▶ ✨ Login with device   Recommended for organization owners   │
 │   🔑 Login with PAT    Works without organization ownership    │
 │   📝 Advanced          Edit configuration file                 │
-│   ↩️  Back              Esc                                     │
+│   ←  Back              Esc                                     │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
 ### Setup Menu Items
 
-1. **✨ Login with code** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
+1. **✨ Login with device** - Recommended for organization owners. Runs the OAuth device flow (see [OAuth Login](#oauth-login) section)
 2. **🔑 Login with PAT** - Works without organization ownership. Manually enter a PAT (see [PAT Login](#pat-login) section)
 3. **📝 Advanced** - Edit configuration file `{HomeDir}/.env`
-4. **↩️ Back** - Return to main menu (Esc)
+4. **← Back** - Return to main menu (Esc)
 
 ### Open Configuration File (Advanced)
 
@@ -199,21 +201,46 @@ The app uses a registered OAuth App for authentication:
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
+   │ GitHub Brain / 🔧 Setup / ✨ Login with device          1.0.0  │
    │                                                                │
-   │  🔐 GitHub Authentication (OAuth)                              │
-   │                                                                │
-   │  1. Opening browser to: github.com/login/device                │
+   │  1. Opening browser to https://github.com/login/device         │
    │                                                                │
    │  2. Enter this code:                                           │
    │                                                                │
-   │     ╭──────────────────╮                                       │
-   │     │    ABCD-1234     │                                       │
-   │     ╰──────────────────╯                                       │
+   │     ╭────────────────────╮                                     │
+   │     │    F934-7E83       │                                     │
+   │     ╰────────────────────╯                                     │
+   │                                                                │
+   │  3. Grant access to the organizations you are planning to use  │
+   │     with GitHub Brain                                          │
    │                                                                │
    │  ⠋ Waiting for authorization...                                │
    │                                                                │
-   │  Press Ctrl+C to cancel                                        │
+   │  Press Esc to cancel                                           │
+   │                                                                │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   With user logged in (and organization configured):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🔧 Setup / ✨ Login with device   👤 @wham · 🏢 my-org · 1.0.0  │
+   │                                                                │
+   │  1. Opening browser to https://github.com/login/device         │
+   │                                                                │
+   │  2. Enter this code:                                           │
+   │                                                                │
+   │     ╭────────────────────╮                                     │
+   │     │    F934-7E83       │                                     │
+   │     ╰────────────────────╯                                     │
+   │                                                                │
+   │  3. Grant access to the organizations you are planning to use  │
+   │     with GitHub Brain                                          │
+   │                                                                │
+   │  ⠋ Waiting for authorization...                                │
+   │                                                                │
+   │  Press Esc to cancel                                           │
    │                                                                │
    ╰────────────────────────────────────────────────────────────────╯
    ```
