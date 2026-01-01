@@ -4285,7 +4285,7 @@ func main() {
 	
 	// Load environment variables from home directory
 	envPath := homeDir + "/.env"
-	_ = godotenv.Load(envPath)
+	_ = godotenv.Overload(envPath)
 
 	// Check if a command is specified
 	cmd := ""
@@ -4982,7 +4982,8 @@ func (m mainMenuModel) Init() tea.Cmd {
 
 func checkAuthCmd(homeDir string) tea.Cmd {
 	return func() tea.Msg {
-		// Check if we have a token
+		// Load .env file
+		_ = godotenv.Overload(homeDir + "/.env")
 		token := os.Getenv("GITHUB_TOKEN")
 		if token == "" {
 			return authCheckResultMsg{loggedIn: false}
@@ -5003,11 +5004,10 @@ func checkAuthCmd(homeDir string) tea.Cmd {
 			return authCheckResultMsg{loggedIn: false}
 		}
 
-		org := os.Getenv("ORGANIZATION")
 		return authCheckResultMsg{
 			loggedIn:     true,
 			username:     query.Viewer.Login,
-			organization: org,
+			organization: os.Getenv("ORGANIZATION"),
 		}
 	}
 }
@@ -5145,9 +5145,6 @@ func RunMainTUI(homeDir string) error {
 				// Log error but continue to menu
 				slog.Error("Setup failed", "error", err)
 			}
-			// Reload .env after setup
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			continue
 		}
 
@@ -5156,9 +5153,6 @@ func RunMainTUI(homeDir string) error {
 				// Error already handled in runPullOperation
 				slog.Error("Pull failed", "error", err)
 			}
-			// Reload .env after pull (in case organization was set)
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			continue
 		}
 	}
@@ -5166,7 +5160,8 @@ func RunMainTUI(homeDir string) error {
 
 // runPullOperation runs the pull operation from the TUI
 func runPullOperation(homeDir, username, org string) error {
-	// Check for token
+	// Load .env file
+	_ = godotenv.Overload(homeDir + "/.env")
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
 		// Need to prompt for login first
@@ -5191,11 +5186,8 @@ func runPullOperation(homeDir, username, org string) error {
 		if err := saveOrganizationToEnv(homeDir, organization); err != nil {
 			return fmt.Errorf("failed to save organization: %w", err)
 		}
-		// Reload env
-		envPath := homeDir + "/.env"
-		_ = godotenv.Load(envPath)
 	}
-
+	
 	// Build config
 	config := &Config{
 		Organization:         organization,
@@ -5561,14 +5553,12 @@ type AccessTokenResponse struct {
 // loginModel is the Bubble Tea model for the login UI
 type loginModel struct {
 	spinner          spinner.Model
-	textInput        textinput.Model
 	userCode         string
 	verificationURI  string
-	status           string // "waiting", "org_input", "success", "error"
+	status           string // "waiting", "select_org", "success", "error"
 	errorMsg         string
 	username         string
 	token            string
-	organization     string
 	homeDir          string
 	width            int
 	height           int
@@ -5589,7 +5579,6 @@ type (
 		username     string
 		token        string
 	}
-	loginOrgSubmittedMsg struct{}
 )
 
 func newLoginModel(homeDir, currentUsername, currentOrg string) loginModel {
@@ -5597,16 +5586,8 @@ func newLoginModel(homeDir, currentUsername, currentOrg string) loginModel {
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 
-	ti := textinput.New()
-	ti.Placeholder = "my-org"
-	ti.CharLimit = 100
-	ti.Width = 30
-	ti.Prompt = "> "
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
 	return loginModel{
 		spinner:         s,
-		textInput:       ti,
 		status:          "waiting",
 		homeDir:         homeDir,
 		width:           80,
@@ -5640,15 +5621,6 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.done = true
 				return m, tea.Quit
 			}
-			if m.status == "org_input" {
-				m.organization = strings.TrimSpace(m.textInput.Value())
-				return m, func() tea.Msg { return loginOrgSubmittedMsg{} }
-			}
-		}
-		// Pass key messages to textinput when in org_input mode
-		if m.status == "org_input" {
-			m.textInput, cmd = m.textInput.Update(msg)
-			return m, cmd
 		}
 
 	case tea.WindowSizeMsg:
@@ -5662,26 +5634,19 @@ func (m loginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case loginAuthenticatedMsg:
-		// User has authenticated, now prompt for organization
-		m.status = "org_input"
+		// User has authenticated, save token and go to org selection
 		m.username = msg.username
 		m.token = msg.token
-		m.textInput.Focus()
-		return m, textinput.Blink
-
-	case loginOrgSubmittedMsg:
-		// Save token and organization to .env
-		if err := saveTokenToEnv(m.homeDir, m.token, m.organization); err != nil {
+		// Save token to .env (organization will be set by Select Organization screen)
+		if err := saveTokenToEnv(m.homeDir, m.token, ""); err != nil {
 			m.status = "error"
 			m.errorMsg = fmt.Sprintf("failed to save token: %v", err)
 			m.done = true
 			return m, nil
 		}
-		m.status = "success"
+		m.status = "select_org"
 		m.done = true
-		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-			return tea.Quit()
-		})
+		return m, tea.Quit
 
 	case loginSuccessMsg:
 		m.status = "success"
@@ -5708,8 +5673,6 @@ func (m loginModel) View() string {
 	switch m.status {
 	case "waiting":
 		content = m.renderWaitingView()
-	case "org_input":
-		content = m.renderOrgInputView()
 	case "success":
 		content = m.renderSuccessView()
 	case "error":
@@ -5786,7 +5749,7 @@ func (m loginModel) renderWaitingView() string {
 	return b.String()
 }
 
-func (m loginModel) renderOrgInputView() string {
+func (m loginModel) renderSuccessView() string {
 	var b strings.Builder
 
 	// Calculate spacing for title bar
@@ -5798,38 +5761,10 @@ func (m loginModel) renderOrgInputView() string {
 	
 	b.WriteString(renderTitleBar("🔧 Setup", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
-	b.WriteString("\n")
-	b.WriteString("Enter your GitHub organization (optional):\n")
-	b.WriteString(m.textInput.View() + "\n")
-	b.WriteString("\n")
-	b.WriteString("Press Enter to skip, or type organization name\n")
-	b.WriteString("\n")
-
-	return b.String()
-}
-
-func (m loginModel) renderSuccessView() string {
-	var b strings.Builder
-
-	// Calculate spacing for title bar
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
-	}
-	innerWidth := maxContentWidth - 2
-	
-	b.WriteString(renderTitleBar("🔧 Setup", m.username, m.organization, innerWidth) + "\n")
-	b.WriteString("\n")
-	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
+	b.WriteString(successStyle.Render("✅ Token saved!") + "\n")
 	b.WriteString("\n")
 	b.WriteString(fmt.Sprintf("Logged in as: @%s\n", m.username))
-	if m.organization != "" {
-		b.WriteString(fmt.Sprintf("Organization: %s\n", m.organization))
-	}
 	b.WriteString(fmt.Sprintf("Saved to: %s/.env\n", m.homeDir))
-	b.WriteString("\n")
-	b.WriteString("Press any key to continue...\n")
 	b.WriteString("\n")
 
 	return b.String()
@@ -5888,6 +5823,10 @@ func RunLogin(homeDir, currentUsername, currentOrg string) error {
 		if lm.status == "cancelled" {
 			return nil // Go back without error
 		}
+		if lm.status == "select_org" {
+			// Navigate to Select Organization screen
+			return runSelectOrgWithFlag(homeDir, lm.username, true)
+		}
 		if lm.status != "success" {
 			return fmt.Errorf("login cancelled")
 		}
@@ -5902,34 +5841,45 @@ func RunLogin(homeDir, currentUsername, currentOrg string) error {
 
 // setupMenuModel is the Bubble Tea model for the setup submenu
 type setupMenuModel struct {
-	homeDir      string
-	choices      []menuChoice
-	cursor       int
-	username     string
-	organization string
-	width        int
-	height       int
-	quitting     bool
-	runOAuth     bool
-	runPAT       bool
-	openConfig   bool
-	goBack       bool
+	homeDir        string
+	choices        []menuChoice
+	cursor         int
+	username       string
+	organization   string
+	width          int
+	height         int
+	quitting       bool
+	runOAuth       bool
+	runPAT         bool
+	runSelectOrg   bool
+	openConfig     bool
+	goBack         bool
 }
 
 func newSetupMenuModel(homeDir, username, organization string, cursor int) setupMenuModel {
+	choices := []menuChoice{
+		{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
+		{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
+	}
+	
+	// Only show "Select organization" when logged in
+	if username != "" {
+		choices = append(choices, menuChoice{icon: "🏢", name: "Select organization", description: "Choose organization to sync"})
+	}
+	
+	choices = append(choices,
+		menuChoice{icon: "📝", name: "Advanced", description: "Edit configuration file"},
+		menuChoice{icon: "←", name: "Back", description: "Esc"},
+	)
+	
 	return setupMenuModel{
 		homeDir:      homeDir,
 		username:     username,
 		organization: organization,
-		choices: []menuChoice{
-			{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
-			{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
-			{icon: "📝", name: "Advanced", description: "Edit configuration file"},
-			{icon: "←", name: "Back", description: "Esc"},
-		},
-		cursor: cursor,
-		width:  80,
-		height: 24,
+		choices:      choices,
+		cursor:       cursor,
+		width:        80,
+		height:       24,
 	}
 }
 
@@ -5956,17 +5906,22 @@ func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "enter":
-			switch m.cursor {
-			case 0: // OAuth Login
+			// Handle selection based on choice name (since order varies)
+			selectedChoice := m.choices[m.cursor].name
+			switch selectedChoice {
+			case "Login with device":
 				m.runOAuth = true
 				return m, tea.Quit
-			case 1: // PAT Login
+			case "Login with PAT":
 				m.runPAT = true
 				return m, tea.Quit
-			case 2: // Open config
+			case "Select organization":
+				m.runSelectOrg = true
+				return m, tea.Quit
+			case "Advanced":
 				m.openConfig = true
 				return m, tea.Quit
-			case 3: // Back
+			case "Back":
 				m.goBack = true
 				return m, tea.Quit
 			}
@@ -6070,23 +6025,30 @@ func RunSetupMenu(homeDir, username, organization string) error {
 				}
 				slog.Error("OAuth login failed", "error", err)
 			}
-			// Reload .env after login
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			return nil // Return to main menu after login
 		}
 
 		if sm.runPAT {
-			if err := RunPATLogin(homeDir); err != nil {
+			if err := RunPATLogin(homeDir, username, organization); err != nil {
 				if err.Error() == "quit" {
 					return err // Propagate quit to exit app
 				}
 				slog.Error("PAT login failed", "error", err)
 			}
-			// Reload .env after login
-			envPath := homeDir + "/.env"
-			_ = godotenv.Load(envPath)
 			return nil // Return to main menu after login
+		}
+
+		if sm.runSelectOrg {
+			if err := RunSelectOrg(homeDir, username); err != nil {
+				if err.Error() == "quit" {
+					return err // Propagate quit to exit app
+				}
+				slog.Error("Select organization failed", "error", err)
+			}
+			// Re-read organization from .env file
+			_ = godotenv.Overload(homeDir + "/.env")
+			organization = os.Getenv("ORGANIZATION")
+			continue // Return to Setup menu
 		}
 
 		if sm.openConfig {
@@ -6115,22 +6077,497 @@ func openConfigFile(homeDir string) error {
 }
 
 // ============================================================================
+// Select Organization Implementation
+// ============================================================================
+
+// selectOrgModel is the Bubble Tea model for the organization selection UI
+type selectOrgModel struct {
+	spinner       spinner.Model
+	textInput     textinput.Model
+	organizations []string // all organizations from API
+	filtered      []string // filtered organizations based on text input
+	cursor        int
+	status        string // "loading", "list", "error", "success"
+	errorMsg      string
+	username      string
+	homeDir       string
+	width         int
+	height        int
+	done          bool
+	selectedOrg   string
+	fromLogin     bool // whether this was invoked after login flow
+}
+
+// Select organization message types
+type (
+	orgsLoadedMsg struct {
+		organizations []string
+	}
+	orgsLoadErrorMsg struct {
+		err error
+	}
+	orgSelectedMsg struct {
+		organization string
+	}
+)
+
+func newSelectOrgModel(homeDir, username string, fromLogin bool) selectOrgModel {
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+
+	ti := textinput.New()
+	ti.Placeholder = ""
+	ti.CharLimit = 100
+	ti.Width = 30
+	ti.Prompt = ""
+	ti.Focus()
+
+	return selectOrgModel{
+		spinner:   s,
+		textInput: ti,
+		status:    "loading",
+		username:  username,
+		homeDir:   homeDir,
+		fromLogin: fromLogin,
+		width:     80,
+		height:    24,
+	}
+}
+
+func (m selectOrgModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.spinner.Tick,
+		textinput.Blink,
+		fetchOrganizations(m.homeDir),
+	)
+}
+
+func fetchOrganizations(homeDir string) tea.Cmd {
+	return func() tea.Msg {
+		_ = godotenv.Overload(homeDir + "/.env")
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" {
+			return orgsLoadErrorMsg{err: fmt.Errorf("no GitHub token found")}
+		}
+
+		src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+		httpClient := oauth2.NewClient(context.Background(), src)
+		client := githubv4.NewClient(httpClient)
+
+		var query struct {
+			Viewer struct {
+				Organizations struct {
+					Nodes []struct {
+						Login string
+					}
+				} `graphql:"organizations(first: 100, orderBy: {field: LOGIN, direction: ASC})"`
+			}
+		}
+
+		if err := client.Query(context.Background(), &query, nil); err != nil {
+			return orgsLoadErrorMsg{err: err}
+		}
+
+		var orgs []string
+		for _, org := range query.Viewer.Organizations.Nodes {
+			orgs = append(orgs, org.Login)
+		}
+
+		return orgsLoadedMsg{organizations: orgs}
+	}
+}
+
+func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	// Calculate max display count (10 or fewer)
+	maxDisplay := len(m.filtered)
+	if maxDisplay > 10 {
+		maxDisplay = 10
+	}
+	
+	// Menu items: [orgs...] [enter manually] [back]
+	inputIndex := maxDisplay
+	backIndex := inputIndex + 1
+	isInputSelected := m.cursor == inputIndex
+	isBackSelected := m.cursor == backIndex
+
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c":
+			m.status = "quit"
+			m.done = true
+			return m, tea.Quit
+		case "esc":
+			m.status = "cancelled"
+			m.done = true
+			return m, tea.Quit
+		case "up", "ctrl+p":
+			if m.status == "list" && m.cursor > 0 {
+				m.cursor--
+			}
+		case "down", "ctrl+n":
+			// Can navigate down to backIndex
+			if m.status == "list" && m.cursor < backIndex {
+				m.cursor++
+			}
+		case "enter":
+			if m.status == "list" {
+				if isBackSelected {
+					// Go back
+					m.status = "cancelled"
+					m.done = true
+					return m, tea.Quit
+				}
+				
+				var org string
+				
+				if isInputSelected {
+					// Use the typed value from text input
+					org = strings.TrimSpace(m.textInput.Value())
+				} else if m.cursor < maxDisplay {
+					// Select from filtered list (displayed items)
+					org = m.filtered[m.cursor]
+				}
+				
+				if org != "" {
+					m.selectedOrg = org
+					return m, func() tea.Msg { return orgSelectedMsg{organization: org} }
+				}
+			}
+		}
+		
+		// Pass key messages to textinput only when the input is selected
+		if m.status == "list" && isInputSelected {
+			prevValue := m.textInput.Value()
+			m.textInput, cmd = m.textInput.Update(msg)
+			
+			// If text changed, update filtered list (but keep cursor on input)
+			if m.textInput.Value() != prevValue {
+				m.filtered = m.filterOrganizations(m.textInput.Value())
+				// Recalculate inputIndex and keep cursor there
+				newMaxDisplay := len(m.filtered)
+				if newMaxDisplay > 10 {
+					newMaxDisplay = 10
+				}
+				m.cursor = newMaxDisplay
+			}
+			return m, cmd
+		}
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, tea.ClearScreen
+
+	case orgsLoadedMsg:
+		m.organizations = msg.organizations
+		m.filtered = msg.organizations
+		m.status = "list"
+		m.cursor = 0
+		return m, textinput.Blink
+
+	case orgsLoadErrorMsg:
+		// On error, show empty list with text input
+		m.organizations = nil
+		m.filtered = nil
+		m.status = "list"
+		m.cursor = 0
+		return m, textinput.Blink
+
+	case orgSelectedMsg:
+		// Save organization to .env
+		if err := saveOrgToEnv(m.homeDir, msg.organization); err != nil {
+			m.status = "error"
+			m.errorMsg = fmt.Sprintf("failed to save organization: %v", err)
+			return m, nil
+		}
+		// Go directly back to Setup menu
+		m.selectedOrg = msg.organization
+		m.status = "done"
+		m.done = true
+		return m, tea.Quit
+
+	case spinner.TickMsg:
+		if m.status == "loading" {
+			m.spinner, cmd = m.spinner.Update(msg)
+			return m, cmd
+		}
+	}
+
+	return m, nil
+}
+
+// filterOrganizations filters the organization list based on input
+func (m selectOrgModel) filterOrganizations(input string) []string {
+	if input == "" {
+		return m.organizations
+	}
+	input = strings.ToLower(input)
+	var filtered []string
+	for _, org := range m.organizations {
+		if strings.Contains(strings.ToLower(org), input) {
+			filtered = append(filtered, org)
+		}
+	}
+	return filtered
+}
+
+func (m selectOrgModel) View() string {
+	var content string
+
+	switch m.status {
+	case "loading":
+		content = m.renderLoadingView()
+	case "list":
+		content = m.renderListView()
+	case "error":
+		content = m.renderErrorView()
+	}
+
+	// Calculate box width
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+
+	// Create border style
+	borderStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(maxContentWidth)
+
+	return borderStyle.Render(content)
+}
+
+func (m selectOrgModel) renderLoadingView() string {
+	var b strings.Builder
+
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString("\n")
+	b.WriteString(m.spinner.View() + " Loading organizations...\n")
+	b.WriteString("\n")
+	
+	// Back menu item
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	paddedName := fmt.Sprintf("%-4s", "Back")
+	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
+
+	return b.String()
+}
+
+func (m selectOrgModel) renderListView() string {
+	var b strings.Builder
+
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString("\n")
+
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+
+	// Show filtered organizations (max 10)
+	displayOrgs := m.filtered
+	if len(displayOrgs) > 10 {
+		displayOrgs = displayOrgs[:10]
+	}
+	
+	// The "enter manually" input is at index len(displayOrgs)
+	inputIndex := len(displayOrgs)
+	isInputSelected := m.cursor == inputIndex
+	
+	if len(m.organizations) == 0 {
+		b.WriteString(dimStyle.Render("  No organizations found") + "\n")
+	} else if len(displayOrgs) > 0 {
+		for i, org := range displayOrgs {
+			cursor := "  "
+			nameStyle := titleStyle // Bold for main item name
+			if m.cursor == i {
+				cursor = selectorStyle.Render("▶") + " "
+				nameStyle = selectedStyle // Blue bold when selected
+			}
+			b.WriteString(cursor + nameStyle.Render(org) + "\n")
+		}
+	}
+
+	b.WriteString("\n")
+	
+	// Text input for manual entry (as a selectable item)
+	label := "Or enter manually"
+	if len(displayOrgs) == 0 {
+		label = "Enter manually"
+	}
+	
+	if isInputSelected {
+		// Input is selected - show selector, bold label, and active input
+		b.WriteString(selectorStyle.Render("▶") + " " + selectedStyle.Render(label) + "  " + m.textInput.View() + "\n")
+	} else {
+		// Input is not selected - show dimmed label
+		inputValue := m.textInput.Value()
+		if inputValue == "" {
+			b.WriteString("  " + titleStyle.Render(label) + "\n")
+		} else {
+			b.WriteString("  " + titleStyle.Render(label) + "  " + dimStyle.Render(inputValue) + "\n")
+		}
+	}
+	b.WriteString("\n")
+	
+	// Back menu item (selectable) - styled like Setup menu (name always bold, description changes)
+	backIndex := inputIndex + 1
+	isBackSelected := m.cursor == backIndex
+	if isBackSelected {
+		b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc"))
+	} else {
+		b.WriteString("  ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc"))
+	}
+
+	return b.String()
+}
+
+func (m selectOrgModel) renderErrorView() string {
+	var b strings.Builder
+
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
+	b.WriteString("\n")
+	b.WriteString(errorStyle.Render("❌ Error") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Error: %s\n", m.errorMsg))
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+func (m selectOrgModel) renderSuccessView() string {
+	var b strings.Builder
+
+	maxContentWidth := m.width - 4
+	if maxContentWidth < 64 {
+		maxContentWidth = 64
+	}
+	innerWidth := maxContentWidth - 2
+
+	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, m.selectedOrg, innerWidth) + "\n")
+	b.WriteString("\n")
+	b.WriteString(successStyle.Render("✅ Organization saved!") + "\n")
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("Organization: %s\n", m.selectedOrg))
+	b.WriteString("\n")
+
+	return b.String()
+}
+
+// RunSelectOrg runs the organization selection flow
+func RunSelectOrg(homeDir, username string) error {
+	return runSelectOrgWithFlag(homeDir, username, false)
+}
+
+// runSelectOrgWithFlag runs the organization selection flow with fromLogin flag
+func runSelectOrgWithFlag(homeDir, username string, fromLogin bool) error {
+	m := newSelectOrgModel(homeDir, username, fromLogin)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return fmt.Errorf("UI error: %w", err)
+	}
+
+	if sm, ok := finalModel.(selectOrgModel); ok {
+		if sm.status == "quit" {
+			return fmt.Errorf("quit")
+		}
+		if sm.status == "error" {
+			return fmt.Errorf("%s", sm.errorMsg)
+		}
+		if sm.status == "cancelled" {
+			return nil // Go back without error
+		}
+	}
+
+	return nil
+}
+
+// saveOrgToEnv saves the organization to the .env file
+func saveOrgToEnv(homeDir string, organization string) error {
+	envPath := homeDir + "/.env"
+
+	// Read existing .env content
+	existingContent, err := os.ReadFile(envPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	orgLine := fmt.Sprintf("ORGANIZATION=%s", organization)
+
+	if len(existingContent) == 0 {
+		// File doesn't exist or is empty
+		return os.WriteFile(envPath, []byte(orgLine+"\n"), 0600)
+	}
+
+	// Process existing content
+	lines := strings.Split(string(existingContent), "\n")
+	var newLines []string
+	orgFound := false
+
+	for _, line := range lines {
+		if strings.HasPrefix(line, "ORGANIZATION=") {
+			newLines = append(newLines, orgLine)
+			orgFound = true
+		} else if line != "" {
+			newLines = append(newLines, line)
+		}
+	}
+
+	if !orgFound {
+		newLines = append(newLines, orgLine)
+	}
+
+	newContent := strings.Join(newLines, "\n")
+	if !strings.HasSuffix(newContent, "\n") {
+		newContent += "\n"
+	}
+
+	return os.WriteFile(envPath, []byte(newContent), 0600)
+}
+
+// ============================================================================
 // PAT Login Implementation
 // ============================================================================
 
 // patLoginModel is the Bubble Tea model for the PAT login UI
 type patLoginModel struct {
-	textInput    textinput.Model
-	orgInput     textinput.Model
-	status       string // "token_input", "org_input", "success", "error"
-	errorMsg     string
-	username     string
-	token        string
-	organization string
-	homeDir      string
-	width        int
-	height       int
-	done         bool
+	textInput       textinput.Model
+	status          string // "token_input", "select_org", "success", "error"
+	errorMsg        string
+	username        string
+	token           string
+	homeDir         string
+	width           int
+	height          int
+	done            bool
+	currentUsername string // current logged-in username for title bar
+	currentOrg      string // current organization for title bar
+	cursor          int    // 0 = paste input, 1 = back
 }
 
 // PAT login message types
@@ -6139,34 +6576,27 @@ type (
 		username string
 		token    string
 	}
-	patOrgSubmittedMsg struct{}
 )
 
-func newPATLoginModel(homeDir string) patLoginModel {
+func newPATLoginModel(homeDir, currentUsername, currentOrg string) patLoginModel {
 	ti := textinput.New()
-	ti.Placeholder = "github_pat_..."
+	ti.Placeholder = ""
 	ti.CharLimit = 200
-	ti.Width = 50
-	ti.Prompt = "> "
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	ti.Width = 40
+	ti.Prompt = ""
 	ti.EchoMode = textinput.EchoPassword
 	ti.EchoCharacter = '•'
 	ti.Focus()
 
-	oi := textinput.New()
-	oi.Placeholder = "my-org"
-	oi.CharLimit = 100
-	oi.Width = 30
-	oi.Prompt = "> "
-	oi.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-
 	return patLoginModel{
-		textInput: ti,
-		orgInput:  oi,
-		status:    "token_input",
-		homeDir:   homeDir,
-		width:     80,
-		height:    24,
+		textInput:       ti,
+		status:          "token_input",
+		homeDir:         homeDir,
+		width:           80,
+		height:          24,
+		currentUsername: currentUsername,
+		currentOrg:      currentOrg,
+		cursor:          0, // Start with paste input selected
 	}
 }
 
@@ -6180,7 +6610,7 @@ func (m patLoginModel) Init() tea.Cmd {
 func openPATCreationPage() tea.Cmd {
 	return func() tea.Msg {
 		// Open browser to pre-filled PAT creation page
-		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read"
+		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read&members=read"
 		_ = browser.OpenURL(patURL)
 		return nil
 	}
@@ -6200,8 +6630,31 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
+		case "up", "k":
+			if m.status == "token_input" && m.cursor > 0 {
+				m.cursor--
+				if m.cursor == 0 {
+					m.textInput.Focus()
+				}
+			}
+			return m, nil
+		case "down", "j":
+			if m.status == "token_input" && m.cursor < 1 {
+				m.cursor++
+				if m.cursor == 1 {
+					m.textInput.Blur()
+				}
+			}
+			return m, nil
 		case "enter":
 			if m.status == "token_input" {
+				if m.cursor == 1 {
+					// Back selected
+					m.status = "cancelled"
+					m.done = true
+					return m, tea.Quit
+				}
+				// Paste input selected
 				token := strings.TrimSpace(m.textInput.Value())
 				if token == "" {
 					return m, nil
@@ -6210,18 +6663,10 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Verify token in background
 				return m, verifyPATToken(token)
 			}
-			if m.status == "org_input" {
-				m.organization = strings.TrimSpace(m.orgInput.Value())
-				return m, func() tea.Msg { return patOrgSubmittedMsg{} }
-			}
 		}
-		// Pass key messages to textinput
-		if m.status == "token_input" {
+		// Pass key messages to textinput only when paste input is selected
+		if m.status == "token_input" && m.cursor == 0 {
 			m.textInput, cmd = m.textInput.Update(msg)
-			return m, cmd
-		}
-		if m.status == "org_input" {
-			m.orgInput, cmd = m.orgInput.Update(msg)
 			return m, cmd
 		}
 
@@ -6231,25 +6676,19 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.ClearScreen
 
 	case patTokenVerifiedMsg:
-		m.status = "org_input"
+		// Save token and go to org selection
 		m.username = msg.username
 		m.token = msg.token
-		m.orgInput.Focus()
-		return m, textinput.Blink
-
-	case patOrgSubmittedMsg:
-		// Save token and organization to .env
-		if err := saveTokenToEnv(m.homeDir, m.token, m.organization); err != nil {
+		// Save token to .env (organization will be set by Select Organization screen)
+		if err := saveTokenToEnv(m.homeDir, m.token, ""); err != nil {
 			m.status = "error"
 			m.errorMsg = fmt.Sprintf("failed to save token: %v", err)
 			m.done = true
 			return m, nil
 		}
-		m.status = "success"
+		m.status = "select_org"
 		m.done = true
-		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
-			return tea.Quit()
-		})
+		return m, tea.Quit
 
 	case loginErrorMsg:
 		m.status = "error"
@@ -6277,8 +6716,6 @@ func (m patLoginModel) View() string {
 	switch m.status {
 	case "token_input":
 		content = m.renderTokenInputView()
-	case "org_input":
-		content = m.renderOrgInputView()
 	case "success":
 		content = m.renderSuccessView()
 	case "error":
@@ -6310,41 +6747,33 @@ func (m patLoginModel) renderTokenInputView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString("🔑 Personal Access Token\n")
+	b.WriteString("1. Opening browser to create new PAT at github.com\n")
 	b.WriteString("\n")
-	b.WriteString("1. Create a token at github.com (opened in browser)\n")
+	b.WriteString("2. Set resource owner to the organization you want to use\n")
 	b.WriteString("\n")
-	b.WriteString("2. Paste your token here:\n")
-	b.WriteString(m.textInput.View() + "\n")
+	b.WriteString("3. Copy the PAT\n")
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Press Enter to continue, Esc to cancel") + "\n")
-	b.WriteString("\n")
-
-	return b.String()
-}
-
-func (m patLoginModel) renderOrgInputView() string {
-	var b strings.Builder
-
-	// Calculate spacing for title bar
-	maxContentWidth := m.width - 4
-	if maxContentWidth < 64 {
-		maxContentWidth = 64
+	
+	// Paste option
+	if m.cursor == 0 {
+		b.WriteString(selectorStyle.Render("▶") + " Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+	} else {
+		b.WriteString("  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	}
-	innerWidth := maxContentWidth - 2
+	b.WriteString("\n")
 	
-	b.WriteString(renderTitleBar("🔧 Setup", m.username, "", innerWidth) + "\n")
-	b.WriteString("\n")
-	b.WriteString(successStyle.Render(fmt.Sprintf("✅ Successfully authenticated as @%s", m.username)) + "\n")
-	b.WriteString("\n")
-	b.WriteString("Enter your GitHub organization (optional):\n")
-	b.WriteString(m.orgInput.View() + "\n")
-	b.WriteString("\n")
-	b.WriteString("Press Enter to skip, or type organization name\n")
-	b.WriteString("\n")
+	// Back option - styled like Setup menu (name always bold, description changes)
+	if m.cursor == 1 {
+		b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc") + "\n")
+	} else {
+		b.WriteString("  ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
+	}
 
 	return b.String()
 }
@@ -6359,17 +6788,12 @@ func (m patLoginModel) renderSuccessView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", m.username, m.organization, innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(successStyle.Render("✅ Setup complete!") + "\n")
+	b.WriteString(" " + successStyle.Render("✅ Token saved!") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Logged in as: @%s\n", m.username))
-	if m.organization != "" {
-		b.WriteString(fmt.Sprintf("Organization: %s\n", m.organization))
-	}
-	b.WriteString(fmt.Sprintf("Saved to: %s/.env\n", m.homeDir))
-	b.WriteString("\n")
-	b.WriteString("Press any key to continue...\n")
+	b.WriteString(fmt.Sprintf(" Logged in as: @%s\n", m.username))
+	b.WriteString(fmt.Sprintf(" Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
 
 	return b.String()
@@ -6385,27 +6809,28 @@ func (m patLoginModel) renderErrorView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString(" " + errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Error: %s\n", m.errorMsg))
+	b.WriteString(fmt.Sprintf(" Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
-	b.WriteString("Please try again.\n")
+	b.WriteString(" Please try again.\n")
 	b.WriteString("\n")
+	b.WriteString("   ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
 
 	return b.String()
 }
 
 // RunPATLogin runs the PAT login flow
-func RunPATLogin(homeDir string) error {
+func RunPATLogin(homeDir, currentUsername, currentOrg string) error {
 	// Ensure home directory exists
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
 	// Create the Bubble Tea model
-	m := newPATLoginModel(homeDir)
+	m := newPATLoginModel(homeDir, currentUsername, currentOrg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	// Run the Bubble Tea program
@@ -6424,6 +6849,10 @@ func RunPATLogin(homeDir string) error {
 		}
 		if pm.status == "cancelled" {
 			return nil // Go back without error
+		}
+		if pm.status == "select_org" {
+			// Navigate to Select Organization screen
+			return runSelectOrgWithFlag(homeDir, pm.username, true)
 		}
 		if pm.status != "success" {
 			return fmt.Errorf("login cancelled")
