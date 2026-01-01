@@ -6569,6 +6569,7 @@ type patLoginModel struct {
 	done            bool
 	currentUsername string // current logged-in username for title bar
 	currentOrg      string // current organization for title bar
+	cursor          int    // 0 = paste input, 1 = back
 }
 
 // PAT login message types
@@ -6581,11 +6582,10 @@ type (
 
 func newPATLoginModel(homeDir, currentUsername, currentOrg string) patLoginModel {
 	ti := textinput.New()
-	ti.Placeholder = "github_pat_..."
+	ti.Placeholder = ""
 	ti.CharLimit = 200
-	ti.Width = 50
-	ti.Prompt = "> "
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	ti.Width = 40
+	ti.Prompt = ""
 	ti.EchoMode = textinput.EchoPassword
 	ti.EchoCharacter = '•'
 	ti.Focus()
@@ -6598,6 +6598,7 @@ func newPATLoginModel(homeDir, currentUsername, currentOrg string) patLoginModel
 		height:          24,
 		currentUsername: currentUsername,
 		currentOrg:      currentOrg,
+		cursor:          0, // Start with paste input selected
 	}
 }
 
@@ -6631,8 +6632,31 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "cancelled"
 			m.done = true
 			return m, tea.Quit
+		case "up", "k":
+			if m.status == "token_input" && m.cursor > 0 {
+				m.cursor--
+				if m.cursor == 0 {
+					m.textInput.Focus()
+				}
+			}
+			return m, nil
+		case "down", "j":
+			if m.status == "token_input" && m.cursor < 1 {
+				m.cursor++
+				if m.cursor == 1 {
+					m.textInput.Blur()
+				}
+			}
+			return m, nil
 		case "enter":
 			if m.status == "token_input" {
+				if m.cursor == 1 {
+					// Back selected
+					m.status = "cancelled"
+					m.done = true
+					return m, tea.Quit
+				}
+				// Paste input selected
 				token := strings.TrimSpace(m.textInput.Value())
 				if token == "" {
 					return m, nil
@@ -6642,8 +6666,8 @@ func (m patLoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, verifyPATToken(token)
 			}
 		}
-		// Pass key messages to textinput
-		if m.status == "token_input" {
+		// Pass key messages to textinput only when paste input is selected
+		if m.status == "token_input" && m.cursor == 0 {
 			m.textInput, cmd = m.textInput.Update(msg)
 			return m, cmd
 		}
@@ -6725,18 +6749,30 @@ func (m patLoginModel) renderTokenInputView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
 	
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(" 1. Opening browser to create a new token at github.com\n")
+	b.WriteString(" 1. Opening browser to create new PAT (personal access token)\n")
+	b.WriteString("    at https://github.com/settings/personal-access-tokens/new\n")
 	b.WriteString("\n")
-	b.WriteString(" 2. Paste your token here:\n")
+	b.WriteString(" 2. Copy the PAT\n")
 	b.WriteString("\n")
-	b.WriteString("    " + m.textInput.View() + "\n")
+	
+	// Paste option
+	if m.cursor == 0 {
+		b.WriteString(selectorStyle.Render("▶") + " Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+	} else {
+		b.WriteString("  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+	}
 	b.WriteString("\n")
-	b.WriteString(" Press Enter to continue\n")
-	b.WriteString("\n")
-	b.WriteString(" " + dimStyle.Render("←  Back  Esc") + "\n")
+	
+	// Back option
+	if m.cursor == 1 {
+		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render("←  Back  Esc") + "\n")
+	} else {
+		b.WriteString("  " + dimStyle.Render("←  Back  Esc") + "\n")
+	}
 
 	return b.String()
 }

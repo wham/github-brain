@@ -297,15 +297,14 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
    ╭────────────────────────────────────────────────────────────────╮
    │ GitHub Brain / 🔧 Setup / 🔑 Login with PAT              1.0.0  │
    │                                                                │
-   │  1. Opening browser to create a new token at github.com        │
+   │  1. Opening browser to create new PAT (personal access token)  │
+   │     at https://github.com/settings/personal-access-tokens/new  │
    │                                                                │
-   │  2. Paste your token here:                                     │
+   │  2. Copy the PAT                                               │
    │                                                                │
-   │     > github_pat_█                                             │
+   │ ▶ Paste the PAT and press Enter: █                             │
    │                                                                │
-   │  Press Enter to continue                                       │
-   │                                                                │
-   │  ←  Back  Esc                                                  │
+   │   ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -315,15 +314,14 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
    ╭────────────────────────────────────────────────────────────────╮
    │ GitHub Brain / 🔧 Setup / 🔑 Login with PAT   👤 @wham · 🏢 my-org · 1.0.0  │
    │                                                                │
-   │  1. Opening browser to create a new token at github.com        │
+   │  1. Opening browser to create new PAT (personal access token)  │
+   │     at https://github.com/settings/personal-access-tokens/new  │
    │                                                                │
-   │  2. Paste your token here:                                     │
+   │  2. Copy the PAT                                               │
    │                                                                │
-   │     > github_pat_█                                             │
+   │ ▶ Paste the PAT and press Enter: █                             │
    │                                                                │
-   │  Press Enter to continue                                       │
-   │                                                                │
-   │  ←  Back  Esc                                                  │
+   │   ←  Back  Esc                                                 │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
