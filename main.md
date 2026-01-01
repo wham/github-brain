@@ -288,7 +288,7 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
 1. Open browser to pre-filled PAT creation page:
 
    ```
-   https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read
+   https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read
    ```
 
 2. Display token input screen:
@@ -299,7 +299,9 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
    │                                                                │
    │ 1. Opening browser to create new PAT at github.com             │
    │                                                                │
-   │ 2. Copy the PAT                                                │
+   │ 2. Set resource owner to the organization you want to use      │
+   │                                                                │
+   │ 3. Copy the PAT                                                │
    │                                                                │
    │ ▶ Paste the PAT and press Enter: █                             │
    │                                                                │
@@ -315,7 +317,9 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
    │                                                                │
    │ 1. Opening browser to create new PAT at github.com             │
    │                                                                │
-   │ 2. Copy the PAT                                                │
+   │ 2. Set resource owner to the organization you want to use      │
+   │                                                                │
+   │ 3. Copy the PAT                                                │
    │                                                                │
    │ ▶ Paste the PAT and press Enter: █                             │
    │                                                                │

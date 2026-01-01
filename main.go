@@ -6612,7 +6612,7 @@ func (m patLoginModel) Init() tea.Cmd {
 func openPATCreationPage() tea.Cmd {
 	return func() tea.Msg {
 		// Open browser to pre-filled PAT creation page
-		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=http%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read"
+		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read"
 		_ = browser.OpenURL(patURL)
 		return nil
 	}
@@ -6757,7 +6757,9 @@ func (m patLoginModel) renderTokenInputView() string {
 	b.WriteString("\n")
 	b.WriteString("1. Opening browser to create new PAT at github.com\n")
 	b.WriteString("\n")
-	b.WriteString("2. Copy the PAT\n")
+	b.WriteString("2. Set resource owner to the organization you want to use\n")
+	b.WriteString("\n")
+	b.WriteString("3. Copy the PAT\n")
 	b.WriteString("\n")
 	
 	// Paste option
