@@ -6429,11 +6429,11 @@ func (m selectOrgModel) renderListView() string {
 	}
 	b.WriteString("\n")
 	
-	// Back menu item (selectable) - styled like Setup menu
+	// Back menu item (selectable) - styled like Setup menu (name always bold, description changes)
 	backIndex := inputIndex + 1
 	isBackSelected := m.cursor == backIndex
 	if isBackSelected {
-		b.WriteString(selectorStyle.Render("▶") + " ←  " + selectedStyle.Render("Back") + "  " + selectedStyle.Render("Esc"))
+		b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc"))
 	} else {
 		b.WriteString("  ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc"))
 	}
@@ -6750,28 +6750,29 @@ func (m patLoginModel) renderTokenInputView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(" 1. Opening browser to create new PAT (personal access token)\n")
-	b.WriteString("    at https://github.com/settings/personal-access-tokens/new\n")
+	b.WriteString("   1. Opening browser to create new PAT at github.com\n")
 	b.WriteString("\n")
-	b.WriteString(" 2. Copy the PAT\n")
+	b.WriteString("   2. Copy the PAT\n")
 	b.WriteString("\n")
 	
 	// Paste option
 	if m.cursor == 0 {
-		b.WriteString(selectorStyle.Render("▶") + " Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+		b.WriteString(selectorStyle.Render("▶") + "  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	} else {
-		b.WriteString("  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+		b.WriteString("   Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	}
 	b.WriteString("\n")
 	
-	// Back option
+	// Back option - styled like Setup menu (name always bold, description changes)
 	if m.cursor == 1 {
-		b.WriteString(selectorStyle.Render("▶") + " " + dimStyle.Render("←  Back  Esc") + "\n")
+		b.WriteString(selectorStyle.Render("▶") + "  ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc") + "\n")
 	} else {
-		b.WriteString("  " + dimStyle.Render("←  Back  Esc") + "\n")
+		b.WriteString("   ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
 	}
 
 	return b.String()
@@ -6816,7 +6817,7 @@ func (m patLoginModel) renderErrorView() string {
 	b.WriteString("\n")
 	b.WriteString(" Please try again.\n")
 	b.WriteString("\n")
-	b.WriteString(" " + dimStyle.Render("←  Back  Esc") + "\n")
+	b.WriteString("   ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
 
 	return b.String()
 }
