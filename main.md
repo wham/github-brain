@@ -679,14 +679,45 @@ Console when an error occurs:
 - Store width/height in model state
 - Layout adjusts automatically on next render
 
-**Color Scheme:**
+**UI Style System:**
 
-- Purple border color (#874BFD light / #7D56F4 dark)
-- Bright blue (#12) for active items
-- Bright green (#10) for completed ✅
-- Dim gray (#240) for skipped 🔕
-- Bright red (#9) for failed ❌
-- Applied via `lipgloss.NewStyle().Foreground()`
+Define styles once as global variables, reuse everywhere. Use semantic color names.
+
+Colors (ANSI 256):
+
+- `borderColor` - AdaptiveColor `#874BFD` light / `#7D56F4` dark (purple)
+- `accentColor` - Color `12` (bright blue) - primary UI accent
+- `dimColor` - Color `240` (gray)
+- `successColor` - Color `10` (bright green)
+- `errorColor` - Color `9` (bright red)
+- `warnColor` - Color `220` (gold/yellow)
+
+Text styles (global variables):
+
+- `titleStyle` - Bold, no color - for menu item names, section headers
+- `dimStyle` - Foreground dimColor - for inactive/secondary text
+- `successStyle` - Foreground successColor - for success messages ✅
+- `errorStyle` - Foreground errorColor - for error messages ❌
+- `accentStyle` - Foreground accentColor - for active items, spinners
+- `selectedStyle` - Foreground accentColor + Bold - for selected item text, keyboard hints
+
+Component styles (global variables):
+
+- `selectorStyle` - Foreground accentColor - for `▶` cursor indicator
+
+Box helper function:
+
+- `boxStyle(width int) lipgloss.Style` - creates border style with rounded border, borderColor, padding 0/1, and specified width
+
+Usage patterns:
+
+- Menu selector: `selectorStyle.Render("▶")`
+- Menu item name: `titleStyle.Render(name)`
+- Menu item description (unselected): `dimStyle.Render(desc)`
+- Menu item description (selected): `selectedStyle.Render(desc)`
+- Keyboard hint: `selectedStyle.Render("Esc")`
+- Spinner: Use `accentStyle` as spinner style
+- Text input prompt: Use `accentStyle` as prompt style
 
 **Milestone Celebrations:**
 
