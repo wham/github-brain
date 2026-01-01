@@ -4631,8 +4631,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "enter":
-			// If waiting for Enter after pull completion, quit
+		case "enter", "esc":
+			// If waiting for Enter/Esc after pull completion, quit
 			if m.waitingForEnter {
 				return m, tea.Quit
 			}
@@ -4734,6 +4734,8 @@ func (m *model) addLog(message string) {
 func (m model) View() string {
 	// Local style for header (not commonly reused)
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7")) // White
+	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
 	// Build content lines
 	var lines []string
@@ -4771,10 +4773,10 @@ func (m model) View() string {
 		}
 	}
 	
-	// Show "Press enter to continue" if waiting for Enter
+	// Show styled Back option if waiting for Enter/Esc
 	if m.waitingForEnter {
 		lines = append(lines, "")
-		lines = append(lines, "Press enter to continue")
+		lines = append(lines, selectorStyle.Render("▶")+" ←  "+titleStyle.Render("Back")+"  "+selectedStyle.Render("Esc"))
 	}
 	
 	// Join all lines
