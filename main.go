@@ -6755,24 +6755,24 @@ func (m patLoginModel) renderTokenInputView() string {
 	
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString("   1. Opening browser to create new PAT at github.com\n")
+	b.WriteString("1. Opening browser to create new PAT at github.com\n")
 	b.WriteString("\n")
-	b.WriteString("   2. Copy the PAT\n")
+	b.WriteString("2. Copy the PAT\n")
 	b.WriteString("\n")
 	
 	// Paste option
 	if m.cursor == 0 {
-		b.WriteString(selectorStyle.Render("▶") + "  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+		b.WriteString(selectorStyle.Render("▶") + " Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	} else {
-		b.WriteString("   Paste the PAT and press Enter: " + m.textInput.View() + "\n")
+		b.WriteString("  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	}
 	b.WriteString("\n")
 	
 	// Back option - styled like Setup menu (name always bold, description changes)
 	if m.cursor == 1 {
-		b.WriteString(selectorStyle.Render("▶") + "  ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc") + "\n")
+		b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc") + "\n")
 	} else {
-		b.WriteString("   ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
+		b.WriteString("  ←  " + titleStyle.Render("Back") + "  " + dimStyle.Render("Esc") + "\n")
 	}
 
 	return b.String()
