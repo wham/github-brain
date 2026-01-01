@@ -6029,7 +6029,7 @@ func RunSetupMenu(homeDir, username, organization string) error {
 		}
 
 		if sm.runPAT {
-			if err := RunPATLogin(homeDir); err != nil {
+			if err := RunPATLogin(homeDir, username, organization); err != nil {
 				if err.Error() == "quit" {
 					return err // Propagate quit to exit app
 				}
@@ -6558,15 +6558,17 @@ func saveOrgToEnv(homeDir string, organization string) error {
 
 // patLoginModel is the Bubble Tea model for the PAT login UI
 type patLoginModel struct {
-	textInput    textinput.Model
-	status       string // "token_input", "select_org", "success", "error"
-	errorMsg     string
-	username     string
-	token        string
-	homeDir      string
-	width        int
-	height       int
-	done         bool
+	textInput       textinput.Model
+	status          string // "token_input", "select_org", "success", "error"
+	errorMsg        string
+	username        string
+	token           string
+	homeDir         string
+	width           int
+	height          int
+	done            bool
+	currentUsername string // current logged-in username for title bar
+	currentOrg      string // current organization for title bar
 }
 
 // PAT login message types
@@ -6577,7 +6579,7 @@ type (
 	}
 )
 
-func newPATLoginModel(homeDir string) patLoginModel {
+func newPATLoginModel(homeDir, currentUsername, currentOrg string) patLoginModel {
 	ti := textinput.New()
 	ti.Placeholder = "github_pat_..."
 	ti.CharLimit = 200
@@ -6589,11 +6591,13 @@ func newPATLoginModel(homeDir string) patLoginModel {
 	ti.Focus()
 
 	return patLoginModel{
-		textInput: ti,
-		status:    "token_input",
-		homeDir:   homeDir,
-		width:     80,
-		height:    24,
+		textInput:       ti,
+		status:          "token_input",
+		homeDir:         homeDir,
+		width:           80,
+		height:          24,
+		currentUsername: currentUsername,
+		currentOrg:      currentOrg,
 	}
 }
 
@@ -6722,17 +6726,17 @@ func (m patLoginModel) renderTokenInputView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString("🔑 Personal Access Token\n")
+	b.WriteString(" 1. Opening browser to create a new token at github.com\n")
 	b.WriteString("\n")
-	b.WriteString("1. Create a token at github.com (opened in browser)\n")
+	b.WriteString(" 2. Paste your token here:\n")
 	b.WriteString("\n")
-	b.WriteString("2. Paste your token here:\n")
-	b.WriteString(m.textInput.View() + "\n")
+	b.WriteString("    " + m.textInput.View() + "\n")
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("Press Enter to continue, Esc to cancel") + "\n")
+	b.WriteString(" Press Enter to continue\n")
 	b.WriteString("\n")
+	b.WriteString(" " + dimStyle.Render("←  Back  Esc") + "\n")
 
 	return b.String()
 }
@@ -6747,12 +6751,12 @@ func (m patLoginModel) renderSuccessView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", m.username, "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(successStyle.Render("✅ Token saved!") + "\n")
+	b.WriteString(" " + successStyle.Render("✅ Token saved!") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Logged in as: @%s\n", m.username))
-	b.WriteString(fmt.Sprintf("Saved to: %s/.env\n", m.homeDir))
+	b.WriteString(fmt.Sprintf(" Logged in as: @%s\n", m.username))
+	b.WriteString(fmt.Sprintf(" Saved to: %s/.env\n", m.homeDir))
 	b.WriteString("\n")
 
 	return b.String()
@@ -6768,27 +6772,28 @@ func (m patLoginModel) renderErrorView() string {
 	}
 	innerWidth := maxContentWidth - 2
 	
-	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
+	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
-	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
+	b.WriteString(" " + errorStyle.Render("❌ Authentication failed") + "\n")
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Error: %s\n", m.errorMsg))
+	b.WriteString(fmt.Sprintf(" Error: %s\n", m.errorMsg))
 	b.WriteString("\n")
-	b.WriteString("Please try again.\n")
+	b.WriteString(" Please try again.\n")
 	b.WriteString("\n")
+	b.WriteString(" " + dimStyle.Render("←  Back  Esc") + "\n")
 
 	return b.String()
 }
 
 // RunPATLogin runs the PAT login flow
-func RunPATLogin(homeDir string) error {
+func RunPATLogin(homeDir, currentUsername, currentOrg string) error {
 	// Ensure home directory exists
 	if err := os.MkdirAll(homeDir, 0755); err != nil {
 		return fmt.Errorf("failed to create home directory: %w", err)
 	}
 
 	// Create the Bubble Tea model
-	m := newPATLoginModel(homeDir)
+	m := newPATLoginModel(homeDir, currentUsername, currentOrg)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	// Run the Bubble Tea program

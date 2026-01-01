@@ -277,24 +277,7 @@ The app uses a registered OAuth App for authentication:
 
 6. On success, save token to `.env` file and navigate to Select Organization screen (see [Select Organization](#select-organization) section)
 
-7. After organization is selected, show completion screen:
-
-   ```
-   ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
-   │                                                                │
-   │  ✅ Setup complete!                                            │
-   │                                                                │
-   │  Logged in as: @wham                                           │
-   │  Organization: my-org                                          │
-   │  Saved to: ~/.github-brain/.env                                │
-   │                                                                │
-   │  Press any key to continue...                                  │
-   │                                                                │
-   ╰────────────────────────────────────────────────────────────────╯
-   ```
-
-8. Return to main menu after key press.
+7. After organization is selected, return to Setup menu
 
 ## PAT Login
 
@@ -312,17 +295,35 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
 
    ```
    ╭────────────────────────────────────────────────────────────────╮
-   │  GitHub 🧠 Login                                               │
+   │ GitHub Brain / 🔧 Setup / 🔑 Login with PAT              1.0.0  │
    │                                                                │
-   │  🔑 Personal Access Token                                      │
-   │                                                                │
-   │  1. Create a token at github.com (opened in browser)           │
+   │  1. Opening browser to create a new token at github.com        │
    │                                                                │
    │  2. Paste your token here:                                     │
-   │  > github_pat_█                                                │
    │                                                                │
-   │  Press Enter to continue, Esc to cancel                        │
+   │     > github_pat_█                                             │
    │                                                                │
+   │  Press Enter to continue                                       │
+   │                                                                │
+   │  ←  Back  Esc                                                  │
+   ╰────────────────────────────────────────────────────────────────╯
+   ```
+
+   With user logged in (and organization configured):
+
+   ```
+   ╭────────────────────────────────────────────────────────────────╮
+   │ GitHub Brain / 🔧 Setup / 🔑 Login with PAT   👤 @wham · 🏢 my-org · 1.0.0  │
+   │                                                                │
+   │  1. Opening browser to create a new token at github.com        │
+   │                                                                │
+   │  2. Paste your token here:                                     │
+   │                                                                │
+   │     > github_pat_█                                             │
+   │                                                                │
+   │  Press Enter to continue                                       │
+   │                                                                │
+   │  ←  Back  Esc                                                  │
    ╰────────────────────────────────────────────────────────────────╯
    ```
 
@@ -330,7 +331,7 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
 
 4. On success, save token to `.env` file and navigate to Select Organization screen (see [Select Organization](#select-organization) section)
 
-5. After organization is selected, show completion screen and return to main menu
+5. After organization is selected, return to Setup menu
 
 ### Token Storage
 
