@@ -6284,11 +6284,11 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorMsg = fmt.Sprintf("failed to save organization: %v", err)
 			return m, nil
 		}
-		m.status = "success"
+		// Go directly back to Setup menu
+		m.selectedOrg = msg.organization
+		m.status = "done"
 		m.done = true
-		return m, tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
-			return tea.Quit()
-		})
+		return m, tea.Quit
 
 	case spinner.TickMsg:
 		if m.status == "loading" {
@@ -6325,8 +6325,6 @@ func (m selectOrgModel) View() string {
 		content = m.renderListView()
 	case "error":
 		content = m.renderErrorView()
-	case "success":
-		content = m.renderSuccessView()
 	}
 
 	// Calculate box width
@@ -6612,7 +6610,7 @@ func (m patLoginModel) Init() tea.Cmd {
 func openPATCreationPage() tea.Cmd {
 	return func() tea.Msg {
 		// Open browser to pre-filled PAT creation page
-		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read"
+		patURL := "https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read&members=read"
 		_ = browser.OpenURL(patURL)
 		return nil
 	}

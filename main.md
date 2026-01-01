@@ -288,7 +288,7 @@ Manual authentication using a Personal Access Token (PAT). Useful when OAuth flo
 1. Open browser to pre-filled PAT creation page:
 
    ```
-   https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read
+   https://github.com/settings/personal-access-tokens/new?name=github-brain&description=https%3A%2F%2Fgithub.com%2Fwham%2Fgithub-brain&issues=read&pull_requests=read&discussions=read&members=read
    ```
 
 2. Display token input screen:
