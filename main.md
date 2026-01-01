@@ -104,7 +104,7 @@ Right side components (shown only when available):
 2. Show menu with appropriate status in title bar
 3. When user selects Setup, show the setup submenu
 4. When user selects Pull, prompt for organization if not set, then run pull
-5. After pull completes or fails, show "Press enter to continue" and wait for Enter key, then return to menu
+5. After pull completes or fails, show the standard "← Back" option (styled like Setup menu) and wait for Enter/Esc key, then return to menu
 6. When user selects Exit, exit cleanly
 
 ## Setup Menu
@@ -512,7 +512,7 @@ Operation:
 - Always pull all items (no selective sync from TUI)
 - Maintain console output showing selected items and status
 - Use `log/slog` custom logger for last 10 log messages with timestamps in console output
-- On completion or error, show "Press enter to continue" message and wait for Enter key before returning to main menu
+- On completion or error, show the standard "← Back" option (styled like Setup menu) and wait for Enter/Esc key before returning to main menu
 
 ### Console Rendering with Bubble Tea
 
@@ -679,14 +679,45 @@ Console when an error occurs:
 - Store width/height in model state
 - Layout adjusts automatically on next render
 
-**Color Scheme:**
+**UI Style System:**
 
-- Purple border color (#874BFD light / #7D56F4 dark)
-- Bright blue (#12) for active items
-- Bright green (#10) for completed ✅
-- Dim gray (#240) for skipped 🔕
-- Bright red (#9) for failed ❌
-- Applied via `lipgloss.NewStyle().Foreground()`
+Define styles once as global variables, reuse everywhere. Use semantic color names.
+
+Colors (ANSI 256):
+
+- `borderColor` - AdaptiveColor `#874BFD` light / `#7D56F4` dark (purple)
+- `accentColor` - Color `12` (bright blue) - primary UI accent
+- `dimColor` - Color `240` (gray)
+- `successColor` - Color `10` (bright green)
+- `errorColor` - Color `9` (bright red)
+- `warnColor` - Color `220` (gold/yellow)
+
+Text styles (global variables):
+
+- `titleStyle` - Bold, no color - for menu item names, section headers
+- `dimStyle` - Foreground dimColor - for inactive/secondary text
+- `successStyle` - Foreground successColor - for success messages ✅
+- `errorStyle` - Foreground errorColor - for error messages ❌
+- `accentStyle` - Foreground accentColor - for active items, spinners
+- `selectedStyle` - Foreground accentColor + Bold - for selected item text, keyboard hints
+
+Component styles (global variables):
+
+- `selectorStyle` - Foreground accentColor - for `▶` cursor indicator
+
+Box helper function:
+
+- `boxStyle(width int) lipgloss.Style` - creates border style with rounded border, borderColor, padding 0/1, and specified width
+
+Usage patterns:
+
+- Menu selector: `selectorStyle.Render("▶")`
+- Menu item name: `titleStyle.Render(name)`
+- Menu item description (unselected): `dimStyle.Render(desc)`
+- Menu item description (selected): `selectedStyle.Render(desc)`
+- Keyboard hint: `selectedStyle.Render("Esc")`
+- Spinner: Use `accentStyle` as spinner style
+- Text input prompt: Use `accentStyle` as prompt style
 
 **Milestone Celebrations:**
 

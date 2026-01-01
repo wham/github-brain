@@ -62,17 +62,35 @@ var (
 	statusMutex    sync.Mutex
 )
 
-// borderColor defines the static purple color for UI borders
-var borderColor = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-
-// Common UI styles - defined once, used throughout
+// UI Colors - semantic names for ANSI 256 colors
 var (
-	titleStyle   = lipgloss.NewStyle().Bold(true)
-	dimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // Bright green
-	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // Bright red
-	activeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Bright blue
+	borderColor  = lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"} // Purple
+	accentColor  = lipgloss.Color("12")                                      // Bright blue
+	dimColor     = lipgloss.Color("240")                                     // Gray
+	successColor = lipgloss.Color("10")                                      // Bright green
+	errorColor   = lipgloss.Color("9")                                       // Bright red
+	warnColor    = lipgloss.Color("220")                                     // Gold/yellow
 )
+
+// UI Styles - defined once, used throughout
+var (
+	titleStyle    = lipgloss.NewStyle().Bold(true)
+	dimStyle      = lipgloss.NewStyle().Foreground(dimColor)
+	successStyle  = lipgloss.NewStyle().Foreground(successColor)
+	errorStyle    = lipgloss.NewStyle().Foreground(errorColor)
+	accentStyle   = lipgloss.NewStyle().Foreground(accentColor)
+	selectedStyle = lipgloss.NewStyle().Foreground(accentColor).Bold(true)
+	selectorStyle = lipgloss.NewStyle().Foreground(accentColor)
+)
+
+// boxStyle creates a standard box with rounded border
+func boxStyle(width int) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(borderColor).
+		Padding(0, 1).
+		Width(width)
+}
 
 // renderTitleBar renders a title bar with left title and right-aligned user status
 func renderTitleBar(screen, username, organization string, innerWidth int) string {
@@ -4590,7 +4608,7 @@ type logEntry struct {
 func newModel(enabledItems map[string]bool, username, organization string) model {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Bright blue
+	s.Style = accentStyle
 
 	itemOrder := []string{"repositories", "discussions", "issues", "pull-requests"}
 	items := make(map[string]itemState)
@@ -4631,8 +4649,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
-		case "enter":
-			// If waiting for Enter after pull completion, quit
+		case "enter", "esc":
+			// If waiting for Enter/Esc after pull completion, quit
 			if m.waitingForEnter {
 				return m, tea.Quit
 			}
@@ -4732,9 +4750,6 @@ func (m *model) addLog(message string) {
 
 // View renders the UI
 func (m model) View() string {
-	// Local style for header (not commonly reused)
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("7")) // White
-
 	// Build content lines
 	var lines []string
 	
@@ -4744,37 +4759,37 @@ func (m model) View() string {
 	// Items section
 	for _, name := range m.itemOrder {
 		state := m.items[name]
-		lines = append(lines, formatItemLine(state, m.spinner.View(), dimStyle, activeStyle, successStyle, errorStyle))
+		lines = append(lines, formatItemLine(state, m.spinner.View()))
 	}
 	
 	// Empty line
 	lines = append(lines, "")
 	
 	// API Status line
-	lines = append(lines, formatAPIStatusLine(m.apiSuccess, m.apiWarning, m.apiErrors, headerStyle, successStyle, errorStyle))
+	lines = append(lines, formatAPIStatusLine(m.apiSuccess, m.apiWarning, m.apiErrors))
 	
 	// Rate Limit line
-	lines = append(lines, formatRateLimitLine(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset, headerStyle))
+	lines = append(lines, formatRateLimitLine(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset))
 	
 	// Empty line
 	lines = append(lines, "")
 	
 	// Activity section header
-	lines = append(lines, headerStyle.Render("💬 Activity"))
+	lines = append(lines, titleStyle.Render("💬 Activity"))
 	
 	// Activity log lines
 	for i := 0; i < 10; i++ {
 		if i < len(m.logs) {
-			lines = append(lines, formatLogLine(m.logs[i], errorStyle))
+			lines = append(lines, formatLogLine(m.logs[i]))
 		} else {
 			lines = append(lines, "")
 		}
 	}
 	
-	// Show "Press enter to continue" if waiting for Enter
+	// Show styled Back option if waiting for Enter/Esc
 	if m.waitingForEnter {
 		lines = append(lines, "")
-		lines = append(lines, "Press enter to continue")
+		lines = append(lines, selectorStyle.Render("▶")+" ←  "+titleStyle.Render("Back")+"  "+selectedStyle.Render("Esc"))
 	}
 	
 	// Join all lines
@@ -4843,20 +4858,14 @@ func (m model) View() string {
 	content = strings.Join(contentLines, "\n")
 	
 	// Create box with standard lipgloss borders
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Align(lipgloss.Left)
-	
-	box := boxStyle.Render(content)
+	box := boxStyle(0).Align(lipgloss.Left).Render(content)
 	
 	return box + "\n"
 }
 
 // Helper formatting functions (return plain strings, box handles borders)
 
-func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, successStyle, errorStyle lipgloss.Style) string {
+func formatItemLine(state itemState, spinnerView string) string {
 	var icon string
 	var style lipgloss.Style
 	var text string
@@ -4877,7 +4886,7 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 		text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
 	} else if state.active {
 		icon = spinnerView
-		style = activeStyle
+		style = accentStyle
 		if state.count > 0 {
 			text = fmt.Sprintf("%s: %s", displayName, formatNumber(state.count))
 		} else {
@@ -4896,15 +4905,14 @@ func formatItemLine(state itemState, spinnerView string, dimStyle, activeStyle, 
 	return style.Render(icon + " " + text)
 }
 
-func formatAPIStatusLine(success, warning, errors int, headerStyle, successStyle, errorStyle lipgloss.Style) string {
-	// Match the pattern of formatRateLimitLine - only style the header
+func formatAPIStatusLine(success, warning, errors int) string {
 	// Note: Using 🟡 instead of ⚠️ because the warning sign has a variation selector that breaks width calculation
 	apiText := fmt.Sprintf("✅ %s   🟡 %s   ❌ %s ",
 		formatNumber(success), formatNumber(warning), formatNumber(errors))
-	return headerStyle.Render("📊 API Status    ") + apiText
+	return titleStyle.Render("📊 API Status    ") + apiText
 }
 
-func formatRateLimitLine(used, limit int, resetTime time.Time, headerStyle lipgloss.Style) string {
+func formatRateLimitLine(used, limit int, resetTime time.Time) string {
 	var rateLimitText string
 	if limit > 0 {
 		resetStr := formatTimeRemaining(resetTime)
@@ -4913,10 +4921,10 @@ func formatRateLimitLine(used, limit int, resetTime time.Time, headerStyle lipgl
 	} else {
 		rateLimitText = "? / ? used, resets ?"
 	}
-	return headerStyle.Render("🚀 Rate Limit    ") + rateLimitText
+	return titleStyle.Render("🚀 Rate Limit    ") + rateLimitText
 }
 
-func formatLogLine(entry logEntry, errorStyle lipgloss.Style) string {
+func formatLogLine(entry logEntry) string {
 	timestamp := entry.time.Format("15:04:05")
 	message := entry.message
 
@@ -5068,8 +5076,6 @@ func (m mainMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m mainMenuModel) View() string {
 	var b strings.Builder
 
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-
 	// Calculate box width for title bar
 	boxContentWidth := m.width - 2
 	if boxContentWidth < 60 {
@@ -5082,7 +5088,6 @@ func (m mainMenuModel) View() string {
 	b.WriteString("\n")
 
 	// Menu items
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
 	for i, choice := range m.choices {
 		cursor := "  "
 		descStyle := dimStyle
@@ -5099,14 +5104,7 @@ func (m mainMenuModel) View() string {
 		}
 	}
 
-	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(boxContentWidth)
-
-	return borderStyle.Render(b.String())
+	return boxStyle(boxContentWidth).Render(b.String())
 }
 
 // RunMainTUI runs the main interactive TUI
@@ -5391,7 +5389,7 @@ func newOrgPromptModel(username string) orgPromptModel {
 	ti.CharLimit = 100
 	ti.Width = 30
 	ti.Prompt = "> "
-	ti.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	ti.PromptStyle = accentStyle
 	ti.Focus()
 
 	return orgPromptModel{
@@ -5452,14 +5450,7 @@ func (m orgPromptModel) View() string {
 	b.WriteString(dimStyle.Render("  Press Enter to continue, Esc to cancel") + "\n")
 	b.WriteString("\n")
 
-	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(maxContentWidth)
-
-	return borderStyle.Render(b.String())
+	return boxStyle(maxContentWidth).Render(b.String())
 }
 
 // saveOrganizationToEnv saves the organization to .env file
@@ -5584,7 +5575,7 @@ type (
 func newLoginModel(homeDir, currentUsername, currentOrg string) loginModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	s.Style = accentStyle
 
 	return loginModel{
 		spinner:         s,
@@ -5686,17 +5677,7 @@ func (m loginModel) View() string {
 	}
 
 	// Create border style with title
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		BorderTop(true).
-		BorderLeft(true).
-		BorderRight(true).
-		BorderBottom(true).
-		Padding(0, 1).
-		Width(maxContentWidth)
-
-	box := borderStyle.Render(content)
+	box := boxStyle(maxContentWidth).Render(content)
 
 	return box
 }
@@ -5725,8 +5706,8 @@ func (m loginModel) renderWaitingView() string {
 		// Code box with double border - gold/yellow stands out against purple
 		codeStyle := lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
-			BorderForeground(lipgloss.Color("220")).
-			Foreground(lipgloss.Color("220")).
+			BorderForeground(warnColor).
+			Foreground(warnColor).
 			Padding(0, 4).
 			Bold(true).
 			MarginLeft(3)
@@ -5741,8 +5722,6 @@ func (m loginModel) renderWaitingView() string {
 	b.WriteString("\n")
 	
 	// Back menu item - always selected, same format as Setup screen
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	paddedName := fmt.Sprintf("%-4s", "Back")
 	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
@@ -5939,8 +5918,6 @@ func (m setupMenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m setupMenuModel) View() string {
 	var b strings.Builder
 
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-
 	// Calculate box width for title bar
 	boxContentWidth := m.width - 2
 	if boxContentWidth < 60 {
@@ -5952,9 +5929,6 @@ func (m setupMenuModel) View() string {
 	b.WriteString(renderTitleBar("🔧 Setup", m.username, m.organization, innerWidth) + "\n")
 	b.WriteString("\n")
 
-	// Menu items - same format as Home screen
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")) // Blue selector
-	
 	// Find the longest name for alignment
 	maxNameWidth := 0
 	for _, choice := range m.choices {
@@ -5981,14 +5955,7 @@ func (m setupMenuModel) View() string {
 		}
 	}
 
-	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(boxContentWidth)
-
-	return borderStyle.Render(b.String())
+	return boxStyle(boxContentWidth).Render(b.String())
 }
 
 // RunSetupMenu runs the setup submenu
@@ -6114,7 +6081,7 @@ type (
 func newSelectOrgModel(homeDir, username string, fromLogin bool) selectOrgModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	s.Style = accentStyle
 
 	ti := textinput.New()
 	ti.Placeholder = ""
@@ -6333,14 +6300,7 @@ func (m selectOrgModel) View() string {
 		maxContentWidth = 64
 	}
 
-	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(maxContentWidth)
-
-	return borderStyle.Render(content)
+	return boxStyle(maxContentWidth).Render(content)
 }
 
 func (m selectOrgModel) renderLoadingView() string {
@@ -6358,8 +6318,6 @@ func (m selectOrgModel) renderLoadingView() string {
 	b.WriteString("\n")
 	
 	// Back menu item
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 	paddedName := fmt.Sprintf("%-4s", "Back")
 	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
 
@@ -6377,9 +6335,6 @@ func (m selectOrgModel) renderListView() string {
 
 	b.WriteString(renderTitleBar("🔧 Setup / 🏢 Select organization", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
-
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
 
 	// Show filtered organizations (max 10)
 	displayOrgs := m.filtered
@@ -6728,14 +6683,7 @@ func (m patLoginModel) View() string {
 		maxContentWidth = 64
 	}
 
-	// Create border style
-	borderStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(maxContentWidth)
-
-	return borderStyle.Render(content)
+	return boxStyle(maxContentWidth).Render(content)
 }
 
 func (m patLoginModel) renderTokenInputView() string {
@@ -6747,9 +6695,6 @@ func (m patLoginModel) renderTokenInputView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	selectorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	titleStyle := lipgloss.NewStyle().Bold(true)
 	
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
