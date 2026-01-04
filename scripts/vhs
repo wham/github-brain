@@ -1,0 +1,32 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")/.."
+
+# Install VHS if not present
+if ! command -v vhs &> /dev/null; then
+    echo "VHS not found. Installing..."
+    if command -v brew &> /dev/null; then
+        brew install vhs
+    elif command -v go &> /dev/null; then
+        go install github.com/charmbracelet/vhs@latest
+    else
+        echo "Error: Could not install VHS. Please install manually:"
+        echo "  brew install vhs"
+        echo "  or: go install github.com/charmbracelet/vhs@latest"
+        exit 1
+    fi
+fi
+
+# Build the application
+echo "Building github-brain..."
+CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -o ./github-brain .
+
+# Run all tape files
+for tape in tapes/*.tape; do
+    if [ -f "$tape" ]; then
+        echo "Recording $tape..."
+        vhs "$tape"
+    fi
+done
+
+echo "Done! Recordings saved to tapes/"
