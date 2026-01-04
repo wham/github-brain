@@ -1,0 +1,63 @@
+name: VHS
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  record:
+    name: Record
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Install VHS
+        run: |
+          go install github.com/charmbracelet/vhs@latest
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install ttyd
+        run: |
+          wget -q https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -O ttyd
+          chmod +x ttyd
+          sudo mv ttyd /usr/local/bin/
+
+      - name: Build
+        run: |
+          CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" CGO_LDFLAGS="-lm" \
+          go build -o github-brain .
+
+      - name: Record tapes
+        run: |
+          for tape in tapes/*.tape; do
+            if [ -f "$tape" ]; then
+              echo "Recording $tape..."
+              vhs "$tape"
+            fi
+          done
+
+      - name: Commit GIFs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tapes/*.gif
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update VHS recordings"
+            git push
+          fi
