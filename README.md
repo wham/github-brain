@@ -129,3 +129,7 @@ Merge with existing `servers` if present.
 ## Development
 
 `scripts/run` builds and runs `github-brain` with the checkout directory as home `-m` (database in `db/`, config in `.env`).
+
+### Terminal Recordings
+
+Demo recordings are created with [VHS](https://github.com/charmbracelet/vhs). See [tapes/](./tapes/) for available recordings.
