@@ -1440,6 +1440,223 @@ const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID o
   - Items from user's repositories get 2x boost, ensuring they appear higher in results
   - This approach is more flexible than boolean flags and allows for future ranking adjustments
 
+##### Search Ranking Improvement Proposals
+
+The following improvements can enhance search relevance by incorporating multiple ranking signals:
+
+###### 1. Rank Title Matches Higher
+
+**Current Implementation:**
+- Title column has 3x weight in BM25: `bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0)`
+- This provides good title prioritization but could be improved
+
+**Proposed Improvements:**
+
+**Option A: Increase Title Weight (Simple)**
+- Increase title weight from 3.0 to 5.0 or higher
+- Example: `bm25(search, 1.0, 5.0, 1.0, 1.0, 1.0, 1.0)`
+- **Pros:** Simple, no schema changes, immediate impact
+- **Cons:** May over-prioritize title matches, less granular control
+
+**Option B: Separate Title-Only Boost (Advanced)**
+- Add logic to detect if query terms appear in title
+- Apply additional multiplier (e.g., 1.5x) when title contains all search terms
+- Implementation: Use SQLite's `instr()` or `LIKE` to check title for query terms after FTS match
+- **Pros:** More sophisticated, rewards exact title matches
+- **Cons:** More complex query, potential performance impact for large result sets
+
+**Recommended:** Start with Option A (increase weight to 5.0), then consider Option B if needed
+
+###### 2. Rank Open Items Higher
+
+**Current Implementation:**
+- `state` column stored as UNINDEXED in search table ('open' or 'closed')
+- Not currently used in ranking calculation
+
+**Proposed Improvements:**
+
+**Option A: Add State Multiplier to Boost (Recommended)**
+- Calculate boost considering both authorship and state
+- Example boost values:
+  - Open + User's repo: 2.0 × 1.5 = 3.0
+  - Open + Other repo: 1.0 × 1.5 = 1.5
+  - Closed + User's repo: 2.0 × 1.0 = 2.0
+  - Closed + Other repo: 1.0 × 1.0 = 1.0
+- Update boost calculation during search index population:
+  ```sql
+  CASE 
+    WHEN author = ? AND state = 'open' THEN 3.0
+    WHEN state = 'open' THEN 1.5
+    WHEN author = ? THEN 2.0
+    ELSE 1.0
+  END
+  ```
+- **Pros:** Leverages existing boost column, no schema changes
+- **Cons:** Pre-computed, can't adjust dynamically
+
+**Option B: Runtime State Adjustment**
+- Keep current boost for authorship
+- Add state multiplier in ORDER BY clause:
+  ```sql
+  ORDER BY (bm25(search, ...) * boost * CASE WHEN state = 'open' THEN 1.5 ELSE 1.0 END)
+  ```
+- **Pros:** More flexible, can adjust weight without rebuild
+- **Cons:** Slightly more complex query
+
+**Recommended:** Option B for flexibility, or Option A if rebuild performance is not a concern
+
+###### 3. Rank More Recent Items Higher
+
+**Current Implementation:**
+- `created_at` column stored as UNINDEXED in search table
+- Not currently used in ranking
+
+**Proposed Improvements:**
+
+**Option A: Recency Score Based on Age (Recommended)**
+- Calculate time-based decay factor where newer items score higher
+- Use exponential or linear decay based on item age
+- Example implementation using julianday (SQLite built-in):
+  ```sql
+  -- Exponential decay: score decreases by 50% every 180 days (6 months)
+  ORDER BY (bm25(search, ...) * boost * 
+    power(0.5, (julianday('now') - julianday(created_at)) / 180.0))
+  ```
+  Or linear decay with floor:
+  ```sql
+  -- Linear: 1.0 for items < 30 days, 0.75 for < 180 days, 0.5 for older
+  ORDER BY (bm25(search, ...) * boost * 
+    CASE 
+      WHEN julianday('now') - julianday(created_at) < 30 THEN 1.0
+      WHEN julianday('now') - julianday(created_at) < 180 THEN 0.75
+      ELSE 0.5
+    END)
+  ```
+- **Pros:** Smooth decay, configurable half-life
+- **Cons:** Requires runtime calculation
+
+**Option B: Pre-computed Recency Tiers**
+- Add `recency_tier` column to search table during population
+- Calculate tier: 1 (< 30 days), 2 (30-180 days), 3 (180+ days)
+- Multiply boost by tier multiplier: tier 1 = 1.0, tier 2 = 0.8, tier 3 = 0.6
+- **Pros:** Pre-computed, faster queries
+- **Cons:** Less granular, requires index rebuild to update tiers
+
+**Option C: Hybrid Approach**
+- Use tiered boost during index population
+- Fine-tune with runtime adjustment if needed
+- Balance between query performance and accuracy
+
+**Recommended:** Option A (runtime calculation) for accuracy and flexibility
+
+###### 4. Rank Items from User-Contributed Repositories Higher
+
+**Current Implementation:**
+- Already implemented! Boost = 2.0 for items in repositories where user is author
+- Currently based on authorship of the specific item
+
+**Proposed Improvements:**
+
+**Option A: Repository-Level Contribution Boost (Already Implemented)**
+- Current implementation already provides 2x boost for items from user's repositories
+- This is implemented during search index population in `PopulateSearchTable()`
+- Query identifies all repositories where user has contributed
+- All items from those repositories receive boost
+
+**Option B: Enhance with Contribution Frequency**
+- Go beyond binary boost (2.0 vs 1.0)
+- Calculate contribution intensity per repository
+- Boost scale: 1.0 (no contributions) → 2.5 (heavy contributor)
+- Example:
+  ```sql
+  -- Count user contributions per repo
+  SELECT repository, COUNT(*) as contribution_count
+  FROM (
+    SELECT repository FROM discussions WHERE author = ?
+    UNION ALL
+    SELECT repository FROM issues WHERE author = ?
+    UNION ALL
+    SELECT repository FROM pull_requests WHERE author = ?
+  )
+  GROUP BY repository
+  ```
+- Apply tiered boost:
+  - 1-5 contributions: 1.5x
+  - 6-20 contributions: 2.0x
+  - 21+ contributions: 2.5x
+- **Pros:** More granular, rewards active contributors
+- **Cons:** More complex calculation, larger boost values
+
+**Option C: Recent Contribution Boost**
+- Boost based on recency of last contribution to repository
+- Higher boost for repositories with recent user activity
+- Combine with base contribution boost
+- **Pros:** Reflects current engagement
+- **Cons:** Requires tracking last contribution date
+
+**Recommended:** Keep current implementation (Option A) as baseline, consider Option B for future enhancement
+
+###### Combined Ranking Formula Proposal
+
+**Current Formula:**
+```sql
+ORDER BY (bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) * boost)
+```
+
+**Proposed Enhanced Formula:**
+```sql
+ORDER BY (
+  bm25(search, 1.0, 5.0, 1.0, 1.0, 1.0, 1.0)  -- Increase title weight to 5.0
+  * boost                                       -- User contribution boost (1.0 or 2.0)
+  * CASE WHEN state = 'open' THEN 1.5 ELSE 1.0 END  -- Open item boost
+  * CASE 
+      WHEN julianday('now') - julianday(created_at) < 30 THEN 1.0
+      WHEN julianday('now') - julianday(created_at) < 180 THEN 0.85
+      ELSE 0.7
+    END                                         -- Recency decay
+) DESC
+```
+
+**Impact Analysis:**
+- Title matches: 67% stronger influence (3.0 → 5.0)
+- Open items: 50% boost over closed items
+- Recent items (< 30 days): Full score
+- Mid-age items (30-180 days): 15% penalty
+- Older items (180+ days): 30% penalty
+- User-contributed repos: 2x boost (existing)
+
+**Example Score Comparison:**
+
+| Item Type | State | Age (days) | User Repo | Current Score | New Score | Change |
+|-----------|-------|------------|-----------|---------------|-----------|---------|
+| Title match, open, recent, user's repo | Open | 15 | Yes | 6.0 | 15.0 | +150% |
+| Title match, closed, old, other repo | Closed | 200 | No | 3.0 | 3.5 | +17% |
+| Body match, open, recent, user's repo | Open | 20 | Yes | 2.0 | 3.0 | +50% |
+| Body match, closed, old, other repo | Closed | 400 | No | 1.0 | 0.7 | -30% |
+
+###### Implementation Considerations
+
+**Performance:**
+- Runtime calculations (state check, recency) add minimal overhead to query execution
+- FTS5 BM25 is the primary performance factor, additional multipliers are negligible
+- For very large result sets (100K+ items), consider pre-computing more factors
+
+**Tuning:**
+- All multiplier values (title weight, state boost, recency decay) should be configurable
+- Consider adding configuration parameters for fine-tuning
+- Monitor query performance and adjust as needed
+
+**Testing:**
+- Test with various query patterns: title-only, multi-term, recent vs old items
+- Validate that open items consistently rank above closed items with similar relevance
+- Ensure user-contributed repository boost remains effective
+- Verify recency decay doesn't over-penalize important older items
+
+**Migration:**
+- Most changes are query-only, no schema migration needed
+- If pre-computed approach is chosen, database rebuild required
+- Update both SearchEngine.Search() and SearchTool() implementations
+
 #### table:schema_version
 
 - Stores the current schema GUID for version tracking
