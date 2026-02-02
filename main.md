@@ -1444,6 +1444,31 @@ const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID o
 
 The following improvements can enhance search relevance by incorporating multiple ranking signals:
 
+**Quick Reference - Recommended Approach:**
+```sql
+-- Enhanced ranking formula incorporating all improvements
+ORDER BY (
+  bm25(search, 1.0, 5.0, 1.0, 1.0, 1.0, 1.0)              -- Title weight: 3.0 → 5.0
+  * boost                                                   -- User contributions: 2.0x for user's repos
+  * CASE WHEN state = 'open' THEN 1.5 ELSE 1.0 END        -- Open items: 1.5x boost
+  * CASE 
+      WHEN julianday('now') - julianday(created_at) < 30 THEN 1.0
+      WHEN julianday('now') - julianday(created_at) < 180 THEN 0.85
+      ELSE 0.7
+    END                                                     -- Recency: decay over time
+) DESC
+```
+
+**Key Benefits:**
+- Title matches get 67% stronger influence (3x → 5x weight)
+- Open items rank 50% higher than closed items
+- Recent items (< 30 days) get full score, older items gradually penalized
+- User-contributed repositories maintain existing 2x boost
+- All improvements are runtime-calculated, no schema changes required
+- Easily tunable by adjusting multiplier values
+
+---
+
 ###### 1. Rank Title Matches Higher
 
 **Current Implementation:**
