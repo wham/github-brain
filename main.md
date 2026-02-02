@@ -1435,7 +1435,7 @@ const SCHEMA_GUID = "550e8400-e29b-41d4-a716-446655440001" // Change this GUID o
 - Indexed columns: `type`, `title`, `body`, `url`, `repository`, `author`
 - Unindexed columns: `created_at`, `state`, `boost`
 - `boost`: Numeric value (e.g., `1.0`, `2.0`) used to multiply BM25 scores for ranking
-- Uses `bm25(search, 1.0, 2.0, 1.0, 1.0, 1.0, 1.0)` ranking with 2x title weight for relevance scoring
+- Uses `bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0)` ranking with 3x title weight for relevance scoring
 - Search results should be ordered by: `(bm25(search) * boost)` for optimal relevance
   - Items from user's repositories get 2x boost, ensuring they appear higher in results
   - This approach is more flexible than boolean flags and allows for future ranking adjustments
