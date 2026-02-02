@@ -1202,7 +1202,7 @@ Next, prepare the FTS5 search query using the `search` table. Build the query wi
 
 - Use FTS5 MATCH operator for the search query
 - Order by `bm25(search)` for optimal relevance ranking (titles are weighted 3x higher)
-- Limit to 10 results
+- Limit to 20 results
 - Use the unified SearchEngine implementation shared with the UI
 
 If no results are found, output:

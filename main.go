@@ -54,8 +54,8 @@ var (
 	maxBackoffDuration    time.Duration = 10 * time.Minute // Keep at 10 minutes max
 
 	// Rate limit information from headers
-	currentRateLimit      RateLimitInfo = RateLimitInfo{Limit: -1, Remaining: -1, Used: -1} // Initialize with -1 for unknown
-	rateLimitInfoMutex    sync.RWMutex
+	currentRateLimit   RateLimitInfo = RateLimitInfo{Limit: -1, Remaining: -1, Used: -1} // Initialize with -1 for unknown
+	rateLimitInfoMutex sync.RWMutex
 
 	// Status code counters
 	statusCounters StatusCounters
@@ -95,7 +95,7 @@ func boxStyle(width int) lipgloss.Style {
 // renderTitleBar renders a title bar with left title and right-aligned user status
 func renderTitleBar(screen, username, organization string, innerWidth int) string {
 	leftTitle := fmt.Sprintf("GitHub Brain / %s", screen)
-	
+
 	// Build right side: @username · 🏢 org · version
 	var rightParts []string
 	if username != "" {
@@ -104,13 +104,13 @@ func renderTitleBar(screen, username, organization string, innerWidth int) strin
 	if organization != "" {
 		rightParts = append(rightParts, fmt.Sprintf("🏢 %s", organization))
 	}
-	
+
 	// Join parts with separator
 	rightStatus := strings.Join(rightParts, " · ")
 	if rightStatus != "" {
 		rightStatus += " · "
 	}
-	
+
 	leftWidth := lipgloss.Width(leftTitle)
 	versionText := Version
 	versionWidth := lipgloss.Width(versionText)
@@ -119,7 +119,7 @@ func renderTitleBar(screen, username, organization string, innerWidth int) strin
 	if spacing < 1 {
 		spacing = 1
 	}
-	
+
 	return titleStyle.Render(leftTitle) + strings.Repeat(" ", spacing) + titleStyle.Render(rightStatus) + dimStyle.Render(versionText)
 }
 
@@ -143,7 +143,7 @@ func (h *BubbleTeaHandler) Handle(_ context.Context, r slog.Record) error {
 	// Build message with attributes
 	var b strings.Builder
 	b.WriteString(r.Message)
-	
+
 	// Add structured attributes as key=value pairs
 	if r.NumAttrs() > 0 {
 		first := true
@@ -158,12 +158,12 @@ func (h *BubbleTeaHandler) Handle(_ context.Context, r slog.Record) error {
 			return true
 		})
 	}
-	
+
 	// Send to Bubble Tea
 	if h.program != nil {
 		h.program.Send(logMsg(b.String()))
 	}
-	
+
 	return nil
 }
 
@@ -186,7 +186,7 @@ type RateLimitInfo struct {
 // StatusCounters tracks HTTP response status codes
 type StatusCounters struct {
 	Success2XX int // 2XX status codes
-	Error4XX   int // 4XX status codes  
+	Error4XX   int // 4XX status codes
 	Error5XX   int // 5XX status codes
 }
 
@@ -197,7 +197,7 @@ func addRequestDelay() {
 	inSecondaryLimit := secondaryRateLimitHit
 	inPrimaryLimit := rateLimitHit
 	rateLimitMutex.Unlock()
-	
+
 	var delay time.Duration
 	if inSecondaryLimit {
 		// Much longer delay when we're recovering from secondary rate limits
@@ -211,11 +211,11 @@ func addRequestDelay() {
 		remaining := currentRateLimit.Remaining
 		limit := currentRateLimit.Limit
 		rateLimitInfoMutex.RUnlock()
-		
+
 		if remaining > 0 && limit > 0 {
 			// Calculate points utilization (GitHub's rate limiting is points-based)
 			pointsUsed := float64(limit-remaining) / float64(limit)
-			
+
 			if pointsUsed > 0.9 { // Above 90% points used
 				// Very conservative delay when close to rate limit
 				delay = time.Duration(3000+rand.Intn(2000)) * time.Millisecond // 3-5 seconds
@@ -234,7 +234,7 @@ func addRequestDelay() {
 			delay = time.Duration(1500+rand.Intn(1000)) * time.Millisecond // 1.5-2.5 seconds
 		}
 	}
-	
+
 	time.Sleep(delay)
 }
 
@@ -284,30 +284,30 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	if resp != nil {
 		// Update status counters
 		updateStatusCounter(resp.StatusCode)
-		
+
 		// Update rate limit info from headers
 		updateRateLimitInfo(resp.Header)
-		
+
 		// Handle 429 status code (rate limit) with Retry-After header
 		if resp.StatusCode == 429 {
 			retryAfter := resp.Header.Get("Retry-After")
-			
+
 			rateLimitMutex.Lock()
 			defer rateLimitMutex.Unlock()
-			
+
 			// Check if this is secondary rate limit (abuse detection)
 			// GitHub secondary rate limits typically have abuse detection messages
 			if retryAfter != "" {
 				if retryAfterInt, parseErr := strconv.Atoi(retryAfter); parseErr == nil {
 					waitDuration := time.Duration(retryAfterInt) * time.Second
-					
+
 					// Cap the wait time to prevent excessive waiting
 					maxWaitTime := 10 * time.Minute
 					if waitDuration > maxWaitTime {
 						slog.Warn("Capping excessive Retry-After duration", "from", waitDuration, "to", maxWaitTime)
 						waitDuration = maxWaitTime
 					}
-					
+
 					// Set secondary rate limit if this appears to be abuse detection
 					// (typically longer wait times indicate secondary rate limits)
 					if waitDuration > 60*time.Second {
@@ -325,13 +325,13 @@ func (ct *CustomTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 				// No Retry-After header, assume secondary rate limit with default backoff
 				secondaryRateLimitHit = true
 				waitDuration := backoffDuration
-				
+
 				// Increase backoff for next time (exponential backoff)
 				backoffDuration = backoffDuration * 2
 				if backoffDuration > maxBackoffDuration {
 					backoffDuration = maxBackoffDuration
 				}
-				
+
 				secondaryResetTime = time.Now().Add(waitDuration)
 				slog.Info("GitHub API secondary rate limit (429) detected without Retry-After", "backoff", waitDuration.String(), "until", secondaryResetTime.Format(time.RFC3339))
 			}
@@ -347,13 +347,13 @@ func init() {
 
 // Config holds all application configuration
 type Config struct {
-	GithubToken           string
-	Organization          string
-	HomeDir               string   // GitHub Brain home directory (default: ~/.github-brain)
-	DBDir                 string   // SQLite database path, constructed as <HomeDir>/db
-	Items                 []string // Items to pull (repositories, discussions, issues, pull-requests)
-	Force                 bool     // Remove all data before pulling
-	ExcludedRepositories  []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
+	GithubToken          string
+	Organization         string
+	HomeDir              string   // GitHub Brain home directory (default: ~/.github-brain)
+	DBDir                string   // SQLite database path, constructed as <HomeDir>/db
+	Items                []string // Items to pull (repositories, discussions, issues, pull-requests)
+	Force                bool     // Remove all data before pulling
+	ExcludedRepositories []string // Comma-separated list of repositories to exclude from the pull of discussions, issues, and pull-requests
 }
 
 // LoadConfig creates a config from command line arguments and environment variables
@@ -365,7 +365,7 @@ func LoadConfig(args []string) *Config {
 		defaultHomeDir = "."
 	}
 	defaultHomeDir = defaultHomeDir + "/.github-brain"
-	
+
 	config := &Config{
 		HomeDir: defaultHomeDir,
 	}
@@ -450,17 +450,17 @@ func formatNumber(n int) string {
 	if n < 1000 {
 		return strconv.Itoa(n)
 	}
-	
+
 	str := strconv.Itoa(n)
 	var result strings.Builder
-	
+
 	for i, digit := range str {
 		if i > 0 && (len(str)-i)%3 == 0 {
 			result.WriteString(",")
 		}
 		result.WriteRune(digit)
 	}
-	
+
 	return result.String()
 }
 
@@ -469,16 +469,16 @@ func formatTimeRemaining(resetTime time.Time) string {
 	if resetTime.IsZero() {
 		return "?"
 	}
-	
+
 	remaining := time.Until(resetTime)
 	if remaining <= 0 {
 		return "now"
 	}
-	
+
 	hours := int(remaining.Hours())
 	minutes := int(remaining.Minutes()) % 60
 	seconds := int(remaining.Seconds()) % 60
-	
+
 	if hours > 0 {
 		if minutes > 0 {
 			return fmt.Sprintf("%dh %dm", hours, minutes)
@@ -512,7 +512,7 @@ func visibleLength(s string) int {
 	length := 0
 	i := 0
 	runes := []rune(s)
-	
+
 	for i < len(runes) {
 		if runes[i] == '\033' && i+1 < len(runes) && runes[i+1] == '[' {
 			// Skip CSI sequence: ESC [ ... (terminated by a letter)
@@ -534,7 +534,7 @@ func visibleLength(s string) int {
 			i++
 		}
 	}
-	
+
 	return length
 }
 
@@ -542,19 +542,19 @@ func visibleLength(s string) int {
 func isWideChar(r rune) bool {
 	// Common emoji ranges and wide characters
 	return (r >= 0x1F300 && r <= 0x1F9FF) || // Misc Symbols and Pictographs, Emoticons, etc.
-		(r >= 0x2600 && r <= 0x26FF) ||   // Misc symbols
-		(r >= 0x2700 && r <= 0x27BF) ||   // Dingbats
-		(r >= 0xFE00 && r <= 0xFE0F) ||   // Variation Selectors
+		(r >= 0x2600 && r <= 0x26FF) || // Misc symbols
+		(r >= 0x2700 && r <= 0x27BF) || // Dingbats
+		(r >= 0xFE00 && r <= 0xFE0F) || // Variation Selectors
 		(r >= 0x1F000 && r <= 0x1F02F) || // Mahjong Tiles, Domino Tiles
 		(r >= 0x1F0A0 && r <= 0x1F0FF) || // Playing Cards
 		(r >= 0x1F100 && r <= 0x1F64F) || // Enclosed characters, Emoticons
 		(r >= 0x1F680 && r <= 0x1F6FF) || // Transport and Map Symbols
 		(r >= 0x1F900 && r <= 0x1F9FF) || // Supplemental Symbols and Pictographs
-		(r >= 0x3000 && r <= 0x303F) ||   // CJK Symbols and Punctuation
-		(r >= 0x3040 && r <= 0x309F) ||   // Hiragana
-		(r >= 0x30A0 && r <= 0x30FF) ||   // Katakana
-		(r >= 0x4E00 && r <= 0x9FFF) ||   // CJK Unified Ideographs
-		(r >= 0xAC00 && r <= 0xD7AF)      // Hangul Syllables
+		(r >= 0x3000 && r <= 0x303F) || // CJK Symbols and Punctuation
+		(r >= 0x3040 && r <= 0x309F) || // Hiragana
+		(r >= 0x30A0 && r <= 0x30FF) || // Katakana
+		(r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+		(r >= 0xAC00 && r <= 0xD7AF) // Hangul Syllables
 }
 
 // Old Progress struct and Console removed - now using Bubble Tea for UI rendering
@@ -585,16 +585,12 @@ func (d *DB) Close() error {
 	return d.db.Close()
 }
 
-
-
-
-
 // Repository represents a GitHub repository
 type Repository struct {
-	Name                    string    `json:"name"`                      // Repository name without organization prefix
-	UpdatedAt               time.Time `json:"updated_at"`                // Last update timestamp
-	HasIssuesEnabled        bool      `json:"has_issues_enabled"`        // Whether issues are enabled for this repository
-	HasDiscussionsEnabled   bool      `json:"has_discussions_enabled"`   // Whether discussions are enabled for this repository
+	Name                  string    `json:"name"`                    // Repository name without organization prefix
+	UpdatedAt             time.Time `json:"updated_at"`              // Last update timestamp
+	HasIssuesEnabled      bool      `json:"has_issues_enabled"`      // Whether issues are enabled for this repository
+	HasDiscussionsEnabled bool      `json:"has_discussions_enabled"` // Whether discussions are enabled for this repository
 }
 
 // Discussion represents a GitHub discussion
@@ -684,10 +680,6 @@ func getDBPath(dbDir, organization string) string {
 	return fmt.Sprintf("%s/%s.db", dbDir, organization)
 }
 
-
-
-
-
 // checkSchemaVersion checks if the database schema version matches current SCHEMA_GUID
 // Returns true if schema is current, false if database needs recreation
 func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
@@ -697,7 +689,7 @@ func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to check schema_version table existence: %w", err)
 	}
-	
+
 	if tableExists == 0 {
 		if progress != nil {
 			progress.Log("No schema_version table found - database recreation needed")
@@ -706,7 +698,7 @@ func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
 		}
 		return false, nil
 	}
-	
+
 	// Read stored GUID
 	var storedGUID string
 	err = db.QueryRow("SELECT guid FROM schema_version LIMIT 1").Scan(&storedGUID)
@@ -721,7 +713,7 @@ func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
 		}
 		return false, fmt.Errorf("failed to read schema version: %w", err)
 	}
-	
+
 	// Compare GUIDs
 	if storedGUID != SCHEMA_GUID {
 		if progress != nil {
@@ -731,7 +723,7 @@ func checkSchemaVersion(db *sql.DB, progress ProgressInterface) (bool, error) {
 		}
 		return false, nil
 	}
-	
+
 	if progress != nil {
 		progress.Log("Schema version matches - using existing database")
 	} else {
@@ -751,7 +743,7 @@ func createAllTables(db *sql.DB, progress ProgressInterface) error {
 	if err != nil {
 		return fmt.Errorf("failed to create schema_version table: %w", err)
 	}
-	
+
 	// Store current schema GUID
 	_, err = db.Exec("INSERT INTO schema_version (guid) VALUES (?)", SCHEMA_GUID)
 	if err != nil {
@@ -958,14 +950,14 @@ func createAllTables(db *sql.DB, progress ProgressInterface) error {
 
 func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error) {
 	dbPath := getDBPath(dbDir, organization)
-	
+
 	// Log the full database file path being opened
 	if progress != nil {
 		progress.Log("Opening database at path: %s", dbPath)
 	} else {
 		slog.Info("Opening database at path", "path", dbPath)
 	}
-	
+
 	// Extract directory from dbPath
 	lastSlash := strings.LastIndex(dbPath, "/")
 	if lastSlash != -1 {
@@ -1006,7 +998,7 @@ func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error)
 			}
 		}
 	}
-	
+
 	// Drop and recreate database if needed
 	if needsRecreation {
 		if progress != nil {
@@ -1014,7 +1006,7 @@ func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error)
 		} else {
 			slog.Info("Dropping existing database and creating new one")
 		}
-		
+
 		// Remove existing database file
 		if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
 			if progress != nil {
@@ -1041,17 +1033,17 @@ func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error)
 	db.SetMaxOpenConns(1)    // SQLite works best with single connection
 	db.SetMaxIdleConns(1)    // Keep one idle connection
 	db.SetConnMaxLifetime(0) // Connections never expire
-	
+
 	// Enable WAL mode and set other SQLite pragmas for better performance and concurrency
 	pragmas := []string{
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA synchronous=NORMAL", 
+		"PRAGMA synchronous=NORMAL",
 		"PRAGMA cache_size=10000",
 		"PRAGMA temp_store=memory",
 		"PRAGMA mmap_size=268435456", // 256MB
 		"PRAGMA busy_timeout=30000",
 	}
-	
+
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
 			if progress != nil {
@@ -1069,8 +1061,6 @@ func InitDB(dbDir, organization string, progress ProgressInterface) (*DB, error)
 		}
 	}
 
-
-
 	return &DB{db: db}, nil
 }
 
@@ -1079,31 +1069,31 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 	// Truncate search FTS5 table and repopulate it from discussions, issues, and pull_requests tables
 	slog.Info("Truncating and repopulating search FTS table...")
 	progress.Log("Clearing existing search index...")
-	
+
 	// Delete all data from search table
 	if _, err := db.Exec("DELETE FROM search"); err != nil {
 		return fmt.Errorf("failed to truncate search table: %w", err)
 	}
-	
+
 	// Get counts for progress reporting
 	var discussionCount, issueCount, prCount int
 	_ = db.QueryRow("SELECT COUNT(*) FROM discussions").Scan(&discussionCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM issues").Scan(&issueCount)
 	_ = db.QueryRow("SELECT COUNT(*) FROM pull_requests").Scan(&prCount)
-	
+
 	totalItems := discussionCount + issueCount + prCount
-	progress.Log("Indexing %d total items: %d discussions, %d issues, %d pull requests", 
+	progress.Log("Indexing %d total items: %d discussions, %d issues, %d pull requests",
 		totalItems, discussionCount, issueCount, prCount)
-	
-	slog.Info("Indexing content into search table", 
+
+	slog.Info("Indexing content into search table",
 		"discussions", discussionCount, "issues", issueCount, "pull_requests", prCount)
-	
+
 	// Query for all unique repository names where the user is the author
 	slog.Info("Querying repositories where user is author", "username", currentUsername)
 	progress.Log("Identifying repositories with your contributions...")
-	
+
 	userReposMap := make(map[string]bool)
-	
+
 	// Get repositories from discussions
 	rows, err := db.Query(`
 		SELECT DISTINCT repository FROM discussions WHERE author = ?
@@ -1112,7 +1102,7 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 		UNION
 		SELECT DISTINCT repository FROM pull_requests WHERE author = ?
 	`, currentUsername, currentUsername, currentUsername)
-	
+
 	if err != nil {
 		slog.Warn("Failed to query user repositories, proceeding with boost=1.0 for all", "error", err)
 	} else {
@@ -1128,10 +1118,10 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 			}
 		}
 	}
-	
+
 	progress.Log("Found %d repositories with your contributions (will receive 2x boost)", len(userReposMap))
 	slog.Info("User contribution repositories identified", "count", len(userReposMap), "username", currentUsername)
-	
+
 	// Helper to index a table type into search
 	indexTable := func(tableName, typeName string, count int, query string) error {
 		if count == 0 {
@@ -1146,7 +1136,7 @@ func (db *DB) PopulateSearchTable(currentUsername string, progress ProgressInter
 		progress.Log("✅ Completed indexing %d %s", count, tableName)
 		return nil
 	}
-	
+
 	// Insert discussions
 	if err := indexTable("discussions", "discussion", discussionCount, `
 		INSERT INTO search(type, title, body, url, repository, author, created_at, state, boost)
@@ -1256,28 +1246,28 @@ func (db *DB) IsPullLocked() (bool, error) {
 func (db *DB) executeWithRetry(operation func() error, operationName string) error {
 	const maxRetries = 5
 	const baseDelay = 100 * time.Millisecond
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := operation()
-		
+
 		if err == nil {
 			return nil // Success
 		}
-		
+
 		// Check if it's a database lock error
 		if strings.Contains(err.Error(), "database is locked") {
 			if attempt < maxRetries-1 {
 				// Exponential backoff with jitter
 				delay := baseDelay * time.Duration(1<<attempt)
-				jitter := time.Duration(rand.Intn(int(delay/2)))
+				jitter := time.Duration(rand.Intn(int(delay / 2)))
 				time.Sleep(delay + jitter)
 				continue
 			}
 		}
-		
+
 		return fmt.Errorf("failed to %s: %w", operationName, err)
 	}
-	
+
 	return fmt.Errorf("failed to %s after %d attempts: database persistently locked", operationName, maxRetries)
 }
 
@@ -1309,7 +1299,7 @@ func (db *DB) SaveIssue(issue *Issue) error {
 	if issue.ClosedAt != nil {
 		closedAtStr = issue.ClosedAt.Format(time.RFC3339)
 	}
-	
+
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
 			"INSERT OR REPLACE INTO issues (url, title, body, created_at, updated_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1325,12 +1315,12 @@ func (db *DB) SavePullRequest(pr *PullRequest) error {
 	if pr.MergedAt != nil {
 		mergedAtStr = pr.MergedAt.Format(time.RFC3339)
 	}
-	
+
 	var closedAtStr interface{}
 	if pr.ClosedAt != nil {
 		closedAtStr = pr.ClosedAt.Format(time.RFC3339)
 	}
-	
+
 	return db.executeWithRetry(func() error {
 		_, err := db.Exec(
 			"INSERT OR REPLACE INTO pull_requests (url, title, body, created_at, updated_at, merged_at, closed_at, repository, author) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1420,7 +1410,7 @@ func parseOptionalTimestamp(timeStr sql.NullString) *time.Time {
 func buildWhereClause(conditions map[string]interface{}) (string, []interface{}) {
 	var conditionStrs []string
 	var args []interface{}
-	
+
 	for field, value := range conditions {
 		if value != nil {
 			switch v := value.(type) {
@@ -1439,7 +1429,7 @@ func buildWhereClause(conditions map[string]interface{}) (string, []interface{})
 							validValues = append(validValues, strings.TrimSpace(item))
 						}
 					}
-					
+
 					if len(validValues) > 0 {
 						// Create placeholders for IN clause
 						placeholders := make([]string, len(validValues))
@@ -1447,7 +1437,7 @@ func buildWhereClause(conditions map[string]interface{}) (string, []interface{})
 							placeholders[i] = "?"
 						}
 						conditionStrs = append(conditionStrs, field+" IN ("+strings.Join(placeholders, ", ")+")")
-						
+
 						// Add values to args
 						for _, validValue := range validValues {
 							args = append(args, validValue)
@@ -1475,12 +1465,12 @@ func buildWhereClause(conditions map[string]interface{}) (string, []interface{})
 			}
 		}
 	}
-	
+
 	var whereClause string
 	if len(conditionStrs) > 0 {
 		whereClause = "WHERE " + strings.Join(conditionStrs, " AND ")
 	}
-	
+
 	return whereClause, args
 }
 
@@ -1494,7 +1484,7 @@ func (db *DB) GetDiscussions(repository string, fromDate time.Time, toDate time.
 	if !toDate.IsZero() {
 		conditions["created_at <="] = toDate
 	}
-	
+
 	whereClause, args := buildWhereClause(conditions)
 
 	query := `
@@ -1556,7 +1546,7 @@ func (db *DB) GetIssues(repository string, createdFromDate time.Time, createdToD
 	if closedToDate != nil && !closedToDate.IsZero() {
 		conditions["closed_at <="] = closedToDate
 	}
-	
+
 	whereClause, args := buildWhereClause(conditions)
 
 	query := `
@@ -1625,7 +1615,7 @@ func (db *DB) GetPullRequests(repository string, createdFromDate time.Time, crea
 	if mergedToDate != nil && !mergedToDate.IsZero() {
 		conditions["merged_at <="] = mergedToDate
 	}
-	
+
 	whereClause, args := buildWhereClause(conditions)
 
 	query := `
@@ -1691,7 +1681,7 @@ func (db *DB) getLastUpdatedForTable(tableName, repository string) (time.Time, e
 	default:
 		return time.Time{}, fmt.Errorf("unknown table name: %s", tableName)
 	}
-	
+
 	var lastUpdatedStr sql.NullString
 	err := db.QueryRow(query, repository).Scan(&lastUpdatedStr)
 	if err != nil {
@@ -1706,7 +1696,7 @@ func (db *DB) getLastUpdatedForTable(tableName, repository string) (time.Time, e
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse last updated time '%s' as RFC3339 from %s: %w", lastUpdatedStr.String, tableName, err)
 	}
-	
+
 	return t, nil
 }
 
@@ -1728,25 +1718,25 @@ func (db *DB) GetPullRequestLastUpdated(repository string) (time.Time, error) {
 // removeRepositoryAndAssociatedData removes a repository and all its associated data from the database
 func (db *DB) removeRepositoryAndAssociatedData(repositoryName string, progress ProgressInterface) {
 	progress.Log("Repository %s does not exist, removing repository and all associated data from database", repositoryName)
-	
+
 	// Remove the repository
 	_, cleanupErr := db.Exec("DELETE FROM repositories WHERE name = ?", repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove repository %s from database: %v", repositoryName, cleanupErr)
 	}
-	
+
 	// Remove all associated discussions
 	_, cleanupErr = db.Exec("DELETE FROM discussions WHERE repository = ?", repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove discussions for repository %s from database: %v", repositoryName, cleanupErr)
 	}
-	
+
 	// Remove all associated issues
 	_, cleanupErr = db.Exec("DELETE FROM issues WHERE repository = ?", repositoryName)
 	if cleanupErr != nil {
 		progress.Log("Warning: failed to remove issues for repository %s from database: %v", repositoryName, cleanupErr)
 	}
-	
+
 	// Remove all associated pull requests
 	_, cleanupErr = db.Exec("DELETE FROM pull_requests WHERE repository = ?", repositoryName)
 	if cleanupErr != nil {
@@ -1858,7 +1848,7 @@ func handleRateLimit(err error) (bool, time.Duration) {
 
 	// Check if the error message contains rate limit information
 	errMsg := err.Error()
-	
+
 	// Debug logging to help identify rate limit detection issues
 	if strings.Contains(errMsg, "rate limit") {
 		slog.Debug("Rate limit error detected", "error", errMsg)
@@ -1868,7 +1858,7 @@ func handleRateLimit(err error) (bool, time.Duration) {
 	if strings.Contains(errMsg, "429") || strings.Contains(errMsg, "Too Many Requests") {
 		// Transport should have already handled this, but provide fallback
 		resetDuration := 60 * time.Second // Default wait time for 429
-		
+
 		// Set appropriate rate limit state based on context
 		if strings.Contains(errMsg, "abuse") || strings.Contains(errMsg, "secondary") {
 			secondaryRateLimitHit = true
@@ -1879,7 +1869,7 @@ func handleRateLimit(err error) (bool, time.Duration) {
 			rateLimitResetTime = time.Now().Add(resetDuration)
 			slog.Info("GitHub API primary rate limit detected via error message", "wait", resetDuration.String())
 		}
-		
+
 		return true, resetDuration
 	}
 
@@ -1891,9 +1881,9 @@ func handleRateLimit(err error) (bool, time.Duration) {
 		// Increase backoff for next time (exponential backoff with jitter)
 		nextBackoff := backoffDuration * 2
 		// Add jitter (10-20% randomization) to prevent thundering herd
-		jitter := time.Duration(rand.Intn(int(nextBackoff/5))) // 0-20% jitter
+		jitter := time.Duration(rand.Intn(int(nextBackoff / 5))) // 0-20% jitter
 		backoffDuration = nextBackoff + jitter
-		
+
 		if backoffDuration > maxBackoffDuration {
 			backoffDuration = maxBackoffDuration
 		}
@@ -2011,7 +2001,7 @@ func isNetworkError(err error) bool {
 func isRateLimitError(errMsg string) bool {
 	// Convert to lowercase for case-insensitive matching
 	lowerErr := strings.ToLower(errMsg)
-	
+
 	// Check for various GitHub rate limit error patterns
 	return strings.Contains(lowerErr, "api rate limit exceeded") ||
 		strings.Contains(lowerErr, "rate limit exceeded") ||
@@ -2024,10 +2014,10 @@ func isRateLimitError(errMsg string) bool {
 // handleGraphQLError centralizes GraphQL error handling with retries and rate limit management
 // Returns (success, shouldRetry, waitDuration, error)
 func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc func() error, operation string, page int, requestCount *atomic.Int64, progress ProgressInterface) error {
-	const maxRetries = 10 // Increased from 3 to 10 for better rate limit handling
+	const maxRetries = 10                  // Increased from 3 to 10 for better rate limit handling
 	const baseRetryDelay = 5 * time.Second // Base delay for exponential backoff (increased)
 	const maxRetryDelay = 30 * time.Minute // Maximum delay between retries (increased)
-	
+
 	for retries := 0; retries < maxRetries; retries++ {
 		// Check for context cancellation
 		if ctx.Err() != nil {
@@ -2042,7 +2032,7 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 			if waitTime > 0 {
 				rateLimitMutex.Unlock()
 				slog.Info("Proactive rate limit check: primary rate limit active", "wait", waitTime.String(), "operation", operation, "page", page)
-				
+
 				if progress != nil {
 					progress.UpdateMessage(fmt.Sprintf("Rate limit active, waiting %v before %s page %d...", waitTime, operation, page))
 				}
@@ -2061,13 +2051,13 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 				rateLimitResetTime = time.Time{}
 			}
 		}
-		
+
 		if secondaryRateLimitHit {
 			waitTime := time.Until(secondaryResetTime)
 			if waitTime > 0 {
 				rateLimitMutex.Unlock()
 				slog.Info("Proactive rate limit check: secondary rate limit active", "wait", waitTime.String(), "operation", operation, "page", page)
-				
+
 				if progress != nil {
 					progress.UpdateMessage(fmt.Sprintf("Secondary rate limit active, waiting %v before %s page %d...", waitTime, operation, page))
 				}
@@ -2080,10 +2070,10 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 					// Continue after wait time
 				}
 				continue // Retry after waiting
-			} else {			// Secondary rate limit has expired, clear it and reset backoff conservatively
-			secondaryRateLimitHit = false
-			secondaryResetTime = time.Time{}
-			backoffDuration = 5 * time.Second // Conservative reset
+			} else { // Secondary rate limit has expired, clear it and reset backoff conservatively
+				secondaryRateLimitHit = false
+				secondaryResetTime = time.Time{}
+				backoffDuration = 5 * time.Second // Conservative reset
 			}
 		}
 		rateLimitMutex.Unlock()
@@ -2116,27 +2106,27 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 		}
 
 		// Handle 5xx server errors with exponential backoff
-		if strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "502") || 
-		   strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "504") {
+		if strings.Contains(err.Error(), "500") || strings.Contains(err.Error(), "502") ||
+			strings.Contains(err.Error(), "503") || strings.Contains(err.Error(), "504") {
 			// Calculate exponential backoff delay
 			retryDelay := time.Duration(1<<uint(retries)) * baseRetryDelay
 			if retryDelay > maxRetryDelay {
 				retryDelay = maxRetryDelay
 			}
-			
+
 			// Truncate error message to prevent very long HTML responses from cluttering logs
 			errMsg := err.Error()
 			if len(errMsg) > 200 {
 				errMsg = errMsg[:200] + "..."
 			}
-			
+
 			if retries < maxRetries-1 {
 				slog.Info("5xx server error, retrying", "operation", operation, "page", page, "retry", retries+1, "max_retries", maxRetries, "delay", retryDelay.String(), "error", errMsg)
 				if progress != nil {
-					progress.UpdateMessage(fmt.Sprintf("5xx error on page %d, retrying in %v (attempt %d/%d)", 
+					progress.UpdateMessage(fmt.Sprintf("5xx error on page %d, retrying in %v (attempt %d/%d)",
 						page, retryDelay, retries+1, maxRetries))
 				}
-				
+
 				// Wait with context cancellation support
 				select {
 				case <-ctx.Done():
@@ -2159,7 +2149,7 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 				errMsg = errMsg[:200] + "..."
 			}
 			slog.Info("Rate limit reached during operation", "operation", operation, "page", page, "error", errMsg)
-			
+
 			if progress != nil {
 				progress.UpdateMessage(fmt.Sprintf("Rate limit reached on page %d, waiting for %v before retrying...", page, waitTime))
 			}
@@ -2181,12 +2171,12 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 			baseWait := 60 * time.Second
 			jitter := time.Duration(rand.Intn(60)) * time.Second
 			waitTime := baseWait + jitter
-			
+
 			slog.Info("Network error detected, waiting for recovery", "operation", operation, "page", page, "wait", waitTime.String(), "error", err.Error())
 			if progress != nil {
 				progress.UpdateMessage(fmt.Sprintf("Network error on page %d, waiting %v for recovery...", page, waitTime))
 			}
-			
+
 			// Wait with context cancellation support
 			select {
 			case <-ctx.Done():
@@ -2204,13 +2194,13 @@ func handleGraphQLError(ctx context.Context, client *githubv4.Client, queryFunc 
 			if retryDelay > maxRetryDelay {
 				retryDelay = maxRetryDelay
 			}
-			
+
 			slog.Info("Non-rate-limit error, retrying", "operation", operation, "page", page, "retry", retries+1, "max_retries", maxRetries, "delay", retryDelay.String(), "error", err)
 			if progress != nil {
-				progress.UpdateMessage(fmt.Sprintf("Error on page %d, retrying in %v (attempt %d/%d)", 
+				progress.UpdateMessage(fmt.Sprintf("Error on page %d, retrying in %v (attempt %d/%d)",
 					page, retryDelay, retries+1, maxRetries))
 			}
-			
+
 			// Wait with context cancellation support
 			select {
 			case <-ctx.Done():
@@ -2314,10 +2304,10 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
-				
+
 				// Update rate limit and API status display from global state
 				updateProgressStatus(progress)
-				
+
 			}
 		}
 	}()
@@ -2468,10 +2458,10 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 			// Create repository object and save it
 			repository := &Repository{
-				Name:                    repo.name,
-				UpdatedAt:               repo.updatedAt,
-				HasIssuesEnabled:        repo.hasIssuesEnabled,
-				HasDiscussionsEnabled:   repo.hasDiscussionsEnabled,
+				Name:                  repo.name,
+				UpdatedAt:             repo.updatedAt,
+				HasIssuesEnabled:      repo.hasIssuesEnabled,
+				HasDiscussionsEnabled: repo.hasDiscussionsEnabled,
 			}
 
 			if err := db.SaveRepository(repository); err != nil {
@@ -2488,10 +2478,10 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 				resultSent = true
 				return
 			}
-			
+
 			// Update total count for each repository
 			newTotal := totalCount.Add(1)
-			
+
 			// Update progress display every 10 repositories to reduce overhead
 			if i%10 == 0 || i == len(repos)-1 {
 				progress.UpdateItemCount("repositories", int(newTotal))
@@ -2526,7 +2516,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 	case result := <-resultChan:
 		if result.shouldStop {
 			shouldStopDueToOptimization = true
-			hasNextPage = false  // Stop pagination due to optimization
+			hasNextPage = false // Stop pagination due to optimization
 		} else {
 			endCursor = githubv4.String(result.endCursor)
 			hasNextPage = result.hasNextPage
@@ -2625,7 +2615,7 @@ func PullRepositories(ctx context.Context, client *githubv4.Client, db *DB, conf
 	// Mark repositories as completed with final count regardless of errors
 	finalCount := int(totalCount.Load())
 	progress.MarkItemCompleted("repositories", finalCount)
-	
+
 	// Update message based on whether there were errors
 	if len(errors) > 0 {
 		progress.UpdateMessage(fmt.Sprintf("Completed fetching %d repositories with %d errors", finalCount, len(errors)))
@@ -2693,10 +2683,10 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 
 				// Update spinner speed based on request rate
 				progress.UpdateRequestRate(int(requestsInLastSecond))
-				
+
 				// Update rate limit and API status display from global state
 				updateProgressStatus(progress)
-				
+
 			}
 		}
 	}()
@@ -2723,7 +2713,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 			// Determine owner and repo name
 			var owner, repoName string
 			parts := strings.Split(repo.Name, "/")
-			if len(parts) ==  2 {
+			if len(parts) == 2 {
 				// If in owner/repo format, use that
 				owner, repoName = parts[0], parts[1]
 			} else {
@@ -2830,7 +2820,7 @@ func PullDiscussions(ctx context.Context, client *githubv4.Client, db *DB, confi
 					}
 
 					repoDiscussionsUpdated++
-					
+
 					// Update global count and progress every 10 discussions to reduce overhead
 					newTotal := atomic.AddInt64(&totalDiscussionsUpdated, 1)
 					if repoDiscussionsUpdated%10 == 0 || i == len(query.Repository.Discussions.Nodes)-1 {
@@ -2901,7 +2891,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 	if err != nil {
 		return fmt.Errorf("failed to get repositories: %w", err)
 	}
-	
+
 	// Filter repositories to only include those with issues enabled and not excluded
 	var repositories []Repository
 	for _, repo := range allRepositories {
@@ -2935,10 +2925,10 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 				lastCount = currentCount
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
-				
+
 				// Update rate limit and API status display from global state
 				updateProgressStatus(progress)
-				
+
 			}
 		}
 	}()
@@ -3066,7 +3056,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 					}
 
 					newTotal := totalIssues.Add(1)
-					
+
 					// Update progress count every 10 issues to reduce overhead
 					if savedIssuesThisPage%10 == 0 || len(query.Repository.Issues.Nodes) > 0 {
 						progress.UpdateItemCount("issues", int(newTotal))
@@ -3093,7 +3083,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 				cursor = &query.Repository.Issues.PageInfo.EndCursor
 				pageNum++
 			}
-			
+
 			progress.Log("Repository %s completed: processed %d issues", repo.Name, totalIssues.Load())
 		}(repo)
 	}
@@ -3132,7 +3122,7 @@ func PullIssues(ctx context.Context, client *githubv4.Client, db *DB, config *Co
 // PullPullRequests pulls pull requests from GitHub using GraphQL with optimal caching and concurrency
 func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, config *Config, progress ProgressInterface) error {
 	progress.Log("Starting PullPullRequests function")
-	
+
 	// Get all repositories in the organization
 	progress.Log("Getting repositories from database")
 	allRepositories, err := db.GetRepositories()
@@ -3181,10 +3171,10 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 				lastCount = currentCount
 
 				progress.UpdateRequestRate(int(requestsInLastSecond))
-				
+
 				// Update rate limit and API status display from global state
 				updateProgressStatus(progress)
-				
+
 			}
 		}
 	}()
@@ -3226,7 +3216,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 			for {
 				progress.Log("Fetching page %d of pull requests for %s", pageNum, repo.Name)
-				
+
 				// Define the GraphQL query variables
 				vars := map[string]interface{}{
 					"owner":  githubv4.String(config.Organization),
@@ -3277,17 +3267,17 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 
 				pullRequests := query.Repository.PullRequests.Nodes
 				progress.Log("Successfully fetched page %d, processing %d pull requests for %s", pageNum, len(pullRequests), repo.Name)
-				
+
 				// Process pull requests from this page
 				stopProcessing := false
-				
+
 				for _, prNode := range pullRequests {
 					// If we've encountered a pull request older than our last update, stop processing
 					if !lastUpdated.IsZero() && prNode.UpdatedAt.Before(lastUpdated) {
 						stopProcessing = true
 						break
 					}
-					
+
 					// Only pull pull requests from the last 400 days
 					cutoffDate := time.Now().AddDate(0, 0, -400)
 					if prNode.UpdatedAt.Before(cutoffDate) {
@@ -3316,7 +3306,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 					}
 
 					newTotal := totalPullRequests.Add(1)
-					
+
 					// Update progress count every 10 pull requests to reduce overhead
 					if int(newTotal)%10 == 0 || len(query.Repository.PullRequests.Nodes) > 0 {
 						progress.UpdateItemCount("pull-requests", int(newTotal))
@@ -3335,7 +3325,7 @@ func PullPullRequests(ctx context.Context, client *githubv4.Client, db *DB, conf
 				}
 				pageNum++
 			}
-			
+
 			progress.Log("Repository %s completed: processed pull requests", repo.Name)
 		}(repo)
 	}
@@ -3467,25 +3457,25 @@ func validateFields(fields []string, availableFields []string, fieldType string)
 	if len(fields) == 0 {
 		return nil // Default to all fields
 	}
-	
+
 	availableSet := make(map[string]bool)
 	for _, field := range availableFields {
 		availableSet[field] = true
 	}
-	
+
 	var invalidFields []string
 	for _, field := range fields {
 		if !availableSet[field] {
 			invalidFields = append(invalidFields, field)
 		}
 	}
-	
+
 	if len(invalidFields) > 0 {
-		return fmt.Errorf("invalid fields: %s\n\nUse one of the available fields: %s", 
-			strings.Join(invalidFields, ", "), 
+		return fmt.Errorf("invalid fields: %s\n\nUse one of the available fields: %s",
+			strings.Join(invalidFields, ", "),
 			strings.Join(availableFields, ", "))
 	}
-	
+
 	return nil
 }
 
@@ -3494,7 +3484,7 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 	if len(fields) == 0 {
 		return true // Include all fields if no filter specified
 	}
-	
+
 	for _, field := range fields {
 		if field == fieldName {
 			return true
@@ -3505,14 +3495,14 @@ func shouldIncludeField(fieldName string, fields []string) bool {
 
 // SearchResult represents a search result item
 type SearchResult struct {
-	Type       string    `json:"type"`        // "discussion", "issue", "pull_request"
-	URL        string    `json:"url"`         // Primary identifier
-	Title      string    `json:"title"`       // Item title
-	Body       string    `json:"body"`        // Item content
-	Repository string    `json:"repository"`  // Repository name
-	Author     string    `json:"author"`      // Author username
-	CreatedAt  time.Time `json:"created_at"`  // Creation timestamp
-	State      string    `json:"state"`       // Item state ("open", "closed", etc.)
+	Type       string    `json:"type"`       // "discussion", "issue", "pull_request"
+	URL        string    `json:"url"`        // Primary identifier
+	Title      string    `json:"title"`      // Item title
+	Body       string    `json:"body"`       // Item content
+	Repository string    `json:"repository"` // Repository name
+	Author     string    `json:"author"`     // Author username
+	CreatedAt  time.Time `json:"created_at"` // Creation timestamp
+	State      string    `json:"state"`      // Item state ("open", "closed", etc.)
 }
 
 // SearchEngine performs basic text search across all entities
@@ -3528,7 +3518,7 @@ func NewSearchEngine(db *DB) *SearchEngine {
 // Search performs a basic search across discussions, issues, and pull requests
 func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) {
 	slog.Debug("Search requested", "query", query, "limit", limit)
-	
+
 	if query == "" {
 		return []SearchResult{}, nil
 	}
@@ -3547,7 +3537,7 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 	}
 
 	slog.Debug("Search tokens extracted", "tokens", tokens)
-	
+
 	// Use UNION query to search all tables at once with database-level filtering
 	return se.searchAllTables(tokens, limit)
 }
@@ -3555,16 +3545,16 @@ func (se *SearchEngine) Search(query string, limit int) ([]SearchResult, error) 
 // searchAllTables performs fast full-text search using the search FTS table
 func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchResult, error) {
 	slog.Debug("Performing FTS search", "tokens", tokens, "limit", limit)
-	
+
 	// Build FTS query - FTS5 supports phrase queries and AND operations
 	// Join tokens with AND to require all terms to match
 	ftsQuery := strings.Join(tokens, " AND ")
-	
+
 	// Escape any special FTS characters
 	ftsQuery = strings.ReplaceAll(ftsQuery, `"`, `""`)
-	
+
 	slog.Debug("Built FTS query", "fts_query", ftsQuery)
-	
+
 	// Use pure FTS5 search with bm25() column weights for title prioritization
 	// bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(3x), body, url, repository, author
 	// Multiply by boost to prioritize user's authored content (2x boost)
@@ -3574,9 +3564,9 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 		WHERE search MATCH ?
 		ORDER BY (bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) * boost)
 		LIMIT ?`
-	
+
 	slog.Debug("Executing FTS query", "sql", query, "search_table", "search", "fts_query", ftsQuery, "limit", limit)
-	
+
 	// Build args: FTS query + limit
 	args := []interface{}{ftsQuery, limit}
 
@@ -3590,26 +3580,26 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 			slog.Warn("Failed to close rows", "error", closeErr)
 		}
 	}()
-	
+
 	var results []SearchResult
 	for rows.Next() {
 		var result SearchResult
 		var createdAtStr string
-		
+
 		err := rows.Scan(&result.Type, &result.Title, &result.Body, &result.URL,
 			&result.Repository, &result.Author, &createdAtStr, &result.State)
 		if err != nil {
 			continue
 		}
-		
+
 		// Parse timestamp
 		if createdAt, err := time.Parse(time.RFC3339, createdAtStr); err == nil {
 			result.CreatedAt = createdAt
 		}
-		
+
 		results = append(results, result)
 	}
-	
+
 	slog.Debug("FTS search completed", "results_count", len(results), "fts_query", ftsQuery)
 	return results, nil
 }
@@ -3741,7 +3731,7 @@ func ListDiscussionsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Lis
 	}
 }
 
-// ListIssuesInput represents parameters for list_issues tool  
+// ListIssuesInput represents parameters for list_issues tool
 type ListIssuesInput struct {
 	Repository  string   `json:"repository,omitempty" jsonschema:"Filter by repository name. Example: auth-service"`
 	CreatedFrom string   `json:"created_from,omitempty" jsonschema:"Filter by created_at after the specified date (RFC3339 format). Example: 2025-06-18T19:19:08Z"`
@@ -3959,22 +3949,22 @@ func ListPullRequestsTool(db *DB) func(context.Context, *mcp.CallToolRequest, Li
 		}
 
 		if len(pullRequests) == 0 {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: "No pull requests found."}},
-		}, nil, nil
-	}
-
-	// Format output - start with total count
-	var result strings.Builder
-	result.WriteString(fmt.Sprintf("Total %d pull requests found.\n\n", len(pullRequests)))
-
-	// Determine which fields to include
-	fieldsToInclude := make(map[string]bool)
-	if len(input.Fields) == 0 {
-		for _, field := range validFields {
-			fieldsToInclude[field] = true
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: "No pull requests found."}},
+			}, nil, nil
 		}
-	} else {
+
+		// Format output - start with total count
+		var result strings.Builder
+		result.WriteString(fmt.Sprintf("Total %d pull requests found.\n\n", len(pullRequests)))
+
+		// Determine which fields to include
+		fieldsToInclude := make(map[string]bool)
+		if len(input.Fields) == 0 {
+			for _, field := range validFields {
+				fieldsToInclude[field] = true
+			}
+		} else {
 			for _, field := range input.Fields {
 				fieldsToInclude[field] = true
 			}
@@ -4092,23 +4082,23 @@ func SearchTool(searchEngine *SearchEngine) func(context.Context, *mcp.CallToolR
 		}
 
 		// Perform search
-		searchResults, err := searchEngine.Search(input.Query, 10)
+		searchResults, err := searchEngine.Search(input.Query, 20)
 		if err != nil {
 			return nil, nil, fmt.Errorf("search query failed: %w", err)
 		}
 
 		if len(searchResults) == 0 {
-		return &mcp.CallToolResult{
-			Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("No results found for \"%s\".", input.Query)}},
-		}, nil, nil
-	}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("No results found for \"%s\".", input.Query)}},
+			}, nil, nil
+		}
 
-	// Format results
-	var result strings.Builder
-	for _, searchResult := range searchResults {
-		var formatted strings.Builder
-		formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
-		if fieldsToInclude["url"] {
+		// Format results
+		var result strings.Builder
+		for _, searchResult := range searchResults {
+			var formatted strings.Builder
+			formatted.WriteString(fmt.Sprintf("## %s\n\n", searchResult.Title))
+			if fieldsToInclude["url"] {
 				formatted.WriteString(fmt.Sprintf("- URL: %s\n", searchResult.URL))
 			}
 			if fieldsToInclude["type"] {
@@ -4261,7 +4251,7 @@ func updateProgressStatus(progress ProgressInterface) {
 	rateLimitInfoMutex.RLock()
 	progress.UpdateRateLimit(currentRateLimit.Used, currentRateLimit.Limit, currentRateLimit.Reset)
 	rateLimitInfoMutex.RUnlock()
-	
+
 	statusMutex.Lock()
 	progress.UpdateAPIStatus(statusCounters.Success2XX, statusCounters.Error4XX, statusCounters.Error5XX)
 	statusMutex.Unlock()
@@ -4284,7 +4274,7 @@ func main() {
 		homeDir = "."
 	}
 	homeDir = homeDir + "/.github-brain"
-	
+
 	// Check for -m flag to override home directory
 	for i := 1; i < len(os.Args); i++ {
 		if os.Args[i] == "-m" && i+1 < len(os.Args) {
@@ -4300,7 +4290,7 @@ func main() {
 			break
 		}
 	}
-	
+
 	// Load environment variables from home directory
 	envPath := homeDir + "/.env"
 	_ = godotenv.Overload(envPath)
@@ -4434,11 +4424,11 @@ func (p *UIProgress) InitItems(config *Config, username string) {
 	for _, item := range config.Items {
 		enabledItems[item] = true
 	}
-	
+
 	m := newModel(enabledItems, username, config.Organization)
 	// Use WithAltScreen to run in alternate screen mode (prevents multiple boxes)
 	p.program = tea.NewProgram(m, tea.WithAltScreen())
-	
+
 	// Start the program in a goroutine
 	go func() {
 		defer close(p.done)
@@ -4446,7 +4436,7 @@ func (p *UIProgress) InitItems(config *Config, username string) {
 			slog.Error("Error running Bubble Tea program", "error", err)
 		}
 	}()
-	
+
 	// Give the program time to initialize
 	time.Sleep(100 * time.Millisecond)
 }
@@ -4631,7 +4621,7 @@ func newModel(enabledItems map[string]bool, username, organization string) model
 		width:        80,
 		username:     username,
 		organization: organization,
-		height:    24,
+		height:       24,
 	}
 }
 
@@ -4752,31 +4742,31 @@ func (m *model) addLog(message string) {
 func (m model) View() string {
 	// Build content lines
 	var lines []string
-	
+
 	// Empty line
 	lines = append(lines, "")
-	
+
 	// Items section
 	for _, name := range m.itemOrder {
 		state := m.items[name]
 		lines = append(lines, formatItemLine(state, m.spinner.View()))
 	}
-	
+
 	// Empty line
 	lines = append(lines, "")
-	
+
 	// API Status line
 	lines = append(lines, formatAPIStatusLine(m.apiSuccess, m.apiWarning, m.apiErrors))
-	
+
 	// Rate Limit line
 	lines = append(lines, formatRateLimitLine(m.rateLimitUsed, m.rateLimitMax, m.rateLimitReset))
-	
+
 	// Empty line
 	lines = append(lines, "")
-	
+
 	// Activity section header
 	lines = append(lines, titleStyle.Render("💬 Activity"))
-	
+
 	// Activity log lines
 	for i := 0; i < 10; i++ {
 		if i < len(m.logs) {
@@ -4785,33 +4775,33 @@ func (m model) View() string {
 			lines = append(lines, "")
 		}
 	}
-	
+
 	// Show styled Back option if waiting for Enter/Esc
 	if m.waitingForEnter {
 		lines = append(lines, "")
 		lines = append(lines, selectorStyle.Render("▶")+" ←  "+titleStyle.Render("Back")+"  "+selectedStyle.Render("Esc"))
 	}
-	
+
 	// Join all lines
 	content := strings.Join(lines, "\n")
-	
+
 	// Set maximum width for the box content
 	// Account for: border (2) + padding (2) = 4 total
 	maxContentWidth := m.width - 4
 	if maxContentWidth < 76 {
 		maxContentWidth = 76
 	}
-	
+
 	// Pre-pad all lines to the same width using our visibleLength calculation
 	// This works around lipgloss's incorrect emoji width handling
 	contentLines := strings.Split(content, "\n")
 	lineWidths := make([]int, len(contentLines))
-	
+
 	// Calculate actual visible width of each line and truncate if needed
 	for i, line := range contentLines {
 		width := visibleLength(line)
 		lineWidths[i] = width
-		
+
 		// Truncate lines that are too long
 		if width > maxContentWidth {
 			// Truncate the line - need to be careful with ANSI codes
@@ -4820,7 +4810,7 @@ func (m model) View() string {
 			currentWidth := 0
 			runes := []rune(line)
 			inEscape := false
-			
+
 			for j := 0; j < len(runes) && currentWidth < maxContentWidth-3; j++ {
 				r := runes[j]
 				if r == '\033' {
@@ -4842,7 +4832,7 @@ func (m model) View() string {
 			lineWidths[i] = currentWidth + 3
 		}
 	}
-	
+
 	// Pad each line to maxContentWidth
 	for i, line := range contentLines {
 		padding := maxContentWidth - lineWidths[i]
@@ -4850,16 +4840,16 @@ func (m model) View() string {
 			contentLines[i] = line + strings.Repeat(" ", padding)
 		}
 	}
-	
+
 	// Add title as first line of content using shared renderTitleBar
 	// innerWidth is maxContentWidth minus padding (already accounted for in maxContentWidth)
 	titleLine := renderTitleBar("🔄 Pull", m.username, m.organization, maxContentWidth)
 	contentLines = append([]string{titleLine}, contentLines...)
 	content = strings.Join(contentLines, "\n")
-	
+
 	// Create box with standard lipgloss borders
 	box := boxStyle(0).Align(lipgloss.Left).Render(content)
-	
+
 	return box + "\n"
 }
 
@@ -5185,7 +5175,7 @@ func runPullOperation(homeDir, username, org string) error {
 			return fmt.Errorf("failed to save organization: %w", err)
 		}
 	}
-	
+
 	// Build config
 	config := &Config{
 		Organization:         organization,
@@ -5341,7 +5331,7 @@ func runPullOperation(homeDir, username, org string) error {
 
 	// Final status update
 	progress.Log("✅ Pull complete!")
-	
+
 	// Give time for final display update to render
 	time.Sleep(200 * time.Millisecond)
 
@@ -5534,28 +5524,28 @@ type DeviceCodeResponse struct {
 
 // AccessTokenResponse represents the response from GitHub's access token endpoint
 type AccessTokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	Scope        string `json:"scope"`
-	Error        string `json:"error"`
-	ErrorDesc    string `json:"error_description"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	Scope       string `json:"scope"`
+	Error       string `json:"error"`
+	ErrorDesc   string `json:"error_description"`
 }
 
 // loginModel is the Bubble Tea model for the login UI
 type loginModel struct {
-	spinner          spinner.Model
-	userCode         string
-	verificationURI  string
-	status           string // "waiting", "select_org", "success", "error"
-	errorMsg         string
-	username         string
-	token            string
-	homeDir          string
-	width            int
-	height           int
-	done             bool
-	currentUsername  string // current logged-in username for title bar
-	currentOrg       string // current organization for title bar
+	spinner         spinner.Model
+	userCode        string
+	verificationURI string
+	status          string // "waiting", "select_org", "success", "error"
+	errorMsg        string
+	username        string
+	token           string
+	homeDir         string
+	width           int
+	height          int
+	done            bool
+	currentUsername string // current logged-in username for title bar
+	currentOrg      string // current organization for title bar
 }
 
 // Login message types
@@ -5567,8 +5557,8 @@ type (
 		verificationURI string
 	}
 	loginAuthenticatedMsg struct {
-		username     string
-		token        string
+		username string
+		token    string
 	}
 )
 
@@ -5691,7 +5681,7 @@ func (m loginModel) renderWaitingView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup / ✨ Login with device", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 
@@ -5702,7 +5692,7 @@ func (m loginModel) renderWaitingView() string {
 		b.WriteString("\n")
 		b.WriteString("2. Enter this code:\n")
 		b.WriteString("\n")
-		
+
 		// Code box with double border - gold/yellow stands out against purple
 		codeStyle := lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
@@ -5711,7 +5701,7 @@ func (m loginModel) renderWaitingView() string {
 			Padding(0, 4).
 			Bold(true).
 			MarginLeft(3)
-		
+
 		b.WriteString(codeStyle.Render(m.userCode) + "\n")
 		b.WriteString("\n")
 		b.WriteString("3. Grant access to the organizations you are planning to use with GitHub Brain\n")
@@ -5720,7 +5710,7 @@ func (m loginModel) renderWaitingView() string {
 	}
 
 	b.WriteString("\n")
-	
+
 	// Back menu item - always selected, same format as Setup screen
 	paddedName := fmt.Sprintf("%-4s", "Back")
 	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
@@ -5737,7 +5727,7 @@ func (m loginModel) renderSuccessView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(successStyle.Render("✅ Token saved!") + "\n")
@@ -5758,7 +5748,7 @@ func (m loginModel) renderErrorView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup", "", "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(errorStyle.Render("❌ Authentication failed") + "\n")
@@ -5820,19 +5810,19 @@ func RunLogin(homeDir, currentUsername, currentOrg string) error {
 
 // setupMenuModel is the Bubble Tea model for the setup submenu
 type setupMenuModel struct {
-	homeDir        string
-	choices        []menuChoice
-	cursor         int
-	username       string
-	organization   string
-	width          int
-	height         int
-	quitting       bool
-	runOAuth       bool
-	runPAT         bool
-	runSelectOrg   bool
-	openConfig     bool
-	goBack         bool
+	homeDir      string
+	choices      []menuChoice
+	cursor       int
+	username     string
+	organization string
+	width        int
+	height       int
+	quitting     bool
+	runOAuth     bool
+	runPAT       bool
+	runSelectOrg bool
+	openConfig   bool
+	goBack       bool
 }
 
 func newSetupMenuModel(homeDir, username, organization string, cursor int) setupMenuModel {
@@ -5840,17 +5830,17 @@ func newSetupMenuModel(homeDir, username, organization string, cursor int) setup
 		{icon: "✨", name: "Login with device", description: "Recommended for organization owners"},
 		{icon: "🔑", name: "Login with PAT", description: "Works without organization ownership"},
 	}
-	
+
 	// Only show "Select organization" when logged in
 	if username != "" {
 		choices = append(choices, menuChoice{icon: "🏢", name: "Select organization", description: "Choose organization to sync"})
 	}
-	
+
 	choices = append(choices,
 		menuChoice{icon: "📝", name: "Advanced", description: "Edit configuration file"},
 		menuChoice{icon: "←", name: "Back", description: "Esc"},
 	)
-	
+
 	return setupMenuModel{
 		homeDir:      homeDir,
 		username:     username,
@@ -5936,7 +5926,7 @@ func (m setupMenuModel) View() string {
 			maxNameWidth = len(choice.name)
 		}
 	}
-	
+
 	for i, choice := range m.choices {
 		cursor := "  "
 		descStyle := dimStyle
@@ -5980,7 +5970,7 @@ func RunSetupMenu(homeDir, username, organization string) error {
 		if sm.quitting {
 			return fmt.Errorf("quit")
 		}
-		
+
 		if sm.goBack {
 			return nil
 		}
@@ -6153,7 +6143,7 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if maxDisplay > 10 {
 		maxDisplay = 10
 	}
-	
+
 	// Menu items: [orgs...] [enter manually] [back]
 	inputIndex := maxDisplay
 	backIndex := inputIndex + 1
@@ -6188,9 +6178,9 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.done = true
 					return m, tea.Quit
 				}
-				
+
 				var org string
-				
+
 				if isInputSelected {
 					// Use the typed value from text input
 					org = strings.TrimSpace(m.textInput.Value())
@@ -6198,19 +6188,19 @@ func (m selectOrgModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Select from filtered list (displayed items)
 					org = m.filtered[m.cursor]
 				}
-				
+
 				if org != "" {
 					m.selectedOrg = org
 					return m, func() tea.Msg { return orgSelectedMsg{organization: org} }
 				}
 			}
 		}
-		
+
 		// Pass key messages to textinput only when the input is selected
 		if m.status == "list" && isInputSelected {
 			prevValue := m.textInput.Value()
 			m.textInput, cmd = m.textInput.Update(msg)
-			
+
 			// If text changed, update filtered list (but keep cursor on input)
 			if m.textInput.Value() != prevValue {
 				m.filtered = m.filterOrganizations(m.textInput.Value())
@@ -6316,7 +6306,7 @@ func (m selectOrgModel) renderLoadingView() string {
 	b.WriteString("\n")
 	b.WriteString(m.spinner.View() + " Loading organizations...\n")
 	b.WriteString("\n")
-	
+
 	// Back menu item
 	paddedName := fmt.Sprintf("%-4s", "Back")
 	b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render(paddedName) + "  " + selectedStyle.Render("Esc"))
@@ -6341,11 +6331,11 @@ func (m selectOrgModel) renderListView() string {
 	if len(displayOrgs) > 10 {
 		displayOrgs = displayOrgs[:10]
 	}
-	
+
 	// The "enter manually" input is at index len(displayOrgs)
 	inputIndex := len(displayOrgs)
 	isInputSelected := m.cursor == inputIndex
-	
+
 	if len(m.organizations) == 0 {
 		b.WriteString(dimStyle.Render("  No organizations found") + "\n")
 	} else if len(displayOrgs) > 0 {
@@ -6361,13 +6351,13 @@ func (m selectOrgModel) renderListView() string {
 	}
 
 	b.WriteString("\n")
-	
+
 	// Text input for manual entry (as a selectable item)
 	label := "Or enter manually"
 	if len(displayOrgs) == 0 {
 		label = "Enter manually"
 	}
-	
+
 	if isInputSelected {
 		// Input is selected - show selector, bold label, and active input
 		b.WriteString(selectorStyle.Render("▶") + " " + selectedStyle.Render(label) + "  " + m.textInput.View() + "\n")
@@ -6381,7 +6371,7 @@ func (m selectOrgModel) renderListView() string {
 		}
 	}
 	b.WriteString("\n")
-	
+
 	// Back menu item (selectable) - styled like Setup menu (name always bold, description changes)
 	backIndex := inputIndex + 1
 	isBackSelected := m.cursor == backIndex
@@ -6695,7 +6685,7 @@ func (m patLoginModel) renderTokenInputView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString("1. Opening browser to create new PAT at github.com\n")
@@ -6704,7 +6694,7 @@ func (m patLoginModel) renderTokenInputView() string {
 	b.WriteString("\n")
 	b.WriteString("3. Copy the PAT\n")
 	b.WriteString("\n")
-	
+
 	// Paste option
 	if m.cursor == 0 {
 		b.WriteString(selectorStyle.Render("▶") + " Paste the PAT and press Enter: " + m.textInput.View() + "\n")
@@ -6712,7 +6702,7 @@ func (m patLoginModel) renderTokenInputView() string {
 		b.WriteString("  Paste the PAT and press Enter: " + m.textInput.View() + "\n")
 	}
 	b.WriteString("\n")
-	
+
 	// Back option - styled like Setup menu (name always bold, description changes)
 	if m.cursor == 1 {
 		b.WriteString(selectorStyle.Render("▶") + " ←  " + titleStyle.Render("Back") + "  " + selectedStyle.Render("Esc") + "\n")
@@ -6732,7 +6722,7 @@ func (m patLoginModel) renderSuccessView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.username, "", innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(" " + successStyle.Render("✅ Token saved!") + "\n")
@@ -6753,7 +6743,7 @@ func (m patLoginModel) renderErrorView() string {
 		maxContentWidth = 64
 	}
 	innerWidth := maxContentWidth - 2
-	
+
 	b.WriteString(renderTitleBar("🔧 Setup / 🔑 Login with PAT", m.currentUsername, m.currentOrg, innerWidth) + "\n")
 	b.WriteString("\n")
 	b.WriteString(" " + errorStyle.Render("❌ Authentication failed") + "\n")
@@ -6888,7 +6878,7 @@ func pollForAccessToken(deviceCode *DeviceCodeResponse) (accessToken string, err
 	if interval < 5*time.Second {
 		interval = 5 * time.Second
 	}
-	
+
 	expiresAt := time.Now().Add(time.Duration(deviceCode.ExpiresIn) * time.Second)
 
 	for time.Now().Before(expiresAt) {
@@ -6970,7 +6960,7 @@ func verifyTokenAndGetUsername(token string) (string, error) {
 
 func saveTokenToEnv(homeDir string, token string, organization string) error {
 	envPath := homeDir + "/.env"
-	
+
 	// Read existing .env content
 	existingContent, err := os.ReadFile(envPath)
 	if err != nil && !os.IsNotExist(err) {
