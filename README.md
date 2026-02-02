@@ -40,6 +40,12 @@ npx github-brain@latest
 github-brain
 ```
 
+Or with `npx`:
+
+```sh
+npx github-brain@latest
+```
+
 Launches the interactive TUI where you can:
 
 1. **Setup** - Configure authentication and settings
@@ -83,6 +89,12 @@ Start the MCP server using the local database:
 github-brain mcp
 ```
 
+Or with `npx`:
+
+```sh
+npx github-brain@latest mcp
+```
+
 | Argument | Variable       | Description                                |
 | :------- | :------------- | :----------------------------------------- |
 | `-o`     | `ORGANIZATION` | GitHub organization. **Required.**         |
@@ -105,6 +117,19 @@ Add to the Claude MCP configuration file:
 }
 ```
 
+Or with `npx`:
+
+```json
+{
+  "mcpServers": {
+    "github-brain": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["github-brain@latest", "mcp"]
+    }
+}
+```
+
 Merge with existing `mcpServers` if present.
 
 ### VS Code
@@ -118,6 +143,21 @@ Add to the VS Code MCP configuration file:
       "type": "stdio",
       "command": "github-brain",
       "args": ["mcp"],
+      "version": "0.0.1"
+    }
+  }
+}
+```
+
+Or with `npx`:
+
+```json
+{
+  "servers": {
+    "github-brain": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["github-brain@latest", "mcp"],
       "version": "0.0.1"
     }
   }
