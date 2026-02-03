@@ -1201,7 +1201,7 @@ Where `<invalid_fields>` is a comma-separated list of invalid fields, and `<avai
 Next, prepare the FTS5 search query using the `search` table. Build the query with:
 
 - Use FTS5 MATCH operator for the search query
-- Use the unified SearchEngine implementation shared with the UI (which applies enhanced ranking with title weight 5x, open item boost, and recency decay)
+- Use the SearchEngine implementation (which applies enhanced ranking with title weight 5x, open item boost, and recency decay)
 - Limit to 10 results
 
 If no results are found, output:
