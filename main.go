@@ -3556,13 +3556,18 @@ func (se *SearchEngine) searchAllTables(tokens []string, limit int) ([]SearchRes
 	slog.Debug("Built FTS query", "fts_query", ftsQuery)
 
 	// Use pure FTS5 search with bm25() column weights for title prioritization
-	// bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(3x), body, url, repository, author
-	// Multiply by boost to prioritize user's authored content (2x boost)
+	// bm25(search, 1.0, 5.0, 1.0, 1.0, 1.0, 1.0) weights: type, title(5x), body, url, repository, author
+	// Multiply by boost for user's contributed repos (2x), state_boost for open items (1.5x),
+	// and recency_boost based on created_at age (<30d: 1.0, 30-180d: 0.85, >180d: 0.7)
 	query := `
 		SELECT type, title, body, url, repository, author, created_at, state
 		FROM search 
 		WHERE search MATCH ?
-		ORDER BY (bm25(search, 1.0, 3.0, 1.0, 1.0, 1.0, 1.0) * boost)
+		ORDER BY (bm25(search, 1.0, 5.0, 1.0, 1.0, 1.0, 1.0) * boost * 
+			CASE WHEN state = 'open' THEN 1.5 ELSE 1.0 END *
+			CASE WHEN julianday('now') - julianday(created_at) < 30 THEN 1.0 
+			     WHEN julianday('now') - julianday(created_at) < 180 THEN 0.85 
+			     ELSE 0.7 END)
 		LIMIT ?`
 
 	slog.Debug("Executing FTS query", "sql", query, "search_table", "search", "fts_query", ftsQuery, "limit", limit)
